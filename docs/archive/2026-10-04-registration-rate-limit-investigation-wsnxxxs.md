@@ -40,3 +40,16 @@
 ## 终检补记（2026-10-04）
 
 Gallery `npm run check`：59 文件 / 0 错；`npm test`：27/27；`git diff --check` 通过。按用户轮次提交约定，只提交本轮调查文档，不推送。
+
+## 生产核对补记（2026-10-04）
+
+- 用户随后提供生产 SSH 连接授权，并说明截图约在北京时间 20:30。执行范围仍为原因调查，只读生产文件、运行环境白名单、日志与目标邮箱状态；不在仓库记录连接凭据或个人邮箱。前文认证失败是提供新凭据前的状态。
+- 正在运行的后端 `TRUST_PROXY=1`，MAIL_IP_MAX / MAIL_EMAIL_MAX / MAIL_COOLDOWN_MS 均未覆盖，默认 8 次 / 15 分钟、3 次 / 15 分钟和 60 秒。SMTP 与 Turnstile 必要配置存在。线上 auth-email、http、config 与本地源码归一化换行后 SHA256 一致。
+- API 与 Gallery 域名从生产服务器解析到源站；API Nginx 使用 `proxy_set_header X-Forwarded-For $remote_addr`，没有 real_ip 重写指令。没有发现所有客户端被合并为环回 / CDN IP 的配置证据；这不排除用户自身出口 NAT 或 VPN 共享 IP。
+- 日志北京时间 20:27:44（布里斯班 22:27:44）出现 `Email delivery failed: AggregateError [ETIMEDOUT]`：163 SMTP 两个 IPv4 地址连接 465 超时，IPv6 地址 ENETUNREACH。该日志没有请求邮箱/IP关联，不能证明与截图请求为同一用户；SMTP 异常返回 503，不能直接解释 429。失败占额度的机制可能使后续请求限流，但本次未取得计数证据。
+- 当前连接测试：两个已解析 IPv4 分别完成证书校验 TLS 1.3 并收到 SMTP 220（约 0.33 秒）；与应用相同 Node TLS 连接方式连续三次收到 220（141 / 154 / 158 毫秒）。只建连读取问候，没有 AUTH、MAIL FROM、RCPT TO 或 DATA；未测试账号认证及实际投递，不能称邮件流程全部正常。
+- 目标邮箱当前无验证码记录、未注册；查询仅返回状态，不读取密码/验证码哈希。缺少记录不能证明历史上未尝试发送，失败回滚和清理均可能使记录消失。
+- API 虚拟主机继承 HTTP `access_log off`，应用未记录限流分支；限流计数在内存窗口中，不持久化。因此现有材料无法追溯约 20:30 的 429 是 IP、邮箱窗口还是短冷却，保持未确认结论。
+- 服务检查前后 MainPID 不变、active/running、NRestarts=0；未改生产配置、数据库业务数据或源码，未重启、部署、推送。SSH 会话已关闭。后续最小修复建议仍为区分限流原因、返回/遵守 Retry-After，再决定失败尝试配额策略；SMTP 偶发连接失败应作为独立问题处理。
+- 本轮仅追加文档；隔离 SSH 依赖、已脱敏的检查结果及线上源码只读副本位于忽略目录 `output/registration-investigation-20261004/`，不提交。未运行 build/intake 或新增页面验收，原因是无界面或数据修改。
+- 补记后终检：Gallery check 59 文件 / 0 错、test 27/27，git diff --check 通过；仅提交调查文档。
