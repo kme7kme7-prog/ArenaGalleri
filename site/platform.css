@@ -416,6 +416,64 @@ table.board { width: 100%; border-collapse: collapse; font-size: 13.5px; font-va
 .arena-dot.is-ready, .arena-switch i.is-ready { background: var(--ink); }
 .ab { margin-right: 4px; font: italic 600 1.2em/1 var(--serif); }
 .arena-head .reactions { flex: none; }
+.arena-head { container-type: inline-size; }
+.arena-tools { display: flex; flex: none; align-items: center; gap: 2px; }
+.pane-tool {
+  display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 9px; border: 1px solid transparent; border-radius: 6px;
+  background: none; color: var(--muted); font-size: 12.5px; white-space: nowrap; transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+}
+.pane-tool .i { width: 15px; height: 15px; }
+.pane-tool:hover { background: var(--surface-2); color: var(--ink); }
+.pane-tool[aria-pressed="true"], .pane-close[aria-pressed="true"] { border-color: var(--line); background: var(--surface-2); color: var(--ink); }
+@container (max-width: 520px) { .arena-seal small { display: none; } }
+@container (max-width: 420px) { .pane-tool span { display: none; } }
+/* Layout switch in the header: two boxes per button, the filled ones on view. */
+.arena-layout { flex-wrap: nowrap; padding: 2px; border-radius: 9px; }
+.arena-layout button { display: grid; place-items: center; width: 34px; min-height: 30px; padding: 0; }
+.arena-layout svg { width: 20px; height: 14px; }
+.arena-layout rect { fill: none; stroke: currentColor; stroke-width: 1.4; }
+.arena-layout rect.on { fill: currentColor; fill-opacity: 0.85; }
+.split-bar, .arena-rail { display: none; }
+/* Desktop split: A takes --split of the stage and B the rest. The divider is a 9px hit area over a
+   1px line; a side dragged near the edge collapses to a rail that brings it back. */
+@media (min-width: 861px) {
+  .arena .stage.arena-stage { gap: 0; }
+  .arena-pane[data-side="a"] { flex: 0 1 calc((100% - 1px) * var(--split, 0.5)); }
+  .arena-pane[data-side="b"] { flex: 1 1 0; }
+  .arena-pane { transition: box-shadow 0.3s, flex-basis 0.32s var(--ease); }
+  .arena-stage.is-dragging .arena-pane { transition: box-shadow 0.3s; }
+  .arena-stage.is-dragging .pane-body::after { content: ""; position: absolute; inset: 0; cursor: col-resize; }
+  .split-bar { position: relative; z-index: 3; display: block; flex: none; width: 9px; margin: 0 -4px; cursor: col-resize; touch-action: none; outline: none; }
+  .split-bar::before { content: ""; position: absolute; inset: 0 auto 0 4px; width: 1px; background: var(--line); transition: background-color 0.2s; }
+  .split-bar:hover::before, .split-bar:focus-visible::before, .is-dragging .split-bar::before { background: var(--ink-2); }
+  .split-grip {
+    position: absolute; top: 50%; left: 50%; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 3px;
+    border: 1px solid var(--line-2); border-radius: 999px; background: var(--raised); box-shadow: var(--shadow-sm);
+    opacity: 0; transform: translate(-50%, -50%); transition: opacity 0.2s;
+  }
+  .split-bar:hover .split-grip, .split-bar:focus-visible .split-grip, .is-dragging .split-grip { opacity: 1; }
+  .split-grip button { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); }
+  .split-grip button:hover { background: var(--surface-2); color: var(--ink); }
+  .split-grip .i { width: 14px; height: 14px; }
+  .split-grip i { width: 2px; height: 14px; margin: 2px 0; border-radius: 1px; background: var(--line-2); }
+  .split-read {
+    position: absolute; top: 14px; left: 50%; padding: 3px 9px; border-radius: 999px; background: var(--inv); color: var(--inv-ink);
+    font: 500 11.5px/1.5 var(--mono); white-space: nowrap; opacity: 0; transform: translateX(-50%); pointer-events: none; transition: opacity 0.15s;
+  }
+  .is-dragging .split-read { opacity: 1; }
+  .arena-pane.is-collapsed { flex: 0 0 44px; overflow: hidden; }
+  .arena-pane.is-collapsed .arena-head, .arena-pane.is-collapsed .pane-body { visibility: hidden; }
+  .arena-pane.is-collapsed .pane-body { position: absolute; inset: 0 auto 0 0; width: var(--stage-w, 100vw); }
+  .arena-pane.is-collapsed .arena-rail { display: flex; }
+  .arena-rail {
+    position: absolute; inset: 0; z-index: 2; flex-direction: column; align-items: center; gap: 12px; padding: 16px 0; border: 0;
+    background: var(--surface); color: var(--ink-2); transition: background-color 0.2s, color 0.2s;
+  }
+  .arena-rail:hover { background: var(--surface-2); color: var(--ink); }
+  .arena-rail .pane-letter { width: auto; }
+  .arena-rail-text { color: var(--muted); font-size: 12.5px; letter-spacing: 0.2em; writing-mode: vertical-rl; }
+  .arena-rail .i { width: 16px; height: 16px; margin-top: auto; }
+}
 .arena-pane.chosen .arena-head { box-shadow: inset 0 2px 0 var(--accent); }
 /* 糊名: a hatched vermilion strip covers the name while the pair is anonymous; on the reveal it
    slides off to the right once, and the chosen side gets a 所选 seal. */
@@ -825,6 +883,7 @@ dialog.sheet.work-manage-sheet { width: min(1040px, calc(100% - 40px)); overflow
   .vote-in.is-result { grid-template-columns: 1fr; }
   .vote-in.is-result .vote-actions .btn { flex: 1; }
   .arena-head .reactions { display: none; }
+  .arena-layout, .arena-fit { display: none; }
   .work-row { grid-template-columns: 120px minmax(0, 1fr); }
   .work-side { grid-column: 1 / -1; flex-direction: row; align-items: center; justify-content: space-between; }
   .audit li { grid-template-columns: 1fr auto; }

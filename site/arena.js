@@ -10,6 +10,8 @@ import { linkReferences, referenceSheet } from './references.js';
 const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-pointer-lock allow-downloads';
 const VERDICT = { a: '你认为 A 更好', b: '你认为 B 更好', tie: '你认为不分伯仲', skip: '你跳过了这一组' };
 const NOTICE = 'arena-login-notice';
+// Two boxes for the header layout switch; the filled ones are the works on view.
+const layoutGlyph = (a, b) => `<svg viewBox="0 0 20 14" aria-hidden="true"><rect${a > 3 ? ' class="on"' : ''} x="1" y="1" width="${a}" height="12" rx="1.5"/><rect${b > 3 ? ' class="on"' : ''} x="${a + 3}" y="1" width="${b}" height="12" rx="1.5"/></svg>`;
 const REASON = {
   counted: '已计入榜单',
   anonymous: '未登录，这一票没有计入榜单',
@@ -132,7 +134,7 @@ function lobby(root, ctx) {
 }
 
 function match(root, ctx, task) {
-  const state = { match: null, result: null, ready: {}, seen: {}, controls: {}, controlsShown: false, side: 'a', round: 0, counted: 0, busy: false, prompt: false, slow: false, error: null };
+  const state = { match: null, result: null, ready: {}, seen: {}, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', round: 0, counted: 0, busy: false, prompt: false, slow: false, error: null };
   const mobile = () => matchMedia('(max-width: 860px)').matches;
   const timers = new Set();
   const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); };
@@ -145,7 +147,11 @@ function match(root, ctx, task) {
       <div class="arena-heading"><b>${esc(task.title)}</b><span data-round>正在准备</span></div>
       <div class="vtools">
         <button class="vtool" data-a="prompt" aria-pressed="false" title="查看提示词">${icon('guide')}<span class="vtool-text">提示词</span></button>
-        <button class="vtool" data-a="controls" aria-pressed="false" aria-label="显示作品控件" title="显示作品控件" hidden>${icon('menu')}<span class="vtool-text">显示作品控件</span></button>
+        <div class="seg arena-layout" role="group" aria-label="对比布局">
+          <button data-layout="a" aria-pressed="false" title="只看 A（1）" aria-label="只看作品 A">${layoutGlyph(13, 3)}</button>
+          <button data-layout="ab" aria-pressed="true" title="并排（2）" aria-label="并排">${layoutGlyph(8, 8)}</button>
+          <button data-layout="b" aria-pressed="false" title="只看 B（3）" aria-label="只看作品 B">${layoutGlyph(3, 13)}</button>
+        </div>
         <a class="vtool" href="#/leaderboard/${esc(task.id)}" title="这道题的榜单">${icon('rank')}<span class="vtool-text">榜单</span></a>
         <span class="vdivider" aria-hidden="true"></span>
         ${themeButton('vtool icon-only')}
@@ -157,13 +163,18 @@ function match(root, ctx, task) {
         <button data-a="side" data-side="b" aria-pressed="false"><span class="ab">B</span>作品<i data-dot="b"></i></button>
       </div>
       ${aigcLabel()}
+      <button class="pane-close arena-mcontrols" data-a="controls" aria-pressed="false" hidden>${icon('menu')}</button>
       <button class="pane-close" data-a="reload" title="重新载入当前作品" aria-label="重新载入当前作品">${icon('reload')}</button>
     </div>
     <div class="vmain">
       <div class="stage arena-stage">${['a', 'b'].map((side) => `<section class="pane arena-pane" data-side="${side}">
+        <button class="arena-rail" data-layout="ab" title="展开作品 ${side.toUpperCase()}"><span class="pane-letter">${side.toUpperCase()}</span><span class="arena-dot" data-rail-dot="${side}"></span><span class="arena-rail-text">展开作品 ${side.toUpperCase()}</span>${icon(side === 'a' ? 'next' : 'prev')}</button>
         <div class="arena-head" data-head="${side}"></div>
         <div class="pane-body" data-body="${side}"></div>
-      </section>`).join('')}</div>
+      </section>${side === 'a' ? `<div class="split-bar" role="separator" tabindex="0" aria-orientation="vertical" aria-label="调整作品 A、B 的宽度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" title="拖动调整宽度，双击复位">
+        <span class="split-read" aria-hidden="true"></span>
+        <span class="split-grip"><button data-layout="b" title="收起 A，只看 B" aria-label="收起作品 A">${icon('prev')}</button><i></i><button data-layout="a" title="收起 B，只看 A" aria-label="收起作品 B">${icon('next')}</button></span>
+      </div>` : ''}`).join('')}</div>
       <aside class="guide arena-prompt" aria-label="提示词"><div class="guide-in">
         <div class="guide-head"><div><p class="eyebrow">本题提示词</p><h2>${esc(task.title)}</h2></div><button class="icon-btn" data-a="prompt" aria-label="收起提示词">${icon('close')}</button></div>
         ${referenceSheet(task.references, { key: task.id, credit: task.referenceCredit })}
@@ -182,17 +193,19 @@ function match(root, ctx, task) {
     const text = ready ? '已就绪' : '载入中';
     return `<span class="pane-letter">${letter(side)}</span><span class="arena-who"><span class="sr">匿名作品</span>${sealStrip()}</span>${aigcLabel()}
       <span class="arena-dot${ready ? ' is-ready' : ''}" title="${text}" role="img" aria-label="${text}"></span>
+      ${paneTools(side)}
       <button class="pane-close" data-a="reload" data-side="${side}" title="重新载入作品 ${letter(side)}" aria-label="重新载入作品 ${letter(side)}">${icon('reload')}</button>`;
   }
   function revealHead(side, unseal) {
     const work = state.result[side];
-    if (!work) return `<span class="pane-letter">${letter(side)}</span><span class="arena-who">作品已不可用</span>`;
+    if (!work) return `<span class="pane-letter">${letter(side)}</span><span class="arena-who">作品已不可用</span>${paneTools(side)}`;
     const model = ctx.modelOf({ model: work.model, modelName: work.modelName, vendor: work.vendor });
     const chosen = state.result.choice === side;
     return `<span class="pane-letter">${letter(side)}</span>${brandMark(model, 'brand-mark sm')}
       <span class="arena-who revealed"><b>${esc(work.modelName)}</b>${work.effort ? `<span class="badge">${esc(work.effort)}</span>` : ''}<small>${esc(work.title)}</small></span>
       ${chosen ? '<span class="arena-pick-seal" title="你的选择"><span>所</span><span>选</span></span>' : ''}
       ${reactionBar(`${task.id}/${work.id}`, { locked: work.status === 'questioned' })}
+      ${paneTools(side)}
       ${ctx.inGallery(task.id, work.id) ? `<a class="pane-close" href="#/${esc(task.id)}/${esc(work.id)}" title="在展厅中打开" aria-label="在展厅中打开 ${esc(work.title)}">${icon('arrow')}</a>` : ''}
       ${unseal ? sealStrip(' is-leaving') : ''}`;
   }
@@ -246,6 +259,7 @@ function match(root, ctx, task) {
       $(`[data-side="${side}"].arena-pane`, el).classList.toggle('chosen', state.result?.choice === side);
       const dot = $(`[data-dot="${side}"]`, el);
       if (dot) dot.className = state.ready[side] ? 'is-ready' : '';
+      $(`[data-rail-dot="${side}"]`, el).classList.toggle('is-ready', Boolean(state.ready[side]));
     }
     el.classList.toggle('is-revealed', Boolean(state.result));
     $('[data-round]', el).textContent = state.match ? `第 ${state.round} 组${state.result ? ' · 已揭晓' : ' · 匿名'}` : '正在准备';
@@ -256,18 +270,71 @@ function match(root, ctx, task) {
     $$('[data-a="side"]', el).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.side === state.side)));
   }
 
-  function drawControls() {
-    const button = $('[data-a="controls"]', el);
-    const label = state.controlsShown ? '隐藏作品控件' : '显示作品控件';
-    button.hidden = !Object.values(state.controls).some((count) => count > 0);
-    button.setAttribute('aria-pressed', String(state.controlsShown));
-    button.setAttribute('aria-label', label);
-    button.title = label;
-    $('.vtool-text', button).textContent = label;
+  // Each pane head carries its own controls toggle (once that work reports controls) and the
+  // button that gives it the whole stage or hands the stage back.
+  function paneTools(side) {
+    const name = `作品 ${letter(side)}`;
+    const shown = Boolean(state.controlsShown[side]);
+    const full = layout() === side;
+    const label = `${shown ? '收起' : '显示'}${name} 的控件`;
+    const controls = state.controls[side] > 0
+      ? `<button class="pane-tool" data-a="controls" data-side="${side}" aria-pressed="${shown}" title="${label}" aria-label="${label}">${icon('menu')}<span>控件</span></button>`
+      : '';
+    const fit = full ? '恢复并排' : `只看${name}`;
+    return `<span class="arena-tools" data-tools="${side}">${controls}<button class="pane-close arena-fit" data-layout="${full ? 'ab' : side}" title="${fit}" aria-label="${fit}">${icon(full ? 'split' : 'full')}</button></span>`;
   }
 
-  function syncControls(frame) {
-    frame.contentWindow?.postMessage({ source: 'sp-arena', fold: !state.controlsShown }, '*');
+  function drawControls() {
+    for (const side of ['a', 'b']) {
+      const tools = $(`[data-tools="${side}"]`, el);
+      if (tools) tools.outerHTML = paneTools(side);
+    }
+    // Phones show one work at a time, so the switch row carries the toggle for the work on view.
+    const phone = $('.arena-mcontrols', el);
+    const label = `${state.controlsShown[state.side] ? '收起' : '显示'}作品 ${letter(state.side)} 的控件`;
+    phone.hidden = !(state.controls[state.side] > 0);
+    phone.setAttribute('aria-pressed', String(Boolean(state.controlsShown[state.side])));
+    phone.setAttribute('aria-label', label);
+    phone.title = label;
+  }
+
+  function syncControls(side) {
+    $(`[data-body="${side}"] iframe`, el)?.contentWindow?.postMessage({ source: 'sp-arena', fold: !state.controlsShown[side] }, '*');
+  }
+
+  // Desktop split: state.split is A's share of the stage; 0 and 1 collapse one side to a rail. The
+  // collapsed frame keeps a full-size viewport out of sight, so the work neither reloads nor sees a sliver.
+  const SNAP = 0.1;
+  const layout = () => state.split === 1 ? 'a' : state.split === 0 ? 'b' : 'ab';
+  function drawSplit() {
+    const bar = $('.split-bar', el);
+    if (!bar) return;
+    const stage = $('.arena-stage', el);
+    const percent = Math.round(state.split * 100);
+    stage.style.setProperty('--split', state.split);
+    stage.style.setProperty('--stage-w', `${stage.clientWidth}px`);
+    $('[data-side="a"].arena-pane', el).classList.toggle('is-collapsed', state.split === 0);
+    $('[data-side="b"].arena-pane', el).classList.toggle('is-collapsed', state.split === 1);
+    bar.setAttribute('aria-valuenow', String(percent));
+    $('.split-read', bar).textContent = `A ${percent} · B ${100 - percent}`;
+    $$('.arena-layout [data-layout]', el).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.layout === layout() && (layout() !== 'ab' || state.split === 0.5))));
+    drawControls();
+  }
+  function remember() {
+    if (state.split > 0 && state.split < 1) state.lastSplit = state.split;
+  }
+  function setLayout(kind) {
+    if (state.error) return;
+    if (kind === 'ab') state.split = layout() === 'ab' ? 0.5 : state.lastSplit;
+    else {
+      remember();
+      state.split = kind === 'a' ? 1 : 0;
+    }
+    drawSplit();
+  }
+  function setSplit(value) {
+    state.split = value < SNAP ? 0 : value > 1 - SNAP ? 1 : Math.abs(value - 0.5) < 0.02 ? 0.5 : Math.round(value * 1000) / 1000;
+    drawSplit();
   }
 
   const onFold = (event) => {
@@ -277,7 +344,7 @@ function match(root, ctx, task) {
       if (!current || event.source !== current.contentWindow) continue;
       state.controls[side] = event.data.count;
       drawControls();
-      syncControls(current);
+      syncControls(side);
       break;
     }
   };
@@ -296,7 +363,7 @@ function match(root, ctx, task) {
     iframe.addEventListener('load', () => {
       if (state.match !== current || $('iframe', body) !== iframe) return;
       state.ready[side] = true;
-      syncControls(iframe);
+      syncControls(side);
       later(() => $('.loader', body)?.classList.add('gone'), 300);
       update();
     }, { once: true });
@@ -305,7 +372,7 @@ function match(root, ctx, task) {
   function showError(error) {
     state.error = error;
     state.controls = {};
-    drawControls();
+    $('.arena-layout', el).hidden = true;
     const others = ctx.DATA.tasks.filter((t) => t !== task && (platform.arena[t.id]?.entries ?? 0) >= 2);
     const exhausted = error.code === 'exhausted';
     $('.arena-stage', el).innerHTML = `<div class="board-empty arena-empty">
@@ -320,7 +387,9 @@ function match(root, ctx, task) {
     if (state.busy || state.error) return;
     state.busy = true;
     const previous = state.match?.id;
-    Object.assign(state, { match: null, result: null, unsealed: false, ready: {}, seen: { a: true }, controls: {}, controlsShown: false, side: 'a', slow: false });
+    // Every pair starts side by side at an even split, so the last pair's layout favours neither.
+    Object.assign(state, { match: null, result: null, unsealed: false, ready: {}, seen: { a: true }, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', slow: false });
+    drawSplit();
     $$('[data-body]', el).forEach((body) => { body.innerHTML = `<div class="loader blind"><span class="loader-letter" aria-hidden="true">${letter(body.dataset.body)}</span><div class="spinner" aria-hidden="true"></div><span>正在抽取一组作品</span></div>`; });
     update();
     try {
@@ -366,14 +435,17 @@ function match(root, ctx, task) {
   el.addEventListener('click', (e) => {
     const voteButton = e.target.closest('[data-vote]');
     if (voteButton && !voteButton.disabled) return vote(voteButton.dataset.vote);
+    const layoutButton = e.target.closest('[data-layout]');
+    if (layoutButton) return setLayout(layoutButton.dataset.layout);
     const action = e.target.closest('[data-a]');
     if (!action) return;
     const kind = action.dataset.a;
     if (kind === 'next') next();
     else if (kind === 'prompt') togglePrompt();
     else if (kind === 'controls') {
-      state.controlsShown = !state.controlsShown;
-      $$('[data-body] iframe', el).forEach(syncControls);
+      const side = action.dataset.side ?? state.side;
+      state.controlsShown[side] = !state.controlsShown[side];
+      syncControls(side);
       drawControls();
     }
     else if (kind === 'reload' && state.match && !state.result) {
@@ -394,12 +466,53 @@ function match(root, ctx, task) {
       if (!canVote() || state.busy) return;
       vote(key === 'a' ? 'a' : key === 'd' ? 'b' : 'tie');
     } else if (key === 'n' && state.result) next();
+    else if (['1', '2', '3'].includes(key) && !mobile() && !e.target.closest('.split-bar')) setLayout({ 1: 'a', 2: 'ab', 3: 'b' }[key]);
     else if (key === 'escape' && state.prompt) togglePrompt(false);
     else return;
     e.preventDefault();
   };
   document.addEventListener('keydown', onKey);
-  const onResize = () => { if (!state.result) drawBar(); };
+  const onResize = () => {
+    if (!state.result) drawBar();
+    drawSplit();
+  };
+
+  // Dragging the divider: the bar captures the pointer, and a shield over both frames keeps their
+  // documents from swallowing the moves.
+  const bar = $('.split-bar', el);
+  bar.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('button')) return;
+    e.preventDefault();
+    const stage = $('.arena-stage', el);
+    const box = stage.getBoundingClientRect();
+    bar.setPointerCapture(e.pointerId);
+    stage.classList.add('is-dragging');
+    const move = (ev) => setSplit((ev.clientX - box.left) / box.width);
+    const end = () => {
+      stage.classList.remove('is-dragging');
+      bar.removeEventListener('pointermove', move);
+      bar.removeEventListener('pointerup', end);
+      bar.removeEventListener('pointercancel', end);
+      remember();
+    };
+    bar.addEventListener('pointermove', move);
+    bar.addEventListener('pointerup', end);
+    bar.addEventListener('pointercancel', end);
+  });
+  bar.addEventListener('dblclick', (e) => {
+    if (e.target.closest('button')) return;
+    state.lastSplit = 0.5;
+    setSplit(0.5);
+  });
+  bar.addEventListener('keydown', (e) => {
+    const step = e.shiftKey ? 0.1 : 0.05;
+    if (e.key === 'ArrowLeft') setSplit(state.split - step);
+    else if (e.key === 'ArrowRight') setSplit(state.split + step);
+    else if (e.key === 'Home' || e.key === 'End') setSplit(e.key === 'Home' ? 0 : 1);
+    else return;
+    e.preventDefault();
+    remember();
+  });
   addEventListener('resize', onResize);
 
   // A choice that will not count only tries the page out. Say so once a session, before the first
