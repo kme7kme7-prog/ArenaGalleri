@@ -145,7 +145,7 @@ function lobby(root, ctx) {
 // A random match (scope given) may draw each pair from a different task; `task` is the one on view.
 function match(root, ctx, first, scope) {
   let task = first;
-  const state = { random: Boolean(scope), scope: scope ?? ctx.DATA.tasks.filter(isOpen), done: new Set(), match: null, result: null, ready: {}, seen: {}, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', round: 0, counted: 0, busy: false, prompt: false, slow: false, error: null };
+  const state = { random: Boolean(scope), scope: scope ?? ctx.DATA.tasks.filter(isOpen), done: new Set(), unavailable: false, match: null, result: null, ready: {}, seen: {}, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', round: 0, counted: 0, busy: false, prompt: false, slow: false, error: null };
   const mobile = () => matchMedia('(max-width: 860px)').matches;
   const timers = new Set();
   const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); };
@@ -437,9 +437,10 @@ function match(root, ctx, first, scope) {
     drawMode();
     const others = ctx.DATA.tasks.filter((t) => t !== task && isOpen(t) && !state.done.has(t.id));
     const exhausted = error.code === 'exhausted';
+    const unavailable = exhausted && state.random && state.unavailable;
     $('.arena-stage', el).innerHTML = `<div class="board-empty arena-empty">
-      <p class="board-empty-title">${esc(exhausted ? (state.random ? '这个范围里的组合你都评过了' : '这道题的组合你都评过了') : error.message)}</p>
-      <p>${exhausted ? `感谢你的每一次选择。${state.random ? '换个范围继续' : '换一道题继续'}，或去看看榜单的变化。` : '稍后再来，或者先去看看其他题目。'}</p>
+      <p class="board-empty-title">${esc(unavailable ? '当前范围暂时没有可继续盲评的组合' : exhausted ? (state.random ? '这个范围里的组合你都评过了' : '这道题的组合你都评过了') : error.message)}</p>
+      <p>${unavailable ? '部分题目当前无法配对。换个范围继续，或稍后再来。' : exhausted ? `感谢你的每一次选择。${state.random ? '换个范围继续' : '换一道题继续'}，或去看看榜单的变化。` : '稍后再来，或者先去看看其他题目。'}</p>
       <div class="board-empty-actions">${others.slice(0, 3).map((t) => `<a class="btn" href="#/arena/${esc(t.id)}">${esc(t.title)}${icon('right')}</a>`).join('')}<a class="btn primary" href="#/leaderboard${state.random ? '' : `/${esc(task.id)}`}">${icon('rank')}查看榜单</a></div>
     </div>`;
     drawBar();
@@ -469,7 +470,8 @@ function match(root, ctx, first, scope) {
           state.match = await api('arena/matches', { method: 'POST', body: { task: task.id, previous: task === earlier ? previous : undefined } });
           break;
         } catch (error) {
-          if (!state.random || error.code !== 'exhausted') throw error;
+          if (!state.random || !['exhausted', 'insufficient'].includes(error.code)) throw error;
+          if (error.code === 'insufficient') state.unavailable = true;
           state.done.add(task.id);
           pick = true;
         }
