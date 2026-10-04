@@ -410,6 +410,9 @@ table.board { width: 100%; border-collapse: collapse; font-size: 13.5px; font-va
 .arena-mbar { display: none; }
 .arena-stage { position: relative; }
 .arena-pane { transition: box-shadow 0.3s; }
+/* The next pair loads in a hidden layer over the current one and is shown in place. */
+.arena-layer { position: absolute; inset: 0; }
+.arena-layer.is-next { visibility: hidden; pointer-events: none; }
 .arena-head {
   display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 8px 0 14px;
   background: var(--surface); border-bottom: 1px solid var(--line); color: var(--ink);

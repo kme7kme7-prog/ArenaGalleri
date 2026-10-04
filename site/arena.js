@@ -20,7 +20,7 @@ const REASON = {
   duplicate: '这一对作品你评过了，这次不重复计入',
   changed: '作品的核验状态刚刚变化，这一票没有计入',
   own: '其中有你上传的作品，不计入',
-  skipped: '跳过的组合不计入榜单',
+  skipped: '跳过的组合不计入榜单，也不揭晓',
 };
 
 const RANDOM = 'random';
@@ -110,8 +110,8 @@ function lobby(root, ctx) {
         <details class="board-notes">
           <summary>盲评规则${icon('next')}</summary>
           <dl>
-            <div><dt>匿名</dt><dd>两件作品来自同一道题、不同的模型配置。左右位置随机，作品地址也不透露身份，投票后才揭晓。</dd></div>
-            <div><dt>体验</dt><dd>分别打开、操作两件作品，再选「A 更好」「B 更好」或「不分伯仲」。认出作品或页面异常时，请跳过这一组。</dd></div>
+            <div><dt>匿名</dt><dd>两件作品来自同一道题、不同的模型配置。左右位置随机，作品地址也不透露身份，投票后才揭晓。揭晓过的作品会尽量在你再评 6 组或过 15 分钟后才再次出现。</dd></div>
+            <div><dt>体验</dt><dd>分别打开、操作两件作品，再选「A 更好」「B 更好」或「不分伯仲」。认出作品或页面异常时，请跳过这一组；跳过不揭晓。</dd></div>
             <div><dt>计入</dt><dd>登录且绑定邮箱后的选择计入榜单，每对作品每人计一次。只有已验证作品参与；普通用户会回避本人投稿，普通管理员和高级管理员可以评本人投稿。</dd></div>
             <div><dt>快捷键</dt><dd><kbd>A</kbd> A 更好，<kbd>S</kbd> 不分伯仲，<kbd>D</kbd> B 更好，揭晓后 <kbd>N</kbd> 下一组。</dd></div>
           </dl>
@@ -145,7 +145,7 @@ function lobby(root, ctx) {
 // A random match (scope given) may draw each pair from a different task; `task` is the one on view.
 function match(root, ctx, first, scope) {
   let task = first;
-  const state = { random: Boolean(scope), scope: scope ?? ctx.DATA.tasks.filter(isOpen), done: new Set(), unavailable: false, match: null, result: null, ready: {}, seen: {}, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', round: 0, counted: 0, busy: false, prompt: false, slow: false, error: null };
+  const state = { random: Boolean(scope), scope: scope ?? ctx.DATA.tasks.filter(isOpen), done: new Set(), unavailable: false, prefetch: null, match: null, result: null, ready: {}, seen: {}, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', round: 0, counted: 0, busy: false, prompt: false, slow: false, error: null };
   const mobile = () => matchMedia('(max-width: 860px)').matches;
   const timers = new Set();
   const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); };
@@ -201,6 +201,9 @@ function match(root, ctx, first, scope) {
   const el = $('.arena', root);
 
   const letter = (side) => side.toUpperCase();
+  // A skipped pair stays anonymous; only a vote unseals the names.
+  const revealed = () => Boolean(state.result) && state.result.choice !== 'skip';
+  const loader = (side, text) => `<div class="loader blind"><span class="loader-letter" aria-hidden="true">${letter(side)}</span><div class="spinner" aria-hidden="true"></div><span>${text}</span></div>`;
   // As in an exam hall, the name is sealed under a strip (糊名) until the vote, then unsealed.
   const sealStrip = (cls = '') => `<span class="arena-seal${cls}" aria-hidden="true">糊 名<small>投票后拆封</small></span>`;
   function blindHead(side) {
@@ -267,17 +270,17 @@ function match(root, ctx, first, scope) {
 
   function drawHeads() {
     // The strip comes off once, on the draw that first shows the names.
-    const unseal = Boolean(state.result) && !state.unsealed;
-    if (state.result) state.unsealed = true;
+    const unseal = revealed() && !state.unsealed;
+    if (revealed()) state.unsealed = true;
     for (const side of ['a', 'b']) {
-      $(`[data-head="${side}"]`, el).innerHTML = state.result ? revealHead(side, unseal) : blindHead(side);
+      $(`[data-head="${side}"]`, el).innerHTML = revealed() ? revealHead(side, unseal) : blindHead(side);
       $(`[data-side="${side}"].arena-pane`, el).classList.toggle('chosen', state.result?.choice === side);
       const dot = $(`[data-dot="${side}"]`, el);
       if (dot) dot.className = state.ready[side] ? 'is-ready' : '';
       $(`[data-rail-dot="${side}"]`, el).classList.toggle('is-ready', Boolean(state.ready[side]));
     }
-    el.classList.toggle('is-revealed', Boolean(state.result));
-    $('[data-round]', el).textContent = state.match ? `第 ${state.round} 组${state.result ? ' · 已揭晓' : ' · 匿名'}` : '正在准备';
+    el.classList.toggle('is-revealed', revealed());
+    $('[data-round]', el).textContent = state.match ? `第 ${state.round} 组 · ${revealed() ? '已揭晓' : state.result ? '已跳过' : '匿名'}` : '正在准备';
   }
 
   function drawSide() {
@@ -313,8 +316,10 @@ function match(root, ctx, first, scope) {
     phone.title = label;
   }
 
+  // Each pane holds the current pair's layer and, once a vote is in, the next pair's layer hidden behind it.
+  const currentFrame = (side) => $(`[data-body="${side}"] .arena-layer:not(.is-next) iframe`, el);
   function syncControls(side) {
-    $(`[data-body="${side}"] iframe`, el)?.contentWindow?.postMessage({ source: 'sp-arena', fold: !state.controlsShown[side] }, '*');
+    currentFrame(side)?.contentWindow?.postMessage({ source: 'sp-arena', fold: !state.controlsShown[side] }, '*');
   }
 
   // Desktop split: state.split is A's share of the stage; 0 and 1 collapse one side to a rail. The
@@ -353,13 +358,18 @@ function match(root, ctx, first, scope) {
   }
 
   const onFold = (event) => {
-    if (!state.match || event.data?.source !== 'sp-fold' || !(event.data.count > 0)) return;
-    for (const side of ['a', 'b']) {
-      const current = $(`[data-body="${side}"] iframe`, el);
-      if (!current || event.source !== current.contentWindow) continue;
-      state.controls[side] = event.data.count;
-      drawControls();
-      syncControls(side);
+    if (event.data?.source !== 'sp-fold' || !(event.data.count > 0)) return;
+    for (const node of $$('.arena-layer', el)) {
+      if (event.source !== $('iframe', node)?.contentWindow) continue;
+      const side = node.closest('[data-body]').dataset.body;
+      if (node.classList.contains('is-next')) {
+        if (state.prefetch) state.prefetch.controls[side] = event.data.count;
+        event.source.postMessage({ source: 'sp-arena', fold: true }, '*');
+      } else {
+        state.controls[side] = event.data.count;
+        drawControls();
+        syncControls(side);
+      }
       break;
     }
   };
@@ -367,21 +377,50 @@ function match(root, ctx, first, scope) {
 
   const update = () => { drawHeads(); drawBar(); drawSide(); drawControls(); };
 
+  // One side's frame in a layer of its own. The next pair's layer (`ahead`) loads hidden and is shown
+  // by dropping its class: moving a frame in the page would reload it.
+  function layer(src, side, ahead = null) {
+    const node = document.createElement('div');
+    node.className = `arena-layer${ahead ? ' is-next' : ''}`;
+    node.innerHTML = `<iframe src="${esc(src)}" title="匿名作品 ${letter(side)}" sandbox="${SANDBOX}" allow="fullscreen; autoplay" allowfullscreen referrerpolicy="no-referrer"></iframe>
+      ${loader(side, `作品 ${letter(side)} 正在载入`)}`;
+    const iframe = $('iframe', node);
+    iframe.addEventListener('load', () => {
+      if (!node.isConnected) return;
+      const gone = () => $('.loader', node).classList.add('gone');
+      if (node.classList.contains('is-next')) {
+        ahead.ready[side] = true;
+        iframe.contentWindow?.postMessage({ source: 'sp-arena', fold: true }, '*');
+        return gone();
+      }
+      state.ready[side] = true;
+      syncControls(side);
+      later(gone, 300);
+      update();
+    }, { once: true });
+    return node;
+  }
+
+  const dropCurrent = (body) => $$('.arena-layer:not(.is-next)', body).forEach((node) => node.remove());
+
   function frame(side) {
     const body = $(`[data-body="${side}"]`, el);
     state.ready[side] = false;
     delete state.controls[side];
-    body.innerHTML = `<iframe src="${esc(state.match[side])}" title="匿名作品 ${letter(side)}" sandbox="${SANDBOX}" allow="fullscreen; autoplay" allowfullscreen referrerpolicy="no-referrer"></iframe>
-      <div class="loader blind"><span class="loader-letter" aria-hidden="true">${letter(side)}</span><div class="spinner" aria-hidden="true"></div><span>作品 ${letter(side)} 正在载入</span></div>`;
-    const current = state.match;
-    const iframe = $('iframe', body);
-    iframe.addEventListener('load', () => {
-      if (state.match !== current || $('iframe', body) !== iframe) return;
-      state.ready[side] = true;
-      syncControls(side);
-      later(() => $('.loader', body)?.classList.add('gone'), 300);
-      update();
-    }, { once: true });
+    dropCurrent(body);
+    body.append(layer(state.match[side], side));
+  }
+
+  // Bring the next pair's hidden layer forward, or load the frame now if it was not mounted.
+  function show(side, drawn) {
+    const body = $(`[data-body="${side}"]`, el);
+    const node = $('.arena-layer.is-next', body);
+    if (!node) return frame(side);
+    dropCurrent(body);
+    node.classList.remove('is-next');
+    state.ready[side] = Boolean(drawn.ready[side]);
+    if (drawn.controls[side]) state.controls[side] = drawn.controls[side];
+    syncControls(side);
   }
 
   // The page follows the task on view: heading, prompt drawer, leaderboard link.
@@ -405,8 +444,8 @@ function match(root, ctx, first, scope) {
   }
 
   // The next task of a random round: any task in range the reader has not run out of, not the same one twice.
-  function pickTask(previous) {
-    const live = state.scope.filter((t) => isOpen(t) && !state.done.has(t.id));
+  function pickTask(previous, cooling) {
+    const live = state.scope.filter((t) => isOpen(t) && !state.done.has(t.id) && !cooling.has(t.id));
     const fresh = live.filter((t) => t !== previous);
     const list = fresh.length ? fresh : live;
     return list[Math.floor(Math.random() * list.length)];
@@ -415,6 +454,7 @@ function match(root, ctx, first, scope) {
   function setMode(random) {
     if (state.error || state.random === random) return;
     state.random = random;
+    dropPrefetch();
     history.replaceState(history.state, '', `#/arena/${random ? RANDOM : task.id}`);
     drawMode();
   }
@@ -446,40 +486,81 @@ function match(root, ctx, first, scope) {
     drawBar();
   }
 
+  // The pair after one on `from`. Random rounds change task after the first pair; a task the reader has
+  // run out of drops out of the range. A task whose pairs all hold a recently revealed work is passed over
+  // while other tasks are left, then drawn from all the same (the server falls back without `avoidCooling`).
+  async function draw(from, previous, random, pick) {
+    const cooling = new Set();
+    let avoid = random;
+    let t = from;
+    for (;;) {
+      if (pick) {
+        t = pickTask(from, cooling);
+        if (!t && avoid && cooling.size) {
+          avoid = false;
+          cooling.clear();
+          t = pickTask(from, cooling);
+        }
+        if (!t) throw Object.assign(new Error('这个范围里的组合你都评过了'), { code: 'exhausted' });
+      }
+      try {
+        return { task: t, match: await api('arena/matches', { method: 'POST', body: { task: t.id, previous: t === from ? previous : undefined, avoidCooling: avoid || undefined } }) };
+      } catch (error) {
+        if (!random || !['exhausted', 'insufficient', 'cooling'].includes(error.code)) throw error;
+        if (error.code === 'cooling') cooling.add(t.id);
+        else {
+          if (error.code === 'insufficient') state.unavailable = true;
+          state.done.add(t.id);
+        }
+        pick = true;
+      }
+    }
+  }
+
+  // Once a pair is decided the next one is drawn, and on wide screens its frames load hidden while the
+  // reader looks at the result, so 「下一组」 swaps them in at once. Phones only draw it: four live works
+  // at a time are too much for them. A change of mode or account drops it.
+  function prefetch() {
+    if (state.prefetch || state.error || !state.match) return;
+    const ahead = { user: platform.user?.id ?? null, ready: {}, controls: {} };
+    ahead.promise = draw(task, state.match.id, state.random, state.random).then((drawn) => {
+      Object.assign(ahead, drawn);
+      if (state.prefetch !== ahead || mobile()) return;
+      for (const side of ['a', 'b']) $(`[data-body="${side}"]`, el).append(layer(drawn.match[side], side, ahead));
+    }, () => { /* drawn again, and any error shown, when the reader moves on */ });
+    state.prefetch = ahead;
+  }
+
+  function dropPrefetch() {
+    state.prefetch = null;
+    $$('.arena-layer.is-next', el).forEach((node) => node.remove());
+  }
+
   async function next() {
     if (state.busy || state.error) return;
     state.busy = true;
     const previous = state.match?.id;
     const earlier = task;
+    const ahead = state.prefetch;
+    state.prefetch = null;
     $('.arena-switched', el)?.remove();
     // Every pair starts side by side at an even split, so the last pair's layout favours neither.
     Object.assign(state, { match: null, result: null, unsealed: false, ready: {}, seen: { a: true }, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', slow: false });
     drawSplit();
-    $$('[data-body]', el).forEach((body) => { body.innerHTML = `<div class="loader blind"><span class="loader-letter" aria-hidden="true">${letter(body.dataset.body)}</span><div class="spinner" aria-hidden="true"></div><span>正在抽取一组作品</span></div>`; });
+    for (const body of $$('[data-body]', el)) {
+      dropCurrent(body);
+      if (!$('.arena-layer', body)) body.insertAdjacentHTML('beforeend', `<div class="arena-layer">${loader(body.dataset.body, '正在抽取一组作品')}</div>`);
+    }
     update();
     try {
-      // Random rounds change task after the first pair; a task the reader has run out of drops out of the range.
-      let pick = state.random && state.round > 0;
-      for (;;) {
-        if (pick) {
-          const chosen = pickTask(earlier);
-          if (!chosen) throw Object.assign(new Error('这个范围里的组合你都评过了'), { code: 'exhausted' });
-          setTask(chosen);
-        }
-        try {
-          state.match = await api('arena/matches', { method: 'POST', body: { task: task.id, previous: task === earlier ? previous : undefined } });
-          break;
-        } catch (error) {
-          if (!state.random || !['exhausted', 'insufficient'].includes(error.code)) throw error;
-          if (error.code === 'insufficient') state.unavailable = true;
-          state.done.add(task.id);
-          pick = true;
-        }
-      }
+      if (ahead) await ahead.promise;
+      const drawn = ahead?.match ? ahead : await draw(earlier, previous, state.random, state.random && state.round > 0);
+      if (drawn.task !== task) setTask(drawn.task);
+      state.match = drawn.match;
       if (state.round > 0 && task !== earlier) noteSwitch();
       state.round++;
-      frame('a');
-      frame('b');
+      show('a', drawn);
+      show('b', drawn);
       const current = state.match;
       later(() => { if (state.match === current && !(state.ready.a && state.ready.b)) { state.slow = true; update(); } }, 25000);
     } catch (error) {
@@ -507,6 +588,7 @@ function match(root, ctx, first, scope) {
     }
     state.busy = false;
     update();
+    if (state.result) prefetch();
   }
 
   function togglePrompt(force) {
@@ -533,7 +615,7 @@ function match(root, ctx, first, scope) {
       syncControls(side);
       drawControls();
     }
-    else if (kind === 'reload' && state.match && !state.result) {
+    else if (kind === 'reload' && state.match && !revealed()) {
       frame(action.dataset.side ?? state.side);
       update();
     }
@@ -648,7 +730,10 @@ function match(root, ctx, first, scope) {
   start();
   return {
     fullscreen: true,
-    onPlatformChange() { if (!state.error) update(); },
+    onPlatformChange() {
+      if (state.prefetch && state.prefetch.user !== (platform.user?.id ?? null)) dropPrefetch();
+      if (!state.error) update();
+    },
     destroy() {
       document.removeEventListener('keydown', onKey);
       removeEventListener('message', onFold);
