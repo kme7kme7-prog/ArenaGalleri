@@ -316,8 +316,7 @@ function match(root, ctx, first, scope) {
     phone.title = label;
   }
 
-  // Each pane holds the current pair's layer and, once a vote is in, the next pair's layer hidden behind it.
-  const currentFrame = (side) => $(`[data-body="${side}"] .arena-layer:not(.is-next) iframe`, el);
+  const currentFrame = (side) => $(`[data-body="${side}"] iframe`, el);
   function syncControls(side) {
     currentFrame(side)?.contentWindow?.postMessage({ source: 'sp-arena', fold: !state.controlsShown[side] }, '*');
   }
@@ -359,17 +358,11 @@ function match(root, ctx, first, scope) {
 
   const onFold = (event) => {
     if (event.data?.source !== 'sp-fold' || !(event.data.count > 0)) return;
-    for (const node of $$('.arena-layer', el)) {
-      if (event.source !== $('iframe', node)?.contentWindow) continue;
-      const side = node.closest('[data-body]').dataset.body;
-      if (node.classList.contains('is-next')) {
-        if (state.prefetch) state.prefetch.controls[side] = event.data.count;
-        event.source.postMessage({ source: 'sp-arena', fold: true }, '*');
-      } else {
-        state.controls[side] = event.data.count;
-        drawControls();
-        syncControls(side);
-      }
+    for (const side of ['a', 'b']) {
+      if (event.source !== currentFrame(side)?.contentWindow) continue;
+      state.controls[side] = event.data.count;
+      drawControls();
+      syncControls(side);
       break;
     }
   };
@@ -377,22 +370,15 @@ function match(root, ctx, first, scope) {
 
   const update = () => { drawHeads(); drawBar(); drawSide(); drawControls(); };
 
-  // One side's frame in a layer of its own. The next pair's layer (`ahead`) loads hidden and is shown
-  // by dropping its class: moving a frame in the page would reload it.
-  function layer(src, side, ahead = null) {
+  function layer(src, side) {
     const node = document.createElement('div');
-    node.className = `arena-layer${ahead ? ' is-next' : ''}`;
+    node.className = 'arena-layer';
     node.innerHTML = `<iframe src="${esc(src)}" title="匿名作品 ${letter(side)}" sandbox="${SANDBOX}" allow="fullscreen; autoplay" allowfullscreen referrerpolicy="no-referrer"></iframe>
       ${loader(side, `作品 ${letter(side)} 正在载入`)}`;
     const iframe = $('iframe', node);
     iframe.addEventListener('load', () => {
       if (!node.isConnected) return;
       const gone = () => $('.loader', node).classList.add('gone');
-      if (node.classList.contains('is-next')) {
-        ahead.ready[side] = true;
-        iframe.contentWindow?.postMessage({ source: 'sp-arena', fold: true }, '*');
-        return gone();
-      }
       state.ready[side] = true;
       syncControls(side);
       later(gone, 300);
@@ -401,26 +387,11 @@ function match(root, ctx, first, scope) {
     return node;
   }
 
-  const dropCurrent = (body) => $$('.arena-layer:not(.is-next)', body).forEach((node) => node.remove());
-
   function frame(side) {
     const body = $(`[data-body="${side}"]`, el);
     state.ready[side] = false;
     delete state.controls[side];
-    dropCurrent(body);
-    body.append(layer(state.match[side], side));
-  }
-
-  // Bring the next pair's hidden layer forward, or load the frame now if it was not mounted.
-  function show(side, drawn) {
-    const body = $(`[data-body="${side}"]`, el);
-    const node = $('.arena-layer.is-next', body);
-    if (!node) return frame(side);
-    dropCurrent(body);
-    node.classList.remove('is-next');
-    state.ready[side] = Boolean(drawn.ready[side]);
-    if (drawn.controls[side]) state.controls[side] = drawn.controls[side];
-    syncControls(side);
+    body.replaceChildren(layer(state.match[side], side));
   }
 
   // The page follows the task on view: heading, prompt drawer, leaderboard link.
@@ -517,23 +488,19 @@ function match(root, ctx, first, scope) {
     }
   }
 
-  // Once a pair is decided the next one is drawn, and on wide screens its frames load hidden while the
-  // reader looks at the result, so 「下一组」 swaps them in at once. Phones only draw it: four live works
-  // at a time are too much for them. A change of mode or account drops it.
+  // Fetch only the next pair's addresses. Its works start when the reader moves on,
+  // after the current frames have been removed; hidden works can keep rendering.
   function prefetch() {
     if (state.prefetch || state.error || !state.match) return;
-    const ahead = { user: platform.user?.id ?? null, ready: {}, controls: {} };
+    const ahead = { user: platform.user?.id ?? null };
     ahead.promise = draw(task, state.match.id, state.random, state.random).then((drawn) => {
       Object.assign(ahead, drawn);
-      if (state.prefetch !== ahead || mobile()) return;
-      for (const side of ['a', 'b']) $(`[data-body="${side}"]`, el).append(layer(drawn.match[side], side, ahead));
     }, () => { /* drawn again, and any error shown, when the reader moves on */ });
     state.prefetch = ahead;
   }
 
   function dropPrefetch() {
     state.prefetch = null;
-    $$('.arena-layer.is-next', el).forEach((node) => node.remove());
   }
 
   async function next() {
@@ -548,8 +515,7 @@ function match(root, ctx, first, scope) {
     Object.assign(state, { match: null, result: null, unsealed: false, ready: {}, seen: { a: true }, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', slow: false });
     drawSplit();
     for (const body of $$('[data-body]', el)) {
-      dropCurrent(body);
-      if (!$('.arena-layer', body)) body.insertAdjacentHTML('beforeend', `<div class="arena-layer">${loader(body.dataset.body, '正在抽取一组作品')}</div>`);
+      body.innerHTML = `<div class="arena-layer">${loader(body.dataset.body, '正在抽取一组作品')}</div>`;
     }
     update();
     try {
@@ -559,8 +525,8 @@ function match(root, ctx, first, scope) {
       state.match = drawn.match;
       if (state.round > 0 && task !== earlier) noteSwitch();
       state.round++;
-      show('a', drawn);
-      show('b', drawn);
+      frame('a');
+      frame('b');
       const current = state.match;
       later(() => { if (state.match === current && !(state.ready.a && state.ready.b)) { state.slow = true; update(); } }, 25000);
     } catch (error) {
