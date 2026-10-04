@@ -1,0 +1,34 @@
+# 2026-10-04 · 跳过后卡顿调查 · wsnxxxs
+
+- 负责人：wsnxxxs；执行 AI：Codex。范围为 Gallery 只读代码调查及本地复现，后端适配脚本只读，无子代理。
+
+## 本轮目标
+
+分析用户截图中点击跳过后页面卡顿、CPU 99.9% 的可能原因。截图同时显示 JS heap 327 MB、DOM nodes 1161、Document frames 8，不能仅凭这些数值判断内存泄漏。
+
+## 改动
+
+仅更新 HANDOFF 和本归档，无功能、作品数据或其他仓库改动。
+
+## 决策
+
+- 高可信触发因素：`7969b8f` 的 `site/arena.js` 在任何成功选择（含 skip）后运行 `prefetch()`。桌面保留当前两个 iframe，再创建两个隐藏 iframe；下一组才删除旧层。`site/platform.css` 的 `.arena-layer.is-next` 只设 `visibility: hidden` 和 `pointer-events: none`，没有生命周期暂停协议。`sp-arena` 消息控制 UI 折叠，不能暂停作品。
+- 作品初始化、场景资源驻留和可能继续执行的任务会叠加；不能把 CSS 隐藏当作资源释放。浏览器可能节流隐藏 iframe 的 requestAnimationFrame，因此本轮没有证据证明四件作品始终同时满速渲染。
+- [MDN Page Visibility API](https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API) 说明 CSS 隐藏 iframe 不改变子文档可见性状态，也不触发 visibilitychange；文档另有浏览器可能暂停隐藏 frame 的 rAF 的说明。
+- 建议优先把桌面预加载降为配对数据预取（沿用现有手机思路），点击下一组再创建作品。需要继续运行级预加载时，再评估作品暂停/恢复协议。这是候选修复，用户本轮只要求调查，未实施。
+
+## 验证
+
+- 使用既有真实后端 harness 的内存派生版本：改用本地 5582/5583/5584，数据库在系统临时目录创建，不改原 harness 或已有数据库。现有 dist 的功能标记是 `7969b8f`。
+- Browser 匿名进入体素中国古典建筑群，真实作品可见，跳过前两个作品 iframe；第一轮跳过后四个（两个 `.is-next`、CSS hidden），下一组后两个；第二轮跳过后仍四个，切换随机模式后两个。支持并发驻留增加，未观察到此路径的 frame 无限累积。
+- 初轮查看浏览器日志无 warn/error；隐藏作品 frame 内部状态读取超时，未将其当作暂停或运行的证据。
+- `npm run check`：59 文件、0 错；`npm test`：27/27。
+- 未运行 build/intake：本轮无功能或数据修改，复现使用现有正式构建。未采集 CPU profile、GPU 内存或逐作品耗时，也未复现用户的同一组合、硬件和浏览器，因此不能确认 99.9% 的具体函数来源。
+
+## 明确没做
+
+未修复功能、未推送部署、未登录生产账号或发送生产投票。截图中的八个 Document frames 不是已证实的八件作品；没有据此宣称内存泄漏或双层嵌套。
+
+## 遗留物
+
+临时数据库和复现截图保留在系统临时目录，不进入 Git。本轮临时服务与浏览器测试页收工关闭；原有 output、dist、数据包及其他用户文件保留。
