@@ -2,7 +2,7 @@
 // submit it alone or attach an optional first result through the shared upload steps. The
 // question waits for an admin; an attached result also goes through content moderation.
 import { $, $$, esc, icon } from './ui.js';
-import { api, platform, refreshPlatform, requireUser, toast } from './platform.js';
+import { api, openDialog, platform, refreshPlatform, requireUser, toast } from './platform.js';
 import { contentStage, moderated, stageTrack, uploadFlow } from './submit.js';
 import { TEMPLATE_LABELS, categoryLabel, categoryOf } from './categories.js';
 import { categoryField, domainField, syncDomains } from './question-fields.js';
@@ -17,6 +17,44 @@ const sideSteps = (current) => `<ol class="side-steps">${['题目信息', '选�
 export function mount(root, ctx) {
   let question = blank();
   let flow = null, active = true;
+  let eligibility = platform.me?.questionEligibility ?? null, eligibilityDialog = null, checking = false;
+  const rule = '单独提交题目需完成 100 次有效盲评，或上传 10 件作品，满足任一即可。附带示例结果可直接发起。';
+  function progress() {
+    return `<div class="question-progress">${[
+      ['有效盲评', eligibility.votes, eligibility.requiredVotes, '次'],
+      ['已上传作品', eligibility.uploads, eligibility.requiredUploads, '件'],
+    ].map(([label, value, target, unit]) => `<div class="question-progress-item"><div><b>${label}</b><span><strong>${value}</strong> / ${target} ${unit}</span></div><progress value="${Math.min(value, target)}" max="${target}" aria-label="${label}"></progress><small>${value >= target ? '已达标' : `还差 ${target - value} ${unit}`}</small></div>`).join('<span class="question-progress-or">或</span>')}</div>`;
+  }
+  function updateEligibility() {
+    const host = $('[data-question-eligibility]', root);
+    if (!host) return;
+    host.innerHTML = `<div class="question-eligibility-head"><b>${eligibility?.allowed ? '已可单独提交题目' : '附带示例，即可发起题目'}</b>${platform.user ? '<button type="button" class="link" data-check-eligibility>刷新进度</button>' : ''}</div><p>${eligibility?.exempt ? '管理员可直接发起题目。' : rule}</p>${eligibility && !eligibility.exempt ? progress() : ''}<p class="fine">有效盲评只统计成功计票，跳过不计；作品按已提交且未删除的数量计算，待审核也计入，试上传不计。</p><p class="form-error" role="alert" data-eligibility-error></p>`;
+  }
+  function showEligibilityDialog() {
+    if (!active || eligibilityDialog || !eligibility || eligibility.allowed) return;
+    eligibilityDialog = openDialog({ title: '附上一份示例，就能发起题目', className: 'question-eligibility-sheet',
+      body: `<p class="sheet-text">${rule}</p>${progress()}<p class="fine">跳过和未计票的盲评不计入；待审核作品计入上传数，已删除作品和试上传不计。</p><div class="question-eligibility-actions"><button class="btn primary question-sample-action" type="button" data-sheet-close>继续填写并附上示例</button><a class="btn" href="#/arena/random">${icon('split')}去盲评</a><a class="btn" href="#/questions">${icon('upload')}去上传作品</a></div><p class="fine">上传作品请先在题库选题。关闭提示后，本页已填写的内容会保留。</p>`,
+      onClose: () => { eligibilityDialog = null; },
+    });
+    eligibilityDialog.el.addEventListener('click', (event) => { if (event.target.closest('a')) eligibilityDialog?.close(); });
+  }
+  async function checkEligibility(showDialog = true) {
+    const userId = platform.user?.id;
+    if (!userId) return false;
+    const { eligibility: current } = await api('questions/eligibility');
+    if (!active || platform.user?.id !== userId) return false;
+    eligibility = current;
+    updateEligibility();
+    if (showDialog && !current.allowed) showEligibilityDialog();
+    return current.allowed;
+  }
+  async function refreshEligibility() {
+    if (checking) return;
+    checking = true;
+    try { await checkEligibility(); }
+    catch (err) { const error = $('[data-eligibility-error]', root); if (error) error.textContent = err.message; }
+    finally { checking = false; }
+  }
   // Reference images upload as they are picked and outlive a return to the form.
   const promptArea = () => $('.publish-form [name="prompt"]', root);
   function insertNote(text) {
@@ -54,7 +92,8 @@ export function mount(root, ctx) {
       description: '写清要测试的能力，提供完整提示词；也可以附上一份模型结果展示它的效果。', meta: sideSteps(0) })}
       <section class="block wrap publish-layout">
         <form class="publish-form" novalidate>
-          <div class="notice publish-auth" data-publish-auth${platform.user ? ' hidden' : ''}>${icon('user')}<p>登录后即可发起题目，已填写的内容会保留。</p><button class="btn sm" type="button" data-auth="login">登录 / 注册</button></div>
+          <div class="notice publish-auth" data-publish-auth${platform.user ? ' hidden' : ''}>${icon('user')}<p>登录后查看发起资格，已填写的内容会保留。</p><button class="btn sm" type="button" data-auth="login">登录 / 注册</button></div>
+          <section class="question-eligibility" data-question-eligibility aria-label="发起题目资格"></section>
           <label class="field"><span class="field-label">题目标题 *</span><input class="input" name="title" required maxlength="70" placeholder="例如：体素中国古典建筑群" value="${esc(question.title)}"></label>
           <label class="field"><span class="field-label">测试简述 *</span><textarea class="input" name="summary" required maxlength="400" rows="3" placeholder="需要完成什么？能测出模型的哪些能力？">${esc(question.summary)}</textarea></label>
           ${categoryField(question.category)}
@@ -63,7 +102,7 @@ export function mount(root, ctx) {
           ${refs ? '<div data-ref-host></div>' : ''}
           <div class="field" data-formats>${formatField()}</div>
           <p class="form-error" role="alert"></p>
-          <div class="form-actions"><button class="btn primary" type="submit" value="plain">提交题目</button><button class="btn" type="submit" value="sample">附上示例结果（选填）${icon('right')}</button><a class="btn" href="#/questions">取消</a><span class="fine">发起即表示你同意<a href="#/terms" target="_blank" rel="noopener">《使用条款》</a>与<a href="#/privacy" target="_blank" rel="noopener">《隐私政策》</a>。</span></div>
+          <div class="form-actions"><button class="btn primary" type="submit" value="plain">单独提交题目</button><button class="btn" type="submit" value="sample">附上示例结果${icon('right')}</button><a class="btn" href="#/questions">取消</a><span class="fine">发起即表示你同意<a href="#/terms" target="_blank" rel="noopener">《使用条款》</a>与<a href="#/privacy" target="_blank" rel="noopener">《隐私政策》</a>。</span></div>
         </form>
         <aside class="publish-note"><h3>一道可比较的题目</h3><p>简述说明测试目标。<br>类型决定提交格式，领域方便读者找到它。<br>提示词作为所有作品的共同依据。</p><p>可以选择附上一份用这份提示词生成的模型结果，让管理员和大家更快看到它能做出什么。</p><p>题目由管理员人工审核，示例结果另做内容审核；通过前只有你能看到。测试文字、灌水或广告不会通过。</p></aside>
       </section>${ctx.pageEnd()}`;
@@ -81,12 +120,20 @@ export function mount(root, ctx) {
       $('[data-formats]', form).innerHTML = formatField();
       error.textContent = '';
     };
-    root.onclick = null;
+    updateEligibility();
+    root.onclick = (event) => { if (event.target.closest('[data-check-eligibility]')) void refreshEligibility(); };
     root.onkeydown = null;
     root.onsubmit = async (event) => {
       if (event.target !== form) return;
       event.preventDefault();
+      if (checking) return;
       error.textContent = '';
+      checking = true;
+      try {
+        if (!(await requireUser('登录后即可附带示例发起题目')) || !active) return;
+        if (event.submitter?.value !== 'sample' && !(await checkEligibility())) return;
+      } catch (err) { error.textContent = err.message; return; }
+      finally { checking = false; }
       const data = new FormData(form);
       for (const [name, label] of [['title', '题目标题'], ['summary', '测试简述'], ['prompt', '完整提示词']]) {
         if (!String(data.get(name)).trim()) { error.textContent = `请填写${label}`; $(`[name="${name}"]`, form).focus(); return; }
@@ -97,7 +144,6 @@ export function mount(root, ctx) {
       if (refs?.blocker()) { error.textContent = refs.blocker(); return; }
       question = { title: String(data.get('title')).trim(), summary: String(data.get('summary')).trim(), category: String(data.get('category')), domains: data.getAll('domains'), prompt: String(data.get('prompt')).trim(),
         templates: data.getAll('templates'), ...(refs?.value().length ? { references: refs.value(), referenceCredit: refs.credit() } : {}) };
-      if (!(await requireUser('登录后即可发起题目')) || !active) return;
       if (event.submitter?.value === 'sample') { showUpload(); scrollTo({ top: 0 }); return; }
       const buttons = $$('button[type="submit"]', form);
       buttons.forEach((button) => { button.disabled = true; });
@@ -108,6 +154,7 @@ export function mount(root, ctx) {
         if (active) showDone(result);
       } catch (err) {
         error.textContent = err.message;
+        if (err.code === 'question_ineligible') void refreshEligibility();
         buttons.forEach((button) => { button.disabled = false; });
       }
     };
@@ -192,13 +239,24 @@ export function mount(root, ctx) {
   }
 
   showForm();
+  if (platform.user) void refreshEligibility();
   return {
     onPlatformChange(reason) {
       if (flow) flow.onPlatformChange?.(reason);
-      else $('[data-publish-auth]', root).hidden = Boolean(platform.user);
+      else {
+        const auth = $('[data-publish-auth]', root);
+        if (auth) auth.hidden = Boolean(platform.user);
+      }
+      if (reason === 'session') {
+        eligibilityDialog?.close();
+        eligibility = platform.me?.questionEligibility ?? null;
+        updateEligibility();
+        if (platform.user && !flow) void refreshEligibility();
+      }
     },
     destroy() {
       active = false;
+      eligibilityDialog?.close();
       flow?.destroy();
       refs?.destroy();
       root.oninput = null;

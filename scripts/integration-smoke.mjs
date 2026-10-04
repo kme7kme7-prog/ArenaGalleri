@@ -106,8 +106,15 @@ try {
   const me = await call('me', { cookie });
   assert.equal(me.status, 200);
   assert.deepEqual(resolveApiMedia(me.data, 'me').works, []);
+  // A new account can publish with a real sample before earning standalone-question access.
+  const sample = await call('drafts?task=__new__&name=sample.html', { method: 'POST', cookie,
+    body: '<!doctype html><title>Sample</title><p>A sample for the new question</p>', raw: true });
+  assert.equal(sample.status, 200, JSON.stringify(sample.data));
   const question = await call('questions', { method: 'POST', cookie, body: {
     title: 'Smoke question', summary: 'Integration check.', category: '静态网页', domains: [boot.data.domains[0]], prompt: 'Build one small page.', templates: ['static'],
+    draftId: sample.data.draft.id, confirmed: true,
+    work: { title: 'Sample', modelName: 'Smoke model', vendor: 'Smoke vendor', effort: 'High', providerId: 'official',
+      harnessOther: 'CLI', generationMode: 'single-turn', humanIntervention: 'none', trial: { loaded: true } },
   } });
   assert.equal(question.status, 200, JSON.stringify(question.data));
   assert.ok(question.data.question.id);
