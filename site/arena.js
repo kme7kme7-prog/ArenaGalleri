@@ -2,13 +2,14 @@
 // The server picks every pair and hands out opaque frame addresses; nothing on this page
 // knows which work is which until the vote comes back with the reveal.
 import { $, $$, brandMark, esc, icon, pad, themeButton } from './ui.js';
-import { api, isStaff, needsEmail, platform, reactionBar, toast } from './platform.js';
+import { api, isStaff, needsEmail, openAuth, openDialog, platform, reactionBar, requireUser, toast } from './platform.js';
 import { aigcLabel } from './legal.js';
 import { domainsOf, matchesQuery, tracksOf } from './categories.js';
 import { linkReferences, referenceSheet } from './references.js';
 
 const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-pointer-lock allow-downloads';
 const VERDICT = { a: '你认为 A 更好', b: '你认为 B 更好', tie: '你认为不分伯仲', skip: '你跳过了这一组' };
+const NOTICE = 'arena-login-notice';
 const REASON = {
   counted: '已计入榜单',
   anonymous: '未登录，这一票没有计入榜单',
@@ -401,7 +402,50 @@ function match(root, ctx, task) {
   const onResize = () => { if (!state.result) drawBar(); };
   addEventListener('resize', onResize);
 
-  next();
+  // A choice that will not count only tries the page out. Say so once a session, before the first
+  // pair is drawn, so signing in (or binding the email) from here starts a match that counts.
+  let notice = null;
+  function countNotice() {
+    const unbound = needsEmail();
+    return new Promise((resolve) => {
+      let answer = 'try';
+      notice = openDialog({
+        title: unbound ? '绑定邮箱后才计票' : '登录后投票才计入',
+        className: 'arena-login-sheet',
+        body: `<p class="sheet-text">盲评对所有人开放，区别只在于这一票算不算数。</p>
+          <ul class="vote-ways">
+            <li class="is-try"><span class="vote-way-mark" aria-hidden="true"><span>体</span><span>验</span></span>
+              <span><b>${unbound ? '未绑定邮箱' : '未登录'}</b><small>可以完整体验，选择不计入榜单</small></span></li>
+            <li class="is-count"><span class="vote-way-mark" aria-hidden="true"><span>计</span><span>票</span></span>
+              <span><b>登录并绑定邮箱</b><small>每对作品计一票，计入模型榜单</small></span></li>
+          </ul>
+          <div class="sheet-actions"><button class="btn" type="button" data-sheet-close>先体验</button><button class="btn primary" type="button" data-count>${unbound ? '绑定邮箱后开始' : '登录后开始'}${icon('right')}</button></div>
+          ${unbound ? '' : '<p class="vote-ways-foot">还没有账号？<button class="link" type="button" data-register>注册</button></p>'}`,
+        onClose: () => { notice = null; resolve(answer); },
+      });
+      notice.el.addEventListener('click', (e) => {
+        const pick = e.target.closest('[data-count], [data-register]');
+        if (!pick) return;
+        answer = pick.matches('[data-count]') ? 'count' : 'register';
+        notice.close();
+      });
+    });
+  }
+
+  let alive = true;
+  async function start() {
+    let seen = false;
+    try { seen = sessionStorage.getItem(NOTICE) === '1'; } catch { /* private mode */ }
+    if (platform.available && (!platform.user || needsEmail()) && !seen) {
+      try { sessionStorage.setItem(NOTICE, '1'); } catch { /* private mode */ }
+      const answer = await countNotice();
+      if (answer === 'count' && alive) await requireUser('登录后，这一轮的选择会计入榜单。');
+      if (answer === 'register' && alive) await openAuth({ mode: 'register' });
+    }
+    if (alive) next();
+  }
+
+  start();
   return {
     fullscreen: true,
     onPlatformChange() { if (!state.error) update(); },
@@ -409,6 +453,8 @@ function match(root, ctx, task) {
       document.removeEventListener('keydown', onKey);
       removeEventListener('message', onFold);
       removeEventListener('resize', onResize);
+      alive = false;
+      notice?.close();
       timers.forEach(clearTimeout);
       document.body.classList.remove('is-viewer');
     },

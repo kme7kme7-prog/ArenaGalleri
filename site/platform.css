@@ -433,6 +433,29 @@ table.board { width: 100%; border-collapse: collapse; font-size: 13.5px; font-va
   font: 600 12px/1.2 var(--serif); box-shadow: inset 0 0 0 1.5px var(--bg), inset 0 0 0 2.5px color-mix(in srgb, var(--accent) 50%, transparent);
   transform: rotate(-4deg); animation: fade .4s ease .55s both;
 }
+/* The notice before a match whose votes would not count: two ways to take part, the counted one
+   under the same vermilion seal. */
+dialog.sheet.arena-login-sheet { width: min(400px, calc(100% - 32px)); }
+.arena-login-sheet .sheet-head { margin-bottom: 8px; }
+.arena-login-sheet .sheet-text { margin: 0 0 16px; font-size: 14px; line-height: 1.7; }
+.vote-ways { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.vote-ways li { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.vote-ways li > span:last-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vote-ways b { font-size: 14px; font-weight: 600; }
+.vote-ways small { color: var(--muted); font-size: 12.5px; line-height: 1.55; }
+.vote-ways .is-try { border-style: dashed; }
+.vote-ways .is-try b { color: var(--ink-2); }
+.vote-ways .is-count { border-color: color-mix(in srgb, var(--accent) 35%, transparent); background: var(--accent-soft); }
+.vote-way-mark {
+  display: inline-flex; flex: none; flex-direction: column; align-items: center; justify-content: center; width: 30px; height: 40px;
+  border: 1.5px dashed var(--line-2); border-radius: 3px; color: var(--muted); font: 600 12px/1.25 var(--serif);
+}
+.is-count .vote-way-mark {
+  border: 1.5px solid var(--accent); color: var(--accent); transform: rotate(-4deg);
+  box-shadow: inset 0 0 0 1.5px var(--raised), inset 0 0 0 2.5px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.arena-login-sheet .sheet-actions { display: grid; grid-template-columns: 1fr 1.5fr; margin-top: 20px; }
+.vote-ways-foot { margin: 14px 0 0; color: var(--muted); font-size: 13px; text-align: center; }
 .loader.blind::before { display: none; }
 .loader .loader-letter { margin-bottom: 18px; color: rgb(241 240 236 / 18%); font: italic 600 72px/1 var(--serif); }
 .loader.blind > span:last-child { margin-top: 10px; color: rgb(241 240 236 / 55%); font-size: 12.5px; }
