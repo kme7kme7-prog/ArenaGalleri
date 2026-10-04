@@ -892,6 +892,10 @@ dialog.sheet { border-radius: 10px; background: var(--surface); }
   .question-meta { font-size: 11px; }
   .submission-question { gap: 10px; }
   .submission-question > .btn { display: none; }
+  .submission-question.can-resubmit { flex-wrap: wrap; }
+  .submission-question.can-resubmit .submission-question-body { flex-basis: calc(100% - 52px); }
+  .submission-question.can-resubmit > .actions { width: 100%; padding-left: 52px; }
+  .submission-question.can-resubmit > .actions .btn { flex: 1; justify-content: center; }
   .submission-section .work-row { grid-template-columns: 76px minmax(0, 1fr); gap: 12px; }
   .submission-section .work-side { grid-column: 2; align-items: flex-start; }
   .submission-section .work-row.is-pickable { grid-template-columns: 18px 76px minmax(0, 1fr); }

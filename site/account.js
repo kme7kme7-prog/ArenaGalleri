@@ -1,7 +1,7 @@
 // Personal center (#/me), and the admin review queue (#/review[/<tab>]).
 import { $, $$, brandMark, esc, formatBytes, formatDate, formatTime, icon, img } from './ui.js';
 import { memberChips, memberList, memberResults, membersState, openMember } from './member-management.js';
-import { api, apiRemembered, arenaText, autoRejected, avatarFace, byStaff, canDecide, confirmDialog, injected, isSenior, isStaff, moderationBadge, openBindEmail, openDialog, platform, QUESTION_LABELS, recall, refreshPlatform, requireUser, reviewCount, riskLabels, ROLE_LABELS, setFaces, statusBadge, toast } from './platform.js';
+import { api, apiRemembered, arenaText, autoRejected, avatarFace, byStaff, canDecide, confirmDialog, injected, isSenior, isStaff, moderationBadge, openBindEmail, openDialog, platform, QUESTION_LABELS, recall, refreshPlatform, requireUser, reviewCount, reviewVerdict, riskLabels, ROLE_LABELS, setFaces, statusBadge, toast } from './platform.js';
 import { onWorkFieldChange, readWorkFields, workFieldsHtml } from './work-fields.js';
 import { openWorkManagement } from './work-management.js';
 import { CATEGORIES, categoryLabel, domainsOf, matchesQuery } from './categories.js';
@@ -9,6 +9,7 @@ import { categoryField, domainField, syncDomains } from './question-fields.js';
 import { referenceEditor, referenceSheet, referencesEnabled } from './references.js';
 import { moderated, pendingLimit, stageTrack } from './submit.js';
 import { sticker, stickerName } from './stickers.js';
+import { lineDiff } from './line-diff.js';
 
 // The review queue runs one pipeline: 题目审核 → 内容审核 → 作品核验. The first group only
 // counts what needs a person; the second lists what has been decided; the third manages every
@@ -25,7 +26,7 @@ const FILTER_TABS = { verified: 'public', off: 'off', questioned: 'questioned', 
 const ME_TABS = { overview: '概览', works: '我的作品', questions: '我的题目' };
 const ACCOUNT = { title: '个人中心', description: '每一道提问，每一份解答，都是你的创作足迹。' };
 const ACTIONS = { submit: '提交作品', verified: '通过核验', questioned: '标记存疑', unverified: '退回未验证', delete: '删除作品',
-  'question-create': '发起题目', 'question-review': '审核题目', 'question-edit': '编辑题目', 'question-delete': '删除题目',
+  'question-create': '发起题目', 'question-review': '审核题目', 'question-edit': '编辑题目', 'question-resubmit': '重新提交题目', 'question-delete': '删除题目',
   'content-review': '内容审核', 'content-retry': '重新自动审核', meta: '编辑信息', 'face-settings': '调整展示设置', role: '调整角色' };
 
 export function mount(root, ctx) {
@@ -66,7 +67,7 @@ const HELD = {
   question: {
     pending: '新题目由管理员人工审核，通过前只有你能看到；附带示例结果时，它的审核进度在「我的作品」里。',
     review: '管理员正在复核，通过前只有你能看到。',
-    rejected: '审核未通过，题目不会公开。可以删除后重新发起。',
+    rejected: '审核未通过，题目不会公开。',
   },
 };
 const held = (item) => Boolean(HELD.work[item.moderation?.status]);
@@ -266,18 +267,28 @@ function signedOut(root, ctx, text) {
   </section>${ctx.pageEnd()}`;
 }
 
-// A question held by moderation has no public page yet, so it is shown without links.
+// A question held by moderation has no public page yet, so it is shown without links. A rejected
+// question the server lets its author resubmit opens the publishing form; a resubmitted one keeps
+// the reason it answers.
 function questionRow(ctx, question) {
   const task = ctx.DATA.tasks.find((item) => item.id === question.id);
   const works = task?.results.filter(ctx.interactive).length ?? 0;
   const hidden = held(question);
-  return `<article class="submission-question">
+  const m = question.moderation ?? {};
+  const again = m.status === 'pending' && m.round > 1;
+  const resubmit = m.status === 'rejected' && question.resubmittable;
+  const note = m.status === 'rejected'
+    ? `${m.reason ? reviewVerdict(m) : ''}<p class="result-reason">${icon('guide')}<span>${resubmit ? '按意见修改后可以重新提交，题目和示例结果都会保留。' : '这道题公开过，不能修改后重新提交。'}</span></p>`
+    : again ? `<p class="result-reason">${icon('clock')}<span>已重新提交，管理员会对照上次意见审核。通过前只有你能看到。</span></p>${m.previous?.reason
+      ? `<details class="prompt-peek question-previous"><summary>${icon('guide')}上次审核意见${m.previous.at ? ` · ${esc(formatDate(m.previous.at))}` : ''}</summary><p>${esc(m.previous.reason)}</p></details>` : ''}`
+      : heldNote('question', question);
+  return `<article class="submission-question${resubmit ? ' can-resubmit' : ''}">
     <span class="submission-question-mark" aria-hidden="true">${icon('text')}</span>
-    <div class="submission-question-body"><h3>${hidden ? esc(question.title) : `<a href="#/${esc(question.id)}">${esc(question.title)}</a>`}${moderationBadge(question.moderation, HELD.question[question.moderation?.status], QUESTION_LABELS)}</h3>
+    <div class="submission-question-body"><h3>${hidden ? esc(question.title) : `<a href="#/${esc(question.id)}">${esc(question.title)}</a>`}${moderationBadge(m, HELD.question[m.status], QUESTION_LABELS)}${again ? `<span class="badge">第 ${m.round} 次提交</span>` : ''}</h3>
       <p class="summary">${esc(question.summary)}</p>
       <p class="work-meta">${[categoryLabel(question.category), ...domainsOf(question)].filter(Boolean).map(esc).join(' · ')}<span>${esc(question.date)}${hidden ? '' : ` · ${works} 件作品`}</span></p>
-      ${heldNote('question', question)}
-    </div><div class="actions">${hidden ? '' : `<a class="btn sm" href="#/${esc(question.id)}">查看题目${icon('next')}</a>`}${works && !hidden ? '' : `<button class="icon-btn" data-delete-question="${esc(question.id)}" title="删除题目" aria-label="删除「${esc(question.title)}」">${icon('trash')}</button>`}</div>
+      ${note}
+    </div><div class="actions">${hidden ? '' : `<a class="btn sm" href="#/${esc(question.id)}">查看题目${icon('next')}</a>`}${resubmit ? `<a class="btn sm primary" href="#/new/${encodeURIComponent(question.id)}">修改后重新提交${icon('next')}</a>` : ''}${works && !hidden ? '' : `<button class="icon-btn" data-delete-question="${esc(question.id)}" title="删除题目" aria-label="删除「${esc(question.title)}」">${icon('trash')}</button>`}</div>
   </article>`;
 }
 
@@ -839,6 +850,23 @@ function sampleRow(w) {
   return `<li>${esc(w.modelName)}${w.effort ? ` · ${esc(w.effort)}` : ''} · ${esc(w.title)}${moderationBadge(w.moderation, HELD.work[w.moderation?.status])}${w.scene ? `<a class="text-link" href="${esc(w.scene)}" target="_blank" rel="noopener">预览结果${icon('arrow')}</a>` : ''}${held(w) ? `<button class="btn sm${w.moderation.status === 'review' ? ' primary' : ''}" data-content="${esc(pickId(w))}">审核内容</button>` : ''}</li>`;
 }
 
+// For a question its author resubmitted: the last decision and what changed since.
+const CHANGE_FIELDS = [['title', '标题'], ['summary', '测试简述'], ['category', '题目类型'], ['domains', '领域'], ['prompt', '完整提示词']];
+const DIFF_LINES = { ' ': ['same', ''], '-': ['del', '−'], '+': ['add', '+'] };
+function resubmission(q) {
+  const before = q.moderation?.previous;
+  if (!before) return '';
+  const fields = CHANGE_FIELDS.filter(([key]) => Object.hasOwn(before, key) && JSON.stringify(before[key]) !== JSON.stringify(q[key]));
+  const text = (key, value) => (key === 'category' ? categoryLabel(value) : key === 'domains' ? (value ?? []).join('、') : value ?? '');
+  const changes = fields.filter(([key]) => key !== 'prompt')
+    .map(([key, label]) => `<li><b>${label}</b><del>${esc(text(key, before[key]))}</del><span>${esc(text(key, q[key]))}</span></li>`).join('');
+  const prompt = fields.some(([key]) => key === 'prompt') ? `<div class="line-diff">${lineDiff(before.prompt, q.prompt ?? '')
+    .map(([op, line]) => `<div class="is-${DIFF_LINES[op][0]}"><span class="line-op">${DIFF_LINES[op][1]}</span><span>${esc(line)}</span></div>`).join('')}</div>` : '';
+  const decided = [before.reviewer, before.at ? `${formatDate(before.at)} 拒绝` : ''].filter(Boolean).join(' · ');
+  return `${before.reason ? `<div class="question-history"><p class="question-history-head">${icon('alert')}上次意见${decided ? `<span>· ${esc(decided)}</span>` : ''}</p><p>${esc(before.reason)}</p></div>` : ''}
+    <div class="question-history"><p class="question-history-head">本次改动<span>· ${fields.length ? fields.map(([, label]) => label).join('、') : '参考图、提交格式或示例结果'}</span></p>${changes ? `<ul class="question-changes">${changes}</ul>` : ''}${prompt}</div>`;
+}
+
 // picked: as in workRow; only questions waiting for a decision can be batched.
 function reviewQuestionRow(ctx, q, picked) {
   const status = q.moderation?.status ?? 'legacy';
@@ -849,10 +877,11 @@ function reviewQuestionRow(ctx, q, picked) {
   return `<article class="submission-question review-question">
     ${picked === undefined ? '' : pickBox(q.id, q.title, picked)}
     <span class="submission-question-mark" aria-hidden="true">${icon('text')}</span>
-    <div class="submission-question-body"><h3>${shown ? `<a href="#/${esc(q.id)}">${esc(q.title)}</a>` : esc(q.title)}${moderationBadge(q.moderation, '', QUESTION_LABELS)}</h3>
+    <div class="submission-question-body"><h3>${shown ? `<a href="#/${esc(q.id)}">${esc(q.title)}</a>` : esc(q.title)}${moderationBadge(q.moderation, '', QUESTION_LABELS)}${q.moderation?.previous ? `<span class="badge">重新提交 · 第 ${q.moderation.round} 次</span>` : ''}</h3>
       <p class="summary">${esc(q.summary)}</p>
       <p class="work-meta">${esc(publisher(ctx, q))}<span>${esc(q.date)} · ${q.works ?? 0} 件作品</span>${q.category ? `<span>${esc(categoryLabel(q.category))}</span>` : ''}${domainsOf(q).map((d) => `<span>${esc(d)}</span>`).join('')}</p>
       ${detail ? `<p class="result-reason">${icon(status === 'rejected' ? 'alert' : 'guide')}<span>${esc(detail)}</span></p>` : ''}
+      ${resubmission(q)}
       ${samples.length ? `<ul class="question-samples">${samples.map(sampleRow).join('')}</ul>` : shown ? '' : '<p class="result-reason"><span>没有附带示例结果。</span></p>'}
       ${referenceSheet(q.references, { key: q.id, credit: q.referenceCredit })}
       <details class="prompt-peek"><summary>${icon('guide')}完整提示词</summary><pre>${esc(q.prompt)}</pre></details>

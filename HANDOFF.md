@@ -1,5 +1,18 @@
 # HANDOFF.md · 当前状态
 
+## 跨仓整合与发布（2026-10-05，已上线）
+
+- 用户授权提交、联调、合并适用分支、推送与部署，指定 GPT-6.1 Sol / medium；三个子代理分别负责后端、游戏和私有数据，主代理负责 Gallery、真实联调与统一发布。各仓主工作区起始干净；后端与游戏保留本地和远端提交整合并推送。Gallery 本次合并 question-resubmit，保留全部成员、题目筛选和返回修改题目时的示例状态；以下历史记录的发布状态以本节为准。
+- 2026-10-05 04:06:10 AEST 上线后端 `7ec7eb8`、游戏 `e4e0411` 和 Gallery 内容资产版本 `a576bfebc088e4125a2775cf`。游戏 Linux 干净安装发现两条缺失锁记录，已最小补齐并同步 origin/fork；固定提交生产构建827文件与修复前逐项一致。数据仅交接归档提交，正式包字节不变。
+- Gallery check63/0、test29/29、build176件/68site、严格 intake0错/8既有提示；后端check106/0、test316/316、公开 CI 通过。Linux 固定源码复核上述检查、真实 integration smoke 与游戏 npm ci/lint/typecheck/build:check 全通过。Gallery 公开 CI 随本次收工推送触发。
+- 真实临时库核对成员搜索、重提题目真实请求、返回题目后文件/试加载确认保留及390手机无横溢。公网46项检查通过，包含版本/资源SHA、CORS、CSP、匿名管理拒绝与五张参考图；生产题库、匿名跳过与下一组、游戏首页/题库、1280桌面与390手机核对，脚本错误0，盲评仅2个可见iframe。未做生产登录、真实邮件、投稿、审核、有效计票、真机或全量作品交互。
+- 数据库v39→40：预演及停服一致备份均通过；切换时21张表的原列原行摘要一致，integrity ok、外键错误0，服务active/running、异常重启0。实际 TRUST_PROXY=1、两把 Turnstile 密钥已配置；未执行旧占位题清理。回退材料保留在服务器 `/root/aob-coordinated-release-20261005/backup/`，本地运维证据与截图在忽略的 `output/coordinated-release-20261005/`；密码仅用于SSH认证。旧工作区和其他会话遗留保留。[交付记录](docs/archive/2026-10-05-coordinated-release-wsnxxxs.md)。
+
+## 被拒题目修改后重新提交（2026-10-05，已本地提交，未推送、未部署）
+
+- 我的题目：被拒理由以朱批「审核意见」显示；可重提的题目有「修改后重新提交」，重提后显示「第 N 次提交」与可展开的上次意见，公开后撤下的只显示原因。`#/new/<题目>` 复用发起表单带原内容，标注已修改、可移除示例、跳过资格检查，完成页显示第 N 次。审核页重提题目显示上次意见、改动字段与提示词逐行对比（site/line-diff.js）。
+- check62/0、test29/29、build176件/67site、严格intake0错/8既有提示；本地真实后端浏览器联调桌面/375 手机、深浅主题通过。依赖后端 resubmit 接口与 resubmittable，需一起发布。[交付记录](docs/archive/2026-10-05-question-resubmit-wsnxxxs.md)。
+
 ## 全部成员（2026-10-05，已提交，未推送、未部署）
 
 - 用户确认原型后要求落地：「审核 · 管理 · 全部成员」仅高级管理员可见，普通管理员不显示、直接访问 `#/review/members` 回到待处理队列；封禁、强制下线、手动可信不做。新增 `site/member-management.js`（列表、筛选、角色弹窗），`account.js` 接入标签、按需读取 `admin/users`、事件与 `?q=` 作品搜索，`ACTIONS` 补 `role: '调整角色'`；`platform.css` 新增成员行与弹窗样式；PRODUCT / ARCHITECTURE / DESIGN 同步。配套后端扩充 `GET /api/admin/users` 字段（见后端 HANDOFF）。

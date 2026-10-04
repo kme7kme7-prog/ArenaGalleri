@@ -3,8 +3,9 @@
 // question waits for an admin; an attached result also goes through content moderation.
 // The result steps sit on their own history entry: going back edits the question and keeps the
 // attached result, which is checked again when the prompt or the format changed.
-import { $, $$, esc, icon } from './ui.js';
-import { api, confirmDialog, openDialog, platform, refreshPlatform, requireUser, toast } from './platform.js';
+// #/new/<id> reopens the author's rejected question in the same form to resubmit it.
+import { $, $$, esc, formatDate, icon, pad } from './ui.js';
+import { api, confirmDialog, moderationBadge, openDialog, platform, refreshPlatform, requireUser, reviewVerdict, toast } from './platform.js';
 import { contentStage, moderated, stageTrack, uploadFlow } from './submit.js';
 import { TEMPLATE_LABELS, categoryLabel, categoryOf } from './categories.js';
 import { categoryField, domainField, syncDomains } from './question-fields.js';
@@ -24,6 +25,9 @@ export function mount(root, ctx) {
   let question = blank();
   // showing: 'form', 'upload' (the flow is on screen) or 'done'. skipGuard: the next popstate is our own back.
   let flow = null, flowTask = null, active = true, showing = 'form', skipGuard = false, proceed = null;
+  // Resubmitting: the rejected question as last submitted, its sample results and whether to drop them.
+  const resubmitId = ctx.param;
+  let original = null, samples = [], removeSamples = false;
   let eligibility = platform.me?.questionEligibility ?? null, eligibilityDialog = null, checking = false;
   const rule = '单独提交题目需完成 100 次有效盲评，或上传 10 件作品，满足任一即可。附带示例结果可直接发起。';
   function progress() {
@@ -92,34 +96,86 @@ export function mount(root, ctx) {
     </div>`;
   }
 
+  // The page around a resubmission: where it sits under 我的题目 and which round this is.
+  function resubmitPage() {
+    const round = original?.moderation?.round ?? 1;
+    return { title: '重新提交', section: 'me', heading: '按审核意见修改', description: '修改后重新提交，管理员会对照上次意见审核。',
+      crumbs: [{ text: '个人中心', href: '#/me' }, { text: '我的题目', href: '#/me/questions' }, { text: '修改后重新提交' }],
+      meta: original ? `<ol class="side-steps"><li><span>${pad(round)}</span>${esc(formatDate(original.moderation.at))} 未通过</li><li aria-current="step"><span>${pad(round + 1)}</span>本次修改</li></ol>` : '' };
+  }
+  function showResubmitNote(title, text, login = false) {
+    root.innerHTML = `${ctx.pageStart(resubmitPage())}<section class="account-empty">${icon('text')}<h2>${esc(title)}</h2><p>${esc(text)}</p>
+      <div class="actions">${login ? '<button class="btn primary" data-auth="login">登录 / 注册</button>' : ''}<a class="btn${login ? '' : ' primary'}" href="#/me/questions">回到我的题目</a></div></section>${ctx.pageEnd()}`;
+  }
+  async function loadResubmit() {
+    if (!platform.user) return showResubmitNote('登录后修改你的题目', '只有题目的发起人可以修改后重新提交。', true);
+    showResubmitNote('正在载入题目…', '');
+    try {
+      const data = await api('me');
+      if (!active || flow) return;
+      const found = data.questions?.find((item) => item.id === resubmitId);
+      if (!found) return showResubmitNote('没有找到这道题', '它可能已经被删除。');
+      if (found.moderation?.status !== 'rejected' || !found.resubmittable) {
+        return showResubmitNote('这道题不能修改后重新提交', found.moderation?.status === 'pending' ? '它已经在等待审核。' : '只有未通过审核、且从未公开的题目可以修改后重新提交。');
+      }
+      original = found;
+      samples = (data.works ?? []).filter((work) => work.task === resubmitId);
+      removeSamples = false;
+      question = { title: found.title, summary: found.summary ?? '', category: found.category ?? '', domains: found.domains ?? [], prompt: found.prompt ?? '', templates: found.templates ?? [] };
+      refs?.destroy();
+      refs = referencesEnabled() ? referenceEditor({ refs: found.references ?? [], credit: found.referenceCredit ?? '', prompt: () => promptArea()?.value ?? question.prompt, insert: insertNote }) : null;
+      showForm();
+    } catch (err) {
+      if (active) showResubmitNote('题目暂时未能载入', err.message);
+    }
+  }
+  // The sample results kept with a resubmitted question, or dropped with it.
+  function sampleField() {
+    if (!samples.length) return '';
+    return `<div class="field publish-samples" data-samples><span class="field-label">示例结果</span>
+      <ul class="question-samples">${samples.map((work) => `<li${removeSamples ? ' class="is-removed"' : ''}>${esc(work.modelName)}${work.effort ? ` · ${esc(work.effort)}` : ''} · ${esc(work.title)}${moderationBadge(work.moderation)}${work.scene && !removeSamples ? `<a class="text-link" href="${esc(work.scene)}" target="_blank" rel="noopener">预览结果${icon('arrow')}</a>` : ''}</li>`).join('')}</ul>
+      <p class="fine">${removeSamples ? '重新提交后，示例结果会被删除。' : '示例结果保留不变，题目通过后作为第一份作品展示。如果它和修改后的提示词不再对应，可以先移除。'}</p>
+      <div><button class="btn sm" type="button" data-act="toggle-samples">${removeSamples ? '保留示例结果' : '移除示例结果'}</button></div></div>`;
+  }
+  const changedMark = (name) => (original ? `<span class="badge" data-changed="${name}" hidden>已修改</span>` : '');
+
   function showForm() {
     showing = 'form';
-    root.innerHTML = `${ctx.pageStart({ title: '发起题目', section: 'new', heading: '让每份答案，从同一题开始',
+    root.innerHTML = `${ctx.pageStart(original ? resubmitPage() : { title: '发起题目', section: 'new', heading: '让每份答案，从同一题开始',
       description: '写清要测试的能力，提供完整提示词；也可以附上一份模型结果展示它的效果。', meta: sideSteps(0) })}
       <section class="block wrap publish-layout">
         <form class="publish-form" novalidate>
           <div data-sample-kept></div>
-          <div class="notice publish-auth" data-publish-auth${platform.user ? ' hidden' : ''}>${icon('user')}<p>登录后查看发起资格，已填写的内容会保留。</p><button class="btn sm" type="button" data-auth="login">登录 / 注册</button></div>
-          <section class="question-eligibility" data-question-eligibility aria-label="发起题目资格"></section>
-          <label class="field"><span class="field-label">题目标题 *</span><input class="input" name="title" required maxlength="70" placeholder="例如：体素中国古典建筑群" value="${esc(question.title)}"></label>
-          <label class="field"><span class="field-label">测试简述 *</span><textarea class="input" name="summary" required maxlength="400" rows="3" placeholder="需要完成什么？能测出模型的哪些能力？">${esc(question.summary)}</textarea></label>
+          ${original ? `${reviewVerdict(original.moderation)}<p class="fine">下面是你上次提交的内容，改过的项会标出「已修改」。</p>`
+            : `<div class="notice publish-auth" data-publish-auth${platform.user ? ' hidden' : ''}>${icon('user')}<p>登录后查看发起资格，已填写的内容会保留。</p><button class="btn sm" type="button" data-auth="login">登录 / 注册</button></div>
+          <section class="question-eligibility" data-question-eligibility aria-label="发起题目资格"></section>`}
+          <label class="field"><span class="field-label">题目标题 *${changedMark('title')}</span><input class="input" name="title" required maxlength="70" placeholder="例如：体素中国古典建筑群" value="${esc(question.title)}"></label>
+          <label class="field"><span class="field-label">测试简述 *${changedMark('summary')}</span><textarea class="input" name="summary" required maxlength="400" rows="3" placeholder="需要完成什么？能测出模型的哪些能力？">${esc(question.summary)}</textarea></label>
           ${categoryField(question.category)}
           ${domainField(platform, question.domains)}
-          <label class="field"><span class="field-label">完整提示词 *</span><textarea class="input" name="prompt" required maxlength="20000" rows="12" placeholder="粘贴所有参与模型需要使用的同一份完整提示词。">${esc(question.prompt)}</textarea><p class="fine">题库搜索会匹配提示词全文，技术栈、主题等写在提示词里即可，不另设标签。</p></label>
+          <label class="field"><span class="field-label">完整提示词 *${changedMark('prompt')}</span><textarea class="input" name="prompt" required maxlength="20000" rows="12" placeholder="粘贴所有参与模型需要使用的同一份完整提示词。">${esc(question.prompt)}</textarea><p class="fine">题库搜索会匹配提示词全文，技术栈、主题等写在提示词里即可，不另设标签。</p></label>
           ${refs ? '<div data-ref-host></div>' : ''}
           <div class="field" data-formats>${formatField()}</div>
+          ${original ? sampleField() : ''}
           <p class="form-error" role="alert"></p>
-          <div class="form-actions" data-form-actions></div>
+          ${original ? `<div class="form-actions"><button class="btn primary" type="submit" value="resubmit">重新提交审核${icon('right')}</button><a class="btn" href="#/me/questions">取消</a><span class="fine">内容和上次相同时不能提交。</span></div>`
+            : `<div class="form-actions" data-form-actions></div>`}
         </form>
-        <aside class="publish-note"><h3>一道可比较的题目</h3><p>简述说明测试目标。<br>类型决定提交格式，领域方便读者找到它。<br>提示词作为所有作品的共同依据。</p><p>可以选择附上一份用这份提示词生成的模型结果，让管理员和大家更快看到它能做出什么。</p><p>题目由管理员人工审核，示例结果另做内容审核；通过前只有你能看到。测试文字、灌水或广告不会通过。</p></aside>
+        ${original ? '<aside class="publish-note"><h3>重新提交会怎样</h3><p>题目回到「等待人工审核」，管理员会看到上次意见和你改了哪些地方。</p><p>不再检查发起资格；重新进入待审，计入待审数量。</p><p>通过前只有你能看到。也可以回到「我的题目」删除这道题。</p></aside>'
+          : '<aside class="publish-note"><h3>一道可比较的题目</h3><p>简述说明测试目标。<br>类型决定提交格式，领域方便读者找到它。<br>提示词作为所有作品的共同依据。</p><p>可以选择附上一份用这份提示词生成的模型结果，让管理员和大家更快看到它能做出什么。</p><p>题目由管理员人工审核，示例结果另做内容审核；通过前只有你能看到。测试文字、灌水或广告不会通过。</p></aside>'}
       </section>${ctx.pageEnd()}`;
-    document.title = `发起题目 · ${ctx.DATA.title}`;
+    document.title = `${original ? '修改后重新提交' : '发起题目'} · ${ctx.DATA.title}`;
     const form = $('.publish-form', root);
     const error = $('.form-error', form);
     syncKept();
     syncDomains(form);
     if (refs) refs.mount($('[data-ref-host]', form));
-    root.oninput = (event) => { if (event.target.matches('[name="prompt"]')) refs?.advise(); };
+    const markChanged = () => {
+      if (original) error.textContent = '';
+      for (const name of original ? ['title', 'summary', 'prompt'] : []) $(`[data-changed="${name}"]`, form).hidden = $(`[name="${name}"]`, form).value.trim() === (original[name] ?? '').trim();
+    };
+    markChanged();
+    root.oninput = (event) => { if (event.target.matches('[name="prompt"]')) refs?.advise(); markChanged(); };
     root.onchange = (event) => {
       if (event.target.matches('[name="domains"]')) { syncDomains(form); error.textContent = ''; return; }
       if (!event.target.matches('[name="category"]')) return;
@@ -132,6 +188,7 @@ export function mount(root, ctx) {
     root.onclick = (event) => {
       if (event.target.closest('[data-check-eligibility]')) void refreshEligibility();
       if (event.target.closest('[data-act="to-sample"]')) form.requestSubmit($('button[value="sample"]', form));
+      if (event.target.closest('[data-act="toggle-samples"]')) { removeSamples = !removeSamples; $('[data-samples]', form).outerHTML = sampleField(); }
     };
     root.onkeydown = null;
     // Resolves true once the page moved on: to the result steps, or to the submitted question.
@@ -141,7 +198,7 @@ export function mount(root, ctx) {
       checking = true;
       try {
         if (!(await requireUser('登录后即可附带示例发起题目')) || !active) return false;
-        if (mode !== 'sample' && !(await checkEligibility())) return false;
+        if (!original && mode !== 'sample' && !(await checkEligibility())) return false;
       } catch (err) { error.textContent = err.message; return false; }
       finally { checking = false; }
       const data = new FormData(form);
@@ -161,6 +218,21 @@ export function mount(root, ctx) {
       if (!active) return false;
       const buttons = $$('button[type="submit"]', form);
       buttons.forEach((button) => { button.disabled = true; });
+      if (original) {
+        // Unchanged references stay out of the request; the server rejects a resubmission that changes nothing.
+        const { title, summary, category, domains, prompt, templates } = question;
+        try {
+          const { question: saved } = await api(`questions/${encodeURIComponent(original.id)}/resubmit`, { method: 'POST',
+            body: { title, summary, category, domains, prompt, templates, ...(refs?.changed() ? { references: refs.value(), referenceCredit: refs.credit() } : {}), removeSamples } });
+          toast('已重新提交，等待人工审核');
+          await refreshPlatform('question');
+          if (active) showResubmitted(saved);
+        } catch (err) {
+          error.textContent = err.message;
+          buttons.forEach((button) => { button.disabled = false; });
+        }
+        return;
+      }
       try {
         const result = await api('questions', { method: 'POST', body: question });
         toast('题目已提交，等待人工审核');
@@ -185,6 +257,7 @@ export function mount(root, ctx) {
 
   // The form says what it holds of a result left to edit the question, and leads back to it.
   function syncKept() {
+    if (original) return;
     const form = $('.publish-form', root);
     if (!form) return;
     const kept = flow?.kept();
@@ -277,7 +350,7 @@ export function mount(root, ctx) {
     const passed = ['approved', 'legacy'].includes(q);
     const current = !passed ? 0 : sampleWaiting ? 1 : -1;
     const view = q === 'rejected'
-      ? ['未通过', `「${saved.title}」没有通过审核`, '题目不会公开。可以在「我的题目」删除后修改，再重新发起。']
+      ? ['未通过', `「${saved.title}」没有通过审核`, '题目不会公开。可以在「我的题目」按意见修改后重新提交。']
       : !passed ? ['等待人工审核', `「${saved.title}」已提交审核`, work ? '管理员审核题目的同时，示例结果做内容审核。通过前只有你能看到，这一页会自动更新。' : '管理员审核通过后，题目进入题库并开放投稿。']
       : sampleWaiting ? ['题目已通过', `「${saved.title}」已进入题库`, '示例结果还在内容审核，通过后作为第一份作品展示。']
       : ['已公开', `「${saved.title}」已进入题库`, '其他人现在可以上传各自模型的结果。'];
@@ -308,6 +381,18 @@ export function mount(root, ctx) {
     refs?.destroy();
     refs = newEditor();
     showForm();
+  }
+  function showResubmitted(saved) {
+    showing = 'done';
+    const kept = samples.length && !removeSamples;
+    root.innerHTML = `${ctx.pageStart({ ...resubmitPage(), heading: '已重新提交审核' })}<section class="block wrap"><section class="submit-done">
+      <p class="kicker"><span class="num">已重新提交</span><span>第 ${saved.moderation?.round ?? 2} 次 · 等待人工审核</span></p>
+      <h2>${esc(`「${saved.title}」已重新提交审核`)}</h2><p>管理员会对照上次意见审核，通过后进入题库并开放投稿。通过前只有你能看到。</p>
+      ${stageTrack([['按意见修改', '已完成'], ['题目审核', '管理员人工审核，通过前仅你可见'], ['进入题库', kept ? '示例结果作为第一份作品展示' : '其他人可以上传各自的结果']], 1, { row: true })}
+      <div class="actions"><a class="btn primary" href="#/me/questions">查看我的题目${icon('right')}</a></div>
+    </section></section>${ctx.pageEnd()}`;
+    root.onclick = null;
+    root.onsubmit = null;
     scrollTo({ top: 0 });
   }
 
@@ -339,10 +424,17 @@ export function mount(root, ctx) {
     });
   }
 
-  showForm();
-  if (platform.user) void refreshEligibility();
+  if (resubmitId) void loadResubmit();
+  else {
+    showForm();
+    if (platform.user) void refreshEligibility();
+  }
   return {
     onPlatformChange(reason) {
+      if (resubmitId) {
+        if (reason === 'session') void loadResubmit();
+        return;
+      }
       if (showing === 'upload') flow.onPlatformChange?.(reason);
       else {
         const auth = $('[data-publish-auth]', root);
