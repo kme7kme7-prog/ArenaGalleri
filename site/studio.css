@@ -691,6 +691,7 @@ fieldset.field > legend { padding: 0; margin-bottom: 6px; }
 .work-main .result-reason { margin-top: 6px; }
 .submission-empty .btn { margin-top: 14px; }
 .side-cta.btn { width: 100%; justify-content: center; margin-top: 4px; }
+.side-cta-note { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .submission-empty { display: flex; min-height: 120px; padding: 26px; flex-direction: column; justify-content: center; align-items: center; border: 1px dashed var(--line); border-radius: 6px; color: var(--muted); font-size: 13px; text-align: center; }
 .submission-empty b { color: var(--ink-2); font-weight: 500; }
 .submission-empty p { margin: 7px 0 0; font-size: 12px; }

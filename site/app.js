@@ -12,7 +12,7 @@
 //   #/me · #/review           personal center · review queue (platform)
 //   #/terms · #/privacy       terms of use and disclaimer · privacy policy
 import { $, $$, LOGO, brandMark, byName, esc, ext, formatBytes, formatDate, icon, img, pad, store, syncThemeUi, themeButton, versionedMedia } from './ui.js';
-import { STATUS, accountControl, api, arenaText, avatarFace, byStaff, connectPlatform, isStaff, onPlatformChange, platform, reactionBar, refreshAccountControls, refreshPlatform, requestBootstrap, setFaces, statusBadge, toast } from './platform.js';
+import { STATUS, accountControl, api, arenaScope, arenaText, avatarFace, byStaff, connectPlatform, isStaff, onPlatformChange, platform, reactionBar, refreshAccountControls, refreshPlatform, requestBootstrap, setFaces, statusBadge, toast } from './platform.js';
 import { mount as renderLanding } from './home.js';
 import { CONTACT, aigcLabel, beianLink, mount as renderLegal } from './legal.js';
 import { effortRank, representatives, standard, taskCover } from './featured.js';
@@ -224,6 +224,12 @@ function libraryStart(crumbs) {
     <main class="workspace page">`;
 }
 
+// Taking part sits beside the works: blind review in vermilion, uploading in ink. Library and task page share it.
+const AB = '<span class="task-act-ab">A<i>B</i></span>';
+const act = (kind, href, glyph, title, note, hint = '') => (href
+  ? `<a class="task-act is-${kind}" href="${href}"><span class="task-act-mark" aria-hidden="true">${glyph}</span><span><b>${title}</b><small>${note}</small></span></a>`
+  : `<span class="task-act is-off" aria-disabled="true"${hint ? ` title="${hint}"` : ''}><span class="task-act-mark" aria-hidden="true">${glyph}</span><span><b>${title}</b><small>${note}</small></span></span>`);
+
 // Filter selects share the task page's toolbar: the option text carries the label and count.
 const selectControl = (name, aria, options) => `<label class="result-sort">${aria}<select data-${name} aria-label="${aria}">${options}</select></label>`;
 const option = (value, text, selected) => `<option value="${esc(value)}"${selected ? ' selected' : ''}>${esc(text)}</option>`;
@@ -336,7 +342,7 @@ function renderLibrary(scopes = [], fresh = true) {
 
   root.innerHTML = `${libraryStart([{ text: '题库' }])}
       <section data-home-panel="tasks">
-        <div class="collection-heading"><div class="collection-title"><h2 id="h-tasks">全部题目</h2><span data-home-count>${DATA.tasks.length} 道题目</span></div><span class="collection-caption">解答数不计存疑作品</span></div>
+        <div class="collection-heading"><div class="collection-title"><h2 id="h-tasks">全部题目</h2><span data-home-count title="解答数不计存疑作品">${DATA.tasks.length} 道题目</span></div>${platform.available ? '<div class="task-acts" data-home-blind></div>' : ''}</div>
         ${taskToolbar}
         <div class="task-list">${newCard}${taskCards || (newCard ? '' : '<p class="muted">还没有题目。</p>')}</div>
         <div class="board-empty" data-home-empty hidden><h3>没有找到这道题</h3><p>${platform.available ? '换个关键词或筛选条件，或者把它发起成一道新题。' : '换个关键词或筛选条件，或浏览全部题目。'}</p><div class="board-empty-actions"><button class="btn" data-home-reset>清除筛选</button>${platform.available ? `<a class="btn primary" href="#/new">${icon('plus')}发起题目</a>` : ''}</div></div>
@@ -348,9 +354,11 @@ function renderLibrary(scopes = [], fresh = true) {
     </main></div>`;
   // While searching, questions matched by their own words come first and those matched only inside
   // a prompt follow, each showing the stretch of prompt that matched; the chosen sort holds within each.
+  let blindScope = [];
   const filter = () => {
     let count = 0;
     const promptOnly = new Set();
+    blindScope = [];
     for (const card of $$('[data-task-card]', root)) {
       const task = DATA.tasks.find((t) => t.id === card.dataset.taskCard);
       const match = searchMatch(task, homeState.query);
@@ -362,7 +370,17 @@ function renderLibrary(scopes = [], fresh = true) {
         hit.innerHTML = `<span>提示词</span>${esc(before)}<mark>${esc(word)}</mark>${esc(after)}`;
         promptOnly.add(task.id);
       }
-      if (!card.hidden) count++;
+      if (!card.hidden) {
+        count++;
+        if ((platform.arena[task.id]?.entries ?? 0) >= 2) blindScope.push(task);
+      }
+    }
+    // Random pairs come from the questions in view, as far as they can be judged.
+    const blind = $('[data-home-blind]', root);
+    if (blind) {
+      blind.innerHTML = blindScope.length
+        ? act('judge', `#/arena/random`, AB, '参与盲评', `可盲评 ${blindScope.reduce((sum, t) => sum + platform.arena[t.id].works, 0)} 件`)
+        : act('judge', '', AB, '参与盲评', '暂无可评的题', '当前范围内没有两个模型配置以上的盲评池');
     }
     const order = sortedTasks().sort((a, b) => promptOnly.has(a.id) - promptOnly.has(b.id));
     const list = $('.task-list', root), cards = $$('[data-task-card]', list);
@@ -417,6 +435,7 @@ function renderLibrary(scopes = [], fresh = true) {
     filter();
   };
   root.onclick = (event) => {
+    if (event.target.closest('[data-home-blind] a')) arenaScope.set(blindScope.map((t) => t.id));
     // Form and domain combine; pressing the current domain again lifts it.
     const category = event.target.closest('[data-home-category]'), domain = event.target.closest('[data-home-domain]'), view = event.target.closest('[data-home-view]');
     if (category) { homeState.category = category.dataset.homeCategory; homeState.view = 'tasks'; }
@@ -679,13 +698,8 @@ function renderTask(t) {
   const captureNotes = t.results.filter((r) => r.captureNote).map((r) => `${esc(r.title)}：${esc(r.captureNote)}`);
   const works = counted(t);
   const pool = platform.arena[t.id];
-  // Taking part sits beside the works: blind review in vermilion, uploading in ink.
-  const act = (kind, href, glyph, title, note, hint = '') => (href
-    ? `<a class="task-act is-${kind}" href="${href}"><span class="task-act-mark" aria-hidden="true">${glyph}</span><span><b>${title}</b><small>${note}</small></span></a>`
-    : `<span class="task-act is-off" aria-disabled="true"${hint ? ` title="${hint}"` : ''}><span class="task-act-mark" aria-hidden="true">${glyph}</span><span><b>${title}</b><small>${note}</small></span></span>`);
-  const ab = '<span class="task-act-ab">A<i>B</i></span>';
   const actions = platform.available ? `<div class="task-acts">
-    ${(pool?.entries ?? 0) >= 2 ? act('judge', `#/arena/${esc(t.id)}`, ab, '参与盲评', `可盲评 ${pool.works} 件`) : act('judge', '', ab, '参与盲评', '作品不足', '至少需要两个模型配置的作品进入盲评池')}
+    ${(pool?.entries ?? 0) >= 2 ? act('judge', `#/arena/${esc(t.id)}`, AB, '参与盲评', `可盲评 ${pool.works} 件`) : act('judge', '', AB, '参与盲评', '作品不足', '至少需要两个模型配置的作品进入盲评池')}
     ${t.acceptsUploads ? act('upload', `#/submit/${esc(t.id)}`, icon('upload'), '上传作品', '交一份你的答案') : act('upload', '', icon('upload'), '暂不接受投稿', t.promptPending ? '提示词原文尚未公开' : '这道题暂时关闭了投稿')}
   </div>` : '';
 

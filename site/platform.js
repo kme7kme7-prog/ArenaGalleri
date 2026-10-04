@@ -143,6 +143,11 @@ export const STATUS = {
   unverified: { label: '未验证', hint: '等待管理员核验，暂不参与盲评', icon: 'clock' },
   questioned: { label: '存疑', hint: '核验存疑：仅供参考，不参与互动与盲评', icon: 'alert' },
 };
+// The tasks a random blind round draws from, handed over by the page that starts it.
+export const arenaScope = {
+  set(ids) { try { sessionStorage.setItem('arena-scope', JSON.stringify(ids)); } catch { /* private mode */ } },
+  get() { try { const ids = JSON.parse(sessionStorage.getItem('arena-scope')); return Array.isArray(ids) ? ids : null; } catch { return null; } },
+};
 // A work's blind-pool state as the server reports it (owner and admin views carry `arena`).
 const ARENA_TEXT = { in_pool: '在盲评池', off: '不进盲评', not_qualified: '不进盲评' };
 export const arenaText = (arena) => (ARENA_TEXT[arena?.state] ? `${ARENA_TEXT[arena.state]}${arena.reason ? `（${arena.reason}）` : ''}` : '');

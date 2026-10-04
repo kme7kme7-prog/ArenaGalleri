@@ -1,8 +1,9 @@
-// Blind comparison: a lobby of tasks (#/arena) and the match itself (#/arena/<task>).
+// Blind comparison: a lobby of tasks (#/arena), a match on one task (#/arena/<task>) and a random
+// match (#/arena/random) where every pair may come from a different task.
 // The server picks every pair and hands out opaque frame addresses; nothing on this page
 // knows which work is which until the vote comes back with the reveal.
 import { $, $$, brandMark, esc, icon, pad, themeButton } from './ui.js';
-import { api, isStaff, needsEmail, openAuth, openDialog, platform, reactionBar, requireUser, toast } from './platform.js';
+import { api, arenaScope, isStaff, needsEmail, openAuth, openDialog, platform, reactionBar, requireUser, toast } from './platform.js';
 import { aigcLabel } from './legal.js';
 import { domainsOf, matchesQuery, tracksOf } from './categories.js';
 import { linkReferences, referenceSheet } from './references.js';
@@ -22,14 +23,20 @@ const REASON = {
   skipped: '跳过的组合不计入榜单',
 };
 
+const RANDOM = 'random';
+const isOpen = (t) => (platform.arena[t.id]?.entries ?? 0) >= 2;
+
 export function mount(root, ctx) {
   if (!ctx.param) return lobby(root, ctx);
-  const task = ctx.DATA.tasks.find((t) => t.id === ctx.param);
-  if (!task) {
+  const random = ctx.param === RANDOM;
+  const task = random ? null : ctx.DATA.tasks.find((t) => t.id === ctx.param);
+  // A random round draws from the tasks the starting page was showing, as far as they can be judged.
+  const scope = random ? ctx.DATA.tasks.filter((t) => isOpen(t) && (arenaScope.get() ?? [t.id]).includes(t.id)) : [];
+  if (random ? !scope.length : !task) {
     location.replace('#/arena');
     return {};
   }
-  return match(root, ctx, task);
+  return match(root, ctx, task ?? scope[Math.floor(Math.random() * scope.length)], random ? scope : null);
 }
 
 // The lobby follows the leaderboard: category views in the sidebar, one list on the right with the
@@ -38,7 +45,7 @@ function lobby(root, ctx) {
   const tracks = tracksOf(ctx.DATA.tasks);
   const view = { track: '', query: '' };
   const pool = (t) => platform.arena[t.id] ?? { works: 0, entries: 0 };
-  const ready = (t) => pool(t).entries >= 2;
+  const ready = isOpen;
   const openTasks = () => ctx.DATA.tasks.filter(ready);
 
   const row = (t) => {
@@ -50,7 +57,7 @@ function lobby(root, ctx) {
       <span class="num">No.${pad(ctx.DATA.tasks.indexOf(t) + 1)}</span>
       <span class="arena-task-title"><b>${esc(t.title)}</b><small>${esc([domainsOf(t).join('、'), t.summary].filter(Boolean).join(' · '))}</small></span>
       <span class="arena-task-meta">可盲评 ${p.works} 件<br>${p.entries} 个配置</span>
-      <span class="arena-task-go">${open ? `开始${icon('right')}` : (p.works ? `还差 ${2 - p.entries} 个配置` : '暂无作品')}</span>
+      <span class="arena-task-go">${open ? `只评这题${icon('right')}` : (p.works ? `还差 ${2 - p.entries} 个配置` : '暂无作品')}</span>
     </a></li>`;
   };
 
@@ -94,7 +101,7 @@ function lobby(root, ctx) {
             <div><dt>可评题目</dt><dd>${pad(open.length)}</dd></div>
             <div><dt>有效比较</dt><dd>${pad(platform.totals.votes)}</dd></div>
             ${platform.user ? `<div><dt>你已评</dt><dd>${pad(platform.me?.votes ?? 0)}</dd></div>` : ''}
-          </dl>${open.length ? `<button class="btn primary side-cta" data-random>${icon('blind')}随机一道题</button>` : ''}
+          </dl>${open.length ? `<button class="btn primary side-cta" data-random>${icon('blind')}随机一组</button><p class="side-cta-note">${view.track || view.query.trim() ? `在当前范围的 ${scope().open.length} 道题里` : `在全部 ${open.length} 道题里`}随机抽组，每一组都可能换题。想专心评一道，点右侧的题目。</p>` : ''}
           ${platform.user ? '' : '<p class="side-note">未登录可以体验，选择不计入榜单。<button class="link" data-auth="login">登录</button></p>'}`,
       nav: `<nav class="side-nav section-nav" aria-label="盲评题型">${link('', 'grid', '全部', open.length)}${tracks.map((x) => link(x.name, x.glyph, x.label, x.tasks.filter(ready).length)).join('')}</nav>` })}
       <section class="block wrap">
@@ -119,9 +126,11 @@ function lobby(root, ctx) {
       view.track = trackButton.dataset.arenaTrack;
       return draw();
     }
-    const open = openTasks();
-    if (!e.target.closest('[data-random]') || !open.length) return;
-    location.hash = `#/arena/${open[Math.floor(Math.random() * open.length)].id}`;
+    if (!e.target.closest('[data-random]')) return;
+    const { open } = scope();
+    if (!open.length) return;
+    arenaScope.set(open.map((t) => t.id));
+    location.hash = `#/arena/${RANDOM}`;
   };
   root.oninput = (e) => {
     if (!e.target.matches('[data-arena-search]')) return;
@@ -133,8 +142,10 @@ function lobby(root, ctx) {
   return { onPlatformChange: draw, destroy() { root.onclick = null; root.oninput = null; } };
 }
 
-function match(root, ctx, task) {
-  const state = { match: null, result: null, ready: {}, seen: {}, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', round: 0, counted: 0, busy: false, prompt: false, slow: false, error: null };
+// A random match (scope given) may draw each pair from a different task; `task` is the one on view.
+function match(root, ctx, first, scope) {
+  let task = first;
+  const state = { random: Boolean(scope), scope: scope ?? ctx.DATA.tasks.filter(isOpen), done: new Set(), match: null, result: null, ready: {}, seen: {}, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', round: 0, counted: 0, busy: false, prompt: false, slow: false, error: null };
   const mobile = () => matchMedia('(max-width: 860px)').matches;
   const timers = new Set();
   const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); };
@@ -144,15 +155,20 @@ function match(root, ctx, task) {
   root.innerHTML = `<div class="viewer arena">
     <header class="vbar">
       ${ctx.backLink('vback')}
-      <div class="arena-heading"><b>${esc(task.title)}</b><span data-round>正在准备</span></div>
+      <div class="arena-heading"><b><span data-title>${esc(task.title)}</span><span class="arena-scope" data-scope hidden></span></b><span data-round>正在准备</span></div>
       <div class="vtools">
+        <div class="seg arena-mode" role="group" aria-label="出题方式">
+          <button data-a="mode" data-mode="random" aria-pressed="false" title="每一组都从范围内随机换题"><span class="mode-long">随机换题</span><span class="mode-short">随机</span></button>
+          <button data-a="mode" data-mode="solo" aria-pressed="false" title="下一组仍然是这道题"><span class="mode-long">只评本题</span><span class="mode-short">本题</span></button>
+        </div>
+        <span class="vdivider" aria-hidden="true"></span>
         <button class="vtool" data-a="prompt" aria-pressed="false" title="查看提示词">${icon('guide')}<span class="vtool-text">提示词</span></button>
         <div class="seg arena-layout" role="group" aria-label="对比布局">
           <button data-layout="a" aria-pressed="false" title="只看 A（1）" aria-label="只看作品 A">${layoutGlyph(13, 3)}</button>
           <button data-layout="ab" aria-pressed="true" title="并排（2）" aria-label="并排">${layoutGlyph(8, 8)}</button>
           <button data-layout="b" aria-pressed="false" title="只看 B（3）" aria-label="只看作品 B">${layoutGlyph(3, 13)}</button>
         </div>
-        <a class="vtool" href="#/leaderboard/${esc(task.id)}" title="这道题的榜单">${icon('rank')}<span class="vtool-text">榜单</span></a>
+        <a class="vtool" data-board href="#/leaderboard/${esc(task.id)}" title="这道题的榜单">${icon('rank')}<span class="vtool-text">榜单</span></a>
         <span class="vdivider" aria-hidden="true"></span>
         ${themeButton('vtool icon-only')}
       </div>
@@ -176,9 +192,8 @@ function match(root, ctx, task) {
         <span class="split-grip"><button data-layout="b" title="收起 A，只看 B" aria-label="收起作品 A">${icon('prev')}</button><i></i><button data-layout="a" title="收起 B，只看 A" aria-label="收起作品 B">${icon('next')}</button></span>
       </div>` : ''}`).join('')}</div>
       <aside class="guide arena-prompt" aria-label="提示词"><div class="guide-in">
-        <div class="guide-head"><div><p class="eyebrow">本题提示词</p><h2>${esc(task.title)}</h2></div><button class="icon-btn" data-a="prompt" aria-label="收起提示词">${icon('close')}</button></div>
-        ${referenceSheet(task.references, { key: task.id, credit: task.referenceCredit })}
-        <pre class="arena-prompt-text">${linkReferences(task.prompt, task.references, task.id)}</pre>
+        <div class="guide-head"><div><p class="eyebrow">本题提示词</p><h2 data-prompt-title>${esc(task.title)}</h2></div><button class="icon-btn" data-a="prompt" aria-label="收起提示词">${icon('close')}</button></div>
+        <div data-prompt-body></div>
       </div></aside>
     </div>
     <footer class="vote-bar" data-bar></footer>
@@ -369,16 +384,63 @@ function match(root, ctx, task) {
     }, { once: true });
   }
 
+  // The page follows the task on view: heading, prompt drawer, leaderboard link.
+  function setTask(t) {
+    task = t;
+    document.title = `盲评 · ${t.title}`;
+    $('[data-title]', el).textContent = t.title;
+    $('[data-prompt-title]', el).textContent = t.title;
+    $('[data-board]', el).href = `#/leaderboard/${t.id}`;
+    $('[data-prompt-body]', el).innerHTML = `${referenceSheet(t.references, { key: t.id, credit: t.referenceCredit })}
+        <pre class="arena-prompt-text">${linkReferences(t.prompt, t.references, t.id)}</pre>`;
+    $('.guide', el).scrollTop = 0;
+  }
+
+  function drawMode() {
+    const tag = $('[data-scope]', el);
+    tag.hidden = !state.random;
+    tag.textContent = `随机 · ${state.scope.length === ctx.DATA.tasks.filter(isOpen).length ? '全部题目' : `${state.scope.length} 道题`}`;
+    $('.arena-mode', el).hidden = Boolean(state.error);
+    $$('.arena-mode [data-mode]', el).forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.mode === 'random') === state.random)));
+  }
+
+  // The next task of a random round: any task in range the reader has not run out of, not the same one twice.
+  function pickTask(previous) {
+    const live = state.scope.filter((t) => isOpen(t) && !state.done.has(t.id));
+    const fresh = live.filter((t) => t !== previous);
+    const list = fresh.length ? fresh : live;
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  function setMode(random) {
+    if (state.error || state.random === random) return;
+    state.random = random;
+    history.replaceState(history.state, '', `#/arena/${random ? RANDOM : task.id}`);
+    drawMode();
+  }
+
+  // A new pair brings a new task: say so, and point at the prompt, which the judgement rests on.
+  function noteSwitch() {
+    $('.arena-switched', el)?.remove();
+    const strip = document.createElement('div');
+    strip.className = 'arena-switched';
+    strip.setAttribute('role', 'status');
+    strip.innerHTML = `<span>这一组换成了</span><b>${esc(task.title)}</b><button class="link" type="button" data-a="open-prompt">看提示词</button>`;
+    $('.arena-stage', el).append(strip);
+    later(() => { strip.classList.add('is-gone'); later(() => strip.remove(), 600); }, 4500);
+  }
+
   function showError(error) {
     state.error = error;
     state.controls = {};
     $('.arena-layout', el).hidden = true;
-    const others = ctx.DATA.tasks.filter((t) => t !== task && (platform.arena[t.id]?.entries ?? 0) >= 2);
+    drawMode();
+    const others = ctx.DATA.tasks.filter((t) => t !== task && isOpen(t) && !state.done.has(t.id));
     const exhausted = error.code === 'exhausted';
     $('.arena-stage', el).innerHTML = `<div class="board-empty arena-empty">
-      <p class="board-empty-title">${esc(exhausted ? '这道题的组合你都评过了' : error.message)}</p>
-      <p>${exhausted ? '感谢你的每一次选择。换一道题继续，或去看看榜单的变化。' : '稍后再来，或者先去看看其他题目。'}</p>
-      <div class="board-empty-actions">${others.slice(0, 3).map((t) => `<a class="btn" href="#/arena/${esc(t.id)}">${esc(t.title)}${icon('right')}</a>`).join('')}<a class="btn primary" href="#/leaderboard/${esc(task.id)}">${icon('rank')}查看榜单</a></div>
+      <p class="board-empty-title">${esc(exhausted ? (state.random ? '这个范围里的组合你都评过了' : '这道题的组合你都评过了') : error.message)}</p>
+      <p>${exhausted ? `感谢你的每一次选择。${state.random ? '换个范围继续' : '换一道题继续'}，或去看看榜单的变化。` : '稍后再来，或者先去看看其他题目。'}</p>
+      <div class="board-empty-actions">${others.slice(0, 3).map((t) => `<a class="btn" href="#/arena/${esc(t.id)}">${esc(t.title)}${icon('right')}</a>`).join('')}<a class="btn primary" href="#/leaderboard${state.random ? '' : `/${esc(task.id)}`}">${icon('rank')}查看榜单</a></div>
     </div>`;
     drawBar();
   }
@@ -387,13 +449,32 @@ function match(root, ctx, task) {
     if (state.busy || state.error) return;
     state.busy = true;
     const previous = state.match?.id;
+    const earlier = task;
+    $('.arena-switched', el)?.remove();
     // Every pair starts side by side at an even split, so the last pair's layout favours neither.
     Object.assign(state, { match: null, result: null, unsealed: false, ready: {}, seen: { a: true }, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', slow: false });
     drawSplit();
     $$('[data-body]', el).forEach((body) => { body.innerHTML = `<div class="loader blind"><span class="loader-letter" aria-hidden="true">${letter(body.dataset.body)}</span><div class="spinner" aria-hidden="true"></div><span>正在抽取一组作品</span></div>`; });
     update();
     try {
-      state.match = await api('arena/matches', { method: 'POST', body: { task: task.id, previous } });
+      // Random rounds change task after the first pair; a task the reader has run out of drops out of the range.
+      let pick = state.random && state.round > 0;
+      for (;;) {
+        if (pick) {
+          const chosen = pickTask(earlier);
+          if (!chosen) throw Object.assign(new Error('这个范围里的组合你都评过了'), { code: 'exhausted' });
+          setTask(chosen);
+        }
+        try {
+          state.match = await api('arena/matches', { method: 'POST', body: { task: task.id, previous: task === earlier ? previous : undefined } });
+          break;
+        } catch (error) {
+          if (!state.random || error.code !== 'exhausted') throw error;
+          state.done.add(task.id);
+          pick = true;
+        }
+      }
+      if (state.round > 0 && task !== earlier) noteSwitch();
       state.round++;
       frame('a');
       frame('b');
@@ -442,6 +523,8 @@ function match(root, ctx, task) {
     const kind = action.dataset.a;
     if (kind === 'next') next();
     else if (kind === 'prompt') togglePrompt();
+    else if (kind === 'open-prompt') togglePrompt(true);
+    else if (kind === 'mode') setMode(action.dataset.mode === 'random');
     else if (kind === 'controls') {
       const side = action.dataset.side ?? state.side;
       state.controlsShown[side] = !state.controlsShown[side];
@@ -558,6 +641,8 @@ function match(root, ctx, task) {
     if (alive) next();
   }
 
+  setTask(task);
+  drawMode();
   start();
   return {
     fullscreen: true,
