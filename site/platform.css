@@ -773,6 +773,52 @@ dialog.bulk-sheet { width: min(520px, calc(100% - 32px)); }
 .work-manage-results .bulk-bar { margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface); }
 .work-manage-results .bulk-bar .btn { padding-inline: 9px; font-size: 11px; }
 
+/* 全部成员: an avatar takes the thumbnail column; the role sheet follows the work sheet. */
+.submission-section .work-row.member-row { grid-template-columns: 40px minmax(0, 1fr) auto; }
+.member-row .avatar { width: 40px; height: 40px; align-self: start; margin-top: 2px; overflow: hidden; font-size: 15px; }
+.member-row .avatar img, .member-id .avatar img { width: 100%; height: 100%; }
+.member-row h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 15px; }
+.member-row h3 small { color: var(--muted); font: 12px var(--mono); }
+.member-row .badge { font-weight: 400; }
+.member-row .badge.is-accent { border-color: var(--accent); color: var(--accent); }
+.work-state .member-parts { margin: 0 0 0 6px; }
+dialog.sheet.member-sheet { width: min(860px, calc(100% - 40px)); overflow: hidden; }
+.member-sheet .sheet-in { display: flex; flex-direction: column; max-height: calc(100dvh - 48px); padding: 25px 28px; }
+.member-sheet .sheet-head { flex: none; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.member-sheet .sheet-body, .member-sheet form { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.member-body { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 4px 0 0; }
+.member-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 32px; align-items: start; }
+.member-id { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.member-id .avatar { width: 52px; height: 52px; overflow: hidden; font-size: 20px; }
+.member-id h3 { font: 550 18px/1.4 var(--sans); overflow-wrap: anywhere; }
+.member-id p { margin: 2px 0 0; color: var(--muted); font: 12px var(--mono); }
+.member-facts .facts { gap: 9px; margin: 0; font-size: 12px; }
+.member-facts .facts > div { grid-template-columns: 5.5em minmax(0, 1fr); gap: 10px; }
+.member-facts .facts dd p { margin: 3px 0 0; color: var(--muted); font-size: 11.5px; }
+.member-facts .actions { margin-top: 16px; }
+.member-facts details { margin-top: 16px; font-size: 12px; }
+.member-facts summary { cursor: pointer; color: var(--ink-2); }
+.member-facts .audit { margin-top: 8px; }
+.member-roles h3 { margin: 0 0 6px; font: 600 14px var(--sans); }
+.member-roles > p { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+.role-option { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+.role-option + .role-option { margin-top: 8px; }
+.role-option:has(input:checked) { border-color: var(--ink-2); background: var(--surface); }
+.role-option:has(input:disabled) { cursor: default; }
+.role-option input { margin: 3px 0 0; accent-color: var(--ink); }
+.role-option b { font-size: 13px; font-weight: 600; }
+.role-option b small { margin-left: 8px; color: var(--muted); font-weight: 400; font-size: 11px; }
+.role-option ul { margin: 6px 0 0; padding-left: 16px; color: var(--ink-2); font-size: 12px; line-height: 1.75; }
+.role-option ul .is-no { color: var(--muted); }
+.role-change { margin-top: 14px; padding: 10px 12px; border-left: 2px solid var(--line-2); background: var(--surface); color: var(--ink-2); font-size: 12px; line-height: 1.7; }
+.role-change.is-down { border-left-color: var(--accent); background: var(--accent-soft); }
+.role-change b { color: var(--ink); }
+.role-locked { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-2); font-size: 12px; }
+.role-locked .i { width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px; }
+.member-actions { flex: none; display: flex; align-items: center; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.member-actions .form-error { margin: 0; }
+.member-actions .spacer { flex: 1; }
+
 dialog.sheet.work-manage-sheet { width: min(1040px, calc(100% - 40px)); overflow: hidden; }
 .work-manage-sheet .sheet-in { display: flex; flex-direction: column; height: min(820px, calc(100dvh - 48px)); padding: 25px 28px; }
 .work-manage-sheet .sheet-head { flex: none; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
@@ -848,6 +894,12 @@ dialog.sheet.work-manage-sheet { width: min(1040px, calc(100% - 40px)); overflow
   .work-manage-preview { max-height: 220px; }
   .work-manage-fields .field-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .work-manage-actions { margin-top: 14px; padding-top: 12px; }
+  .submission-section .work-row.member-row { grid-template-columns: 36px minmax(0, 1fr); gap: 10px; }
+  .member-row .avatar { width: 36px; height: 36px; font-size: 14px; }
+  .submission-section .work-management .work-row.member-row .work-side { grid-column: 2; }
+  dialog.sheet.member-sheet { width: calc(100% - 24px); max-height: calc(100dvh - 24px); }
+  .member-sheet .sheet-in { max-height: calc(100dvh - 24px); padding: 20px; }
+  .member-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }
 }
 
 /* ---- responsive ---- */

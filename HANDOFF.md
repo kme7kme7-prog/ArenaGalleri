@@ -1,5 +1,11 @@
 # HANDOFF.md · 当前状态
 
+## 全部成员（2026-10-05，已提交，未推送、未部署）
+
+- 用户确认原型后要求落地：「审核 · 管理 · 全部成员」仅高级管理员可见，普通管理员不显示、直接访问 `#/review/members` 回到待处理队列；封禁、强制下线、手动可信不做。新增 `site/member-management.js`（列表、筛选、角色弹窗），`account.js` 接入标签、按需读取 `admin/users`、事件与 `?q=` 作品搜索，`ACTIONS` 补 `role: '调整角色'`；`platform.css` 新增成员行与弹窗样式；PRODUCT / ARCHITECTURE / DESIGN 同步。配套后端扩充 `GET /api/admin/users` 字段（见后端 HANDOFF）。
+- check61/0、test28/28、build176件/67site、严格intake0错/8既有提示；后端check97/0、test303/303（中途一次批量核验既有随机端口 bad port、一次 v39 测试写死版本号，已处理）。真实本地后端临时库（忽略的 `output/member-management-20261005/harness.mjs`，launch 名 `member-management-real`，`/__as/<lin|reviewer_q|night_owl…>` 切换账号）核对：计数与可信标记、搜索保持焦点、胶囊 / 邮箱 / 排序 / 无结果与清除、降级普通管理员为成员与升级成员为普通管理员（后端角色、行与胶囊更新、提示）、角色记录与「记录」页「调整角色」、自己与固定账号只读、跳全部作品带昵称搜索、普通管理员与成员拒绝；1280 桌面与 390 浅色手机无横溢、无脚本错误。
+- 用户随后要求加最近活跃迁移：后端 users.last_seen_at（登录写入、请求每分钟最多更新一次，退出后保留），前端无改动；联调确认切换账号后被切走账号的最近活跃仍保留。未测真机、Safari / Firefox、生产数据。原型 `output/member-management-20261005/preview.html`（launch `member-management`）保留。[交付记录](docs/archive/2026-10-05-member-management-wsnxxxs.md)。
+
 ## 附示例后返回修改题目（2026-10-05，已本地提交，未推送）
 
 - 附示例步骤单独占一条浏览记录：后退、01 标题行「修改题目」或侧栏回到表单，文件、试加载确认和结果信息保留；表单主按钮改为「回到示例结果」，此时单独提交先确认丢弃示例。改提示词清空确认与勾选并提示，改形式致格式不符移除文件；上传中返回先询问。`uploadFlow` 新增挂起 / 恢复，结果信息在重绘时保留。

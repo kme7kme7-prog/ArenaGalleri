@@ -1,5 +1,6 @@
 // Personal center (#/me), and the admin review queue (#/review[/<tab>]).
 import { $, $$, brandMark, esc, formatBytes, formatDate, formatTime, icon, img } from './ui.js';
+import { memberChips, memberList, memberResults, membersState, openMember } from './member-management.js';
 import { api, apiRemembered, arenaText, autoRejected, avatarFace, byStaff, canDecide, confirmDialog, injected, isSenior, isStaff, moderationBadge, openBindEmail, openDialog, platform, QUESTION_LABELS, recall, refreshPlatform, requireUser, reviewCount, riskLabels, ROLE_LABELS, setFaces, statusBadge, toast } from './platform.js';
 import { onWorkFieldChange, readWorkFields, workFieldsHtml } from './work-fields.js';
 import { openWorkManagement } from './work-management.js';
@@ -14,9 +15,9 @@ import { sticker, stickerName } from './stickers.js';
 // question and work. Questions belong to senior admins; moderators manage works too.
 const TODO_TABS = { questions: '题目', content: '内容', unverified: '核验' };
 const DONE_TABS = { done: '已处理', log: '记录' };
-const MANAGE_TABS = { catalog: '全部题目', works: '全部作品' };
+const MANAGE_TABS = { catalog: '全部题目', works: '全部作品', members: '全部成员' };
 const todoTabs = () => Object.fromEntries(Object.entries(TODO_TABS).filter(([id]) => id !== 'questions' || isSenior()));
-const manageTabs = () => Object.fromEntries(Object.entries(MANAGE_TABS).filter(([id]) => id !== 'catalog' || isSenior()));
+const manageTabs = () => Object.fromEntries(Object.entries(MANAGE_TABS).filter(([id]) => id === 'works' || isSenior()));
 // Decided uploads by what they show now; each filter answers one question an admin asks.
 const DONE_FILTERS = { all: '全部', public: '已公开', noarena: '不进盲评', off: '已撤下', questioned: '存疑', rejected: '已拒绝', machine: '机审拒绝', injection: '疑似注入' };
 // Addresses that open the decided list on one filter, including the old decided tabs.
@@ -25,7 +26,7 @@ const ME_TABS = { overview: '概览', works: '我的作品', questions: '我的�
 const ACCOUNT = { title: '个人中心', description: '每一道提问，每一份解答，都是你的创作足迹。' };
 const ACTIONS = { submit: '提交作品', verified: '通过核验', questioned: '标记存疑', unverified: '退回未验证', delete: '删除作品',
   'question-create': '发起题目', 'question-review': '审核题目', 'question-edit': '编辑题目', 'question-delete': '删除题目',
-  'content-review': '内容审核', 'content-retry': '重新自动审核', meta: '编辑信息', 'face-settings': '调整展示设置' };
+  'content-review': '内容审核', 'content-retry': '重新自动审核', meta: '编辑信息', 'face-settings': '调整展示设置', role: '调整角色' };
 
 export function mount(root, ctx) {
   return ctx.route === 'review' ? review(root, ctx) : mine(root, ctx);
@@ -1029,6 +1030,7 @@ const REVIEW_SUMMARY = {
   log: '最近的审核与管理操作。',
   catalog: '站内的全部题目：发布者、公开状态和作品情况。可以编辑、开关投稿、指定封面、撤下或恢复；已有投票的题目不能删除。',
   works: '查找、编辑作品信息，分别管理展览馆与盲评展示。审核决定在作品详情中单独处理；保存信息不会自动通过审核。',
+  members: '站内的全部账号：角色、邮箱和参与情况。可以把成员设为普通或高级管理员，也可以撤销；自己和服务器固定的账号除外。',
 };
 const WORK_FILTERS = { all: '全部', public: '已公开', content: '内容审核中', unverified: '待核验', questioned: '存疑', off: '已撤下', rejected: '已拒绝' };
 const ARENA_FILTERS = { all: '全部盲评状态', in_pool: '在盲评池', off: '已关闭盲评', not_qualified: '生成方式不符', not_ready: '尚不能盲评' };
@@ -1049,7 +1051,8 @@ const BULK = {
 function review(root, ctx) {
   const [routeTab = '', routeQuery = ''] = (ctx.param ?? '').split('?');
   const state = { works: null, audit: [], questions: null, questionsError: '', error: '', tab: null, filter: FILTER_TABS[routeTab] ?? 'all', picked: new Set(),
-    catalog: { filter: 'all', query: '', category: '', domain: '', sort: 'latest' }, managed: { filter: 'all', query: '', task: new URLSearchParams(routeQuery).get('task') ?? '', arena: 'all', sort: 'latest' } };
+    catalog: { filter: 'all', query: '', category: '', domain: '', sort: 'latest' }, members: membersState(),
+    managed: { filter: 'all', query: new URLSearchParams(routeQuery).get('q') ?? '', task: new URLSearchParams(routeQuery).get('task') ?? '', arena: 'all', sort: 'latest' } };
   // Packaged works come without media; they show the data pack's screenshots and scene.
   const settle = (data, questions) => Object.assign(state, { works: data.works.map((w) => ({ ...ctx.packagedWork(w.task, w.id), ...w })), audit: data.audit, error: '',
     questions: questions.list ?? state.questions ?? [], questionsError: questions.error ?? '' });
@@ -1072,6 +1075,20 @@ function review(root, ctx) {
       state.error = error.message;
     }
     if (!arriving || JSON.stringify(state) !== before) draw();
+    if (state.tab === 'members') loadMembers();
+  }
+  // The member list belongs to senior admins and loads only when its tab is open.
+  async function loadMembers() {
+    const version = request;
+    try {
+      const { users } = await api('admin/users');
+      if (!active || version !== request) return;
+      Object.assign(state.members, { list: users, error: '' });
+    } catch (error) {
+      if (!active || version !== request) return;
+      state.members.error = error.message;
+    }
+    if (state.tab === 'members') draw();
   }
   // Uploads of one bucket: the queues oldest first, decided lists newest first. The decided
   // list (done) gathers four buckets and narrows them by the current filter.
@@ -1246,6 +1263,8 @@ function review(root, ctx) {
       list = state.questionsError ? `<p class="muted">${esc(state.questionsError)}</p>` : catalogList();
     } else if (tab === 'works') {
       list = managedList();
+    } else if (tab === 'members') {
+      list = memberList(state.members);
     } else if (tab === 'content') {
       const waiting = rows('content'), auto = rows('auto');
       list = `${waiting ? `${bulk}<div class="work-list">${waiting}</div>` : empty(REVIEW_EMPTY.content)}
@@ -1426,7 +1445,16 @@ function review(root, ctx) {
     await refreshPlatform('question');
     return true;
   }
+  function updateMembers() {
+    root.querySelector('[data-member-chips]').innerHTML = memberChips(state.members);
+    root.querySelector('[data-member-results]').innerHTML = memberResults(state.members);
+  }
   root.onchange = (e) => {
+    const memberSelect = e.target.closest('[data-member-select]');
+    if (memberSelect) {
+      state.members[memberSelect.name] = memberSelect.value;
+      return updateMembers();
+    }
     const select = e.target.closest('[data-managed-select]');
     if (select) {
       state.managed[select.name] = select.value;
@@ -1448,8 +1476,13 @@ function review(root, ctx) {
     }
     syncBulk();
   };
-  // Typing in either management list redraws its results only, so the search keeps its focus.
+  // Typing in a management list redraws its results only, so the search keeps its focus.
   root.oninput = (e) => {
+    const memberSearch = e.target.closest('[data-member-search]');
+    if (memberSearch) {
+      state.members.query = memberSearch.value.trim();
+      return updateMembers();
+    }
     const managed = e.target.closest('[data-managed-search]');
     if (managed) {
       state.managed.query = managed.value.trim();
@@ -1470,6 +1503,21 @@ function review(root, ctx) {
       Object.assign(state.managed, { filter: 'all', query: '', task: '', arena: 'all' });
       state.picked.clear();
       return draw();
+    }
+    const memberFilter = e.target.closest('[data-member-filter]');
+    if (memberFilter) {
+      state.members.filter = memberFilter.dataset.memberFilter;
+      return updateMembers();
+    }
+    if (e.target.closest('[data-member-reset]')) {
+      Object.assign(state.members, { filter: 'all', query: '', email: '', active: '' });
+      return draw();
+    }
+    const manageMember = e.target.closest('[data-manage-member]');
+    if (manageMember) {
+      const member = state.members.list?.find((m) => m.id === manageMember.dataset.manageMember);
+      if (member) openMember(member, { audit: state.audit, onSaved: () => refreshPlatform('review') });
+      return;
     }
     const manageWork = e.target.closest('[data-manage-work]');
     if (manageWork) {

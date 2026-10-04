@@ -40,6 +40,8 @@
 
 作品管理位于 `#/review/works`，题目管理通过 `?task=<题目ID>` 带入筛选。复用 `review` 的全量目录，以 `task/id` 标识单件与批量作品；数据包作品的媒体来自 `packagedWork`，不复制资源。弹窗由 `work-management.js` 绘制，`account.js` 传入共用的差异编辑器与审核回调；先写 metadata，再按实际改动写 face-settings，部分成功保留已保存信息。权限沿用 `canDecide` / `isSenior` 与后台校验，普通管理员本人作品不进入展示批量选择；普通管理员不请求 `admin/questions`。
 
+成员管理位于 `#/review/members`，仅高级管理员显示，打开该标签时读取 `admin/users`；列表与角色弹窗由 `member-management.js` 绘制，角色记录取 `review` 审计日志中的 `role` 项，保存后 `refreshPlatform('review')` 同时刷新成员与审计。弹窗的「在全部作品中查看」以 `#/review/works?q=<昵称>` 带入作品搜索。
+
 参考图属于题目：数据包题目的 `references`（`name`、`src`、可选 `thumb`、`caption`、`width`、`height`）与 `referenceCredit` 经 `public-catalog.mjs` 白名单输出，`datapack.mjs` 校验文件名与路径，提示词提到参考图而题目没有时给出提醒。后台题目 DTO 带非空 `references` 时以后台为准，否则沿用数据包；后台媒体路径在 `platform-api.js` 中解析。站点大图层 `#lightbox` 支持下载与胶片条，由 `app.js` 交给 `references.js` 打开；模态对话框内的参考图只显示、不打开大图。上传使用 `POST /api/references`（原始图片字节），提交题目与编辑题目只按 ID 引用已上传的图片。
 
 参考图下载请求携带会话凭据，允许作者与管理员下载待审核题目的私有图片；单张图片读取为 Blob 后保存，使独立 API 域名下的图片也使用题面文件名。
