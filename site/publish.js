@@ -1,8 +1,10 @@
 // Publish a question: 01 describe it (title / summary / form / domains / prompt / formats), then either
 // submit it alone or attach an optional first result through the shared upload steps. The
 // question waits for an admin; an attached result also goes through content moderation.
+// The result steps sit on their own history entry: going back edits the question and keeps the
+// attached result, which is checked again when the prompt or the format changed.
 import { $, $$, esc, icon } from './ui.js';
-import { api, openDialog, platform, refreshPlatform, requireUser, toast } from './platform.js';
+import { api, confirmDialog, openDialog, platform, refreshPlatform, requireUser, toast } from './platform.js';
 import { contentStage, moderated, stageTrack, uploadFlow } from './submit.js';
 import { TEMPLATE_LABELS, categoryLabel, categoryOf } from './categories.js';
 import { categoryField, domainField, syncDomains } from './question-fields.js';
@@ -11,12 +13,17 @@ import { replaceReferenceNote } from './reference-files.js';
 // Drafts staged for a question that does not exist yet.
 const NEW_QUESTION = '__new__';
 const blank = () => ({ title: '', summary: '', category: '', domains: [], prompt: '', templates: [] });
-const sideSteps = (current) => `<ol class="side-steps">${['题目信息', '选择文件', '试加载', '结果信息']
-  .map((label, i) => `<li${i === current ? ' aria-current="step"' : ''}><span>0${i + 1}</span>${label}</li>`).join('')}</ol>`;
+// kept: the result held while the question is edited; its steps lead back to it.
+const sideSteps = (current, kept = null) => `<ol class="side-steps">${['题目信息', '选择文件', '试加载', '结果信息'].map((label, i) => {
+  const text = `<span>0${i + 1}</span>${label}`;
+  const done = kept && (i === 1 || (i === 2 && kept.confirmed));
+  return `<li${i === current ? ' aria-current="step"' : ''}${done ? ' class="is-done"' : ''}>${kept && i > 0 ? `<button type="button" data-act="to-sample">${text}</button>` : text}</li>`;
+}).join('')}</ol>`;
 
 export function mount(root, ctx) {
   let question = blank();
-  let flow = null, active = true;
+  // showing: 'form', 'upload' (the flow is on screen) or 'done'. skipGuard: the next popstate is our own back.
+  let flow = null, flowTask = null, active = true, showing = 'form', skipGuard = false, proceed = null;
   let eligibility = platform.me?.questionEligibility ?? null, eligibilityDialog = null, checking = false;
   const rule = '单独提交题目需完成 100 次有效盲评，或上传 10 件作品，满足任一即可。附带示例结果可直接发起。';
   function progress() {
@@ -86,12 +93,12 @@ export function mount(root, ctx) {
   }
 
   function showForm() {
-    flow?.destroy();
-    flow = null;
+    showing = 'form';
     root.innerHTML = `${ctx.pageStart({ title: '发起题目', section: 'new', heading: '让每份答案，从同一题开始',
       description: '写清要测试的能力，提供完整提示词；也可以附上一份模型结果展示它的效果。', meta: sideSteps(0) })}
       <section class="block wrap publish-layout">
         <form class="publish-form" novalidate>
+          <div data-sample-kept></div>
           <div class="notice publish-auth" data-publish-auth${platform.user ? ' hidden' : ''}>${icon('user')}<p>登录后查看发起资格，已填写的内容会保留。</p><button class="btn sm" type="button" data-auth="login">登录 / 注册</button></div>
           <section class="question-eligibility" data-question-eligibility aria-label="发起题目资格"></section>
           <label class="field"><span class="field-label">题目标题 *</span><input class="input" name="title" required maxlength="70" placeholder="例如：体素中国古典建筑群" value="${esc(question.title)}"></label>
@@ -102,13 +109,14 @@ export function mount(root, ctx) {
           ${refs ? '<div data-ref-host></div>' : ''}
           <div class="field" data-formats>${formatField()}</div>
           <p class="form-error" role="alert"></p>
-          <div class="form-actions"><button class="btn primary" type="submit" value="plain">单独提交题目</button><button class="btn" type="submit" value="sample">附上示例结果${icon('right')}</button><a class="btn" href="#/questions">取消</a><span class="fine">发起即表示你同意<a href="#/terms" target="_blank" rel="noopener">《使用条款》</a>与<a href="#/privacy" target="_blank" rel="noopener">《隐私政策》</a>。</span></div>
+          <div class="form-actions" data-form-actions></div>
         </form>
         <aside class="publish-note"><h3>一道可比较的题目</h3><p>简述说明测试目标。<br>类型决定提交格式，领域方便读者找到它。<br>提示词作为所有作品的共同依据。</p><p>可以选择附上一份用这份提示词生成的模型结果，让管理员和大家更快看到它能做出什么。</p><p>题目由管理员人工审核，示例结果另做内容审核；通过前只有你能看到。测试文字、灌水或广告不会通过。</p></aside>
       </section>${ctx.pageEnd()}`;
     document.title = `发起题目 · ${ctx.DATA.title}`;
     const form = $('.publish-form', root);
     const error = $('.form-error', form);
+    syncKept();
     syncDomains(form);
     if (refs) refs.mount($('[data-ref-host]', form));
     root.oninput = (event) => { if (event.target.matches('[name="prompt"]')) refs?.advise(); };
@@ -121,48 +129,130 @@ export function mount(root, ctx) {
       error.textContent = '';
     };
     updateEligibility();
-    root.onclick = (event) => { if (event.target.closest('[data-check-eligibility]')) void refreshEligibility(); };
+    root.onclick = (event) => {
+      if (event.target.closest('[data-check-eligibility]')) void refreshEligibility();
+      if (event.target.closest('[data-act="to-sample"]')) form.requestSubmit($('button[value="sample"]', form));
+    };
     root.onkeydown = null;
-    root.onsubmit = async (event) => {
-      if (event.target !== form) return;
-      event.preventDefault();
-      if (checking) return;
+    // Resolves true once the page moved on: to the result steps, or to the submitted question.
+    proceed = async (mode, { fromHistory = false } = {}) => {
+      if (checking) return false;
       error.textContent = '';
       checking = true;
       try {
-        if (!(await requireUser('登录后即可附带示例发起题目')) || !active) return;
-        if (event.submitter?.value !== 'sample' && !(await checkEligibility())) return;
-      } catch (err) { error.textContent = err.message; return; }
+        if (!(await requireUser('登录后即可附带示例发起题目')) || !active) return false;
+        if (mode !== 'sample' && !(await checkEligibility())) return false;
+      } catch (err) { error.textContent = err.message; return false; }
       finally { checking = false; }
       const data = new FormData(form);
       for (const [name, label] of [['title', '题目标题'], ['summary', '测试简述'], ['prompt', '完整提示词']]) {
-        if (!String(data.get(name)).trim()) { error.textContent = `请填写${label}`; $(`[name="${name}"]`, form).focus(); return; }
+        if (!String(data.get(name)).trim()) { error.textContent = `请填写${label}`; $(`[name="${name}"]`, form).focus(); return false; }
       }
-      if (!categoryOf(data.get('category'))) { error.textContent = '请选择题目类型'; $('[name="category"]', form).focus(); return; }
-      if (!data.getAll('domains').length) { error.textContent = '请选择所属领域'; $('[name="domains"]', form).focus(); return; }
-      if (!data.getAll('templates').length) { error.textContent = '请至少选择一种提交格式'; return; }
-      if (refs?.blocker()) { error.textContent = refs.blocker(); return; }
+      if (!categoryOf(data.get('category'))) { error.textContent = '请选择题目类型'; $('[name="category"]', form).focus(); return false; }
+      if (!data.getAll('domains').length) { error.textContent = '请选择所属领域'; $('[name="domains"]', form).focus(); return false; }
+      if (!data.getAll('templates').length) { error.textContent = '请至少选择一种提交格式'; return false; }
+      if (refs?.blocker()) { error.textContent = refs.blocker(); return false; }
+      const before = JSON.stringify(question);
       question = { title: String(data.get('title')).trim(), summary: String(data.get('summary')).trim(), category: String(data.get('category')), domains: data.getAll('domains'), prompt: String(data.get('prompt')).trim(),
         templates: data.getAll('templates'), ...(refs?.value().length ? { references: refs.value(), referenceCredit: refs.credit() } : {}) };
-      if (event.submitter?.value === 'sample') { showUpload(); scrollTo({ top: 0 }); return; }
+      if (mode === 'sample') { enterSample({ fromHistory, changed: before !== JSON.stringify(question) }); return true; }
+      const kept = flow?.kept();
+      if (kept && !(await confirmDialog({ title: '单独提交题目？', message: `已附上的示例结果「${kept.file}」会被丢弃，题目单独进入审核。`, confirm: '丢弃示例并提交' }))) return false;
+      if (!active) return false;
       const buttons = $$('button[type="submit"]', form);
       buttons.forEach((button) => { button.disabled = true; });
       try {
         const result = await api('questions', { method: 'POST', body: question });
         toast('题目已提交，等待人工审核');
+        flow?.drop();
+        flow = null;
         await refreshPlatform('question');
         if (active) showDone(result);
+        return true;
       } catch (err) {
         error.textContent = err.message;
         if (err.code === 'question_ineligible') void refreshEligibility();
         buttons.forEach((button) => { button.disabled = false; });
+        return false;
       }
+    };
+    root.onsubmit = (event) => {
+      if (event.target !== form) return;
+      event.preventDefault();
+      void proceed(event.submitter?.value === 'sample' ? 'sample' : 'plain');
     };
   }
 
+  // The form says what it holds of a result left to edit the question, and leads back to it.
+  function syncKept() {
+    const form = $('.publish-form', root);
+    if (!form) return;
+    const kept = flow?.kept();
+    $('[data-sample-kept]', form).innerHTML = kept ? `<div class="notice sample-kept">${icon('file')}<p><b>示例结果已保留</b>${[esc(kept.file), kept.confirmed ? '试加载已确认' : '试加载待确认', ...(kept.filled ? ['结果信息已填写'] : [])].join(' · ')}。改完题目后回到示例继续；改了提示词需要重新确认试加载。</p><button class="btn sm" type="button" data-act="to-sample">回到示例结果${icon('right')}</button></div>` : '';
+    $('[data-form-actions]', form).innerHTML = `${kept
+      ? `<button class="btn primary" type="submit" value="sample">回到示例结果${icon('right')}</button><button class="btn" type="submit" value="plain">单独提交题目</button>`
+      : `<button class="btn primary" type="submit" value="plain">单独提交题目</button><button class="btn" type="submit" value="sample">附上示例结果${icon('right')}</button>`}<a class="btn" href="#/questions">取消</a><span class="fine">发起即表示你同意<a href="#/terms" target="_blank" rel="noopener">《使用条款》</a>与<a href="#/privacy" target="_blank" rel="noopener">《隐私政策》</a>。</span>`;
+    $('.side-steps', root).outerHTML = sideSteps(0, kept);
+  }
+
+  function enterSample({ fromHistory = false, changed = false } = {}) {
+    if (!fromHistory) history.pushState({ ...history.state, publish: 'sample' }, '');
+    showing = 'upload';
+    if (!flow) { showUpload(); scrollTo({ top: 0 }); return; }
+    Object.assign(flowTask, { title: question.title, prompt: question.prompt, templates: question.templates });
+    if (flow.resume()) { $('[data-sample-notice]', root)?.scrollIntoView({ block: 'center' }); return; }
+    scrollTo({ top: 0 });
+    if (changed) toast('题目信息已更新，示例结果已保留');
+  }
+
+  // Leaving the result steps mid-upload ends the upload; asked first, staying is the default.
+  function confirmLeave() {
+    return new Promise((resolve) => {
+      let leave = false;
+      const sheet = openDialog({ title: '文件还在上传', className: 'confirm-sheet',
+        body: '<p class="sheet-text">返回修改题目会中断这次上传。题目内容会保留，改完后需要重新选择文件。</p><div class="sheet-actions"><button class="btn" type="button" data-leave>中断并返回</button><button class="btn primary" type="button" data-sheet-close>继续上传</button></div>',
+        onClose: () => resolve(leave) });
+      $('[data-leave]', sheet.el).addEventListener('click', () => { leave = true; sheet.close(); });
+    });
+  }
+  function backToForm() {
+    flow.suspend();
+    if (!flow.kept()) { flow.destroy(); flow = null; }
+    showForm();
+    scrollTo({ top: 0 });
+  }
+  async function editQuestion() {
+    if (flow.uploading() && !(await confirmLeave())) return;
+    if (!active || showing !== 'upload') return;
+    if (history.state?.publish !== 'sample') return backToForm();
+    skipGuard = true;
+    history.back();
+  }
+  // Back from the result steps edits the question; forward from the form returns to them.
+  const onPopState = (event) => {
+    if (!active) return;
+    if (event.state?.publish === 'sample') {
+      if (showing === 'form') void proceed('sample', { fromHistory: true }).then((moved) => { if (!moved && active) history.back(); });
+      return;
+    }
+    if (showing !== 'upload') return;
+    if (skipGuard) { skipGuard = false; backToForm(); return; }
+    // A submitted question is not edited again; back goes on to where the author came from.
+    if (flow.finished()) { history.back(); return; }
+    if (!flow.uploading()) { backToForm(); return; }
+    void confirmLeave().then((leave) => {
+      if (!active || showing !== 'upload') return;
+      if (leave) backToForm();
+      else history.pushState({ ...history.state, publish: 'sample' }, '');
+    });
+  };
+  addEventListener('popstate', onPopState);
+  // A return to this page from elsewhere starts on the form, whichever of its entries it lands on.
+  if (history.state?.publish) history.replaceState({ ...history.state, publish: null }, '');
+
   function brief() {
     return `<section class="step is-done" data-step="0">
-      <header class="step-head"><span class="num">01</span><h2>题目信息</h2><p>管理员会对照这些内容人工审核</p><button class="link step-action" type="button" data-act="edit-question">修改题目</button></header>
+      <header class="step-head"><span class="num">01</span><h2>题目信息</h2><button class="btn sm step-action" type="button" data-act="edit-question">${icon('prev')}修改题目</button><p>管理员会对照这些内容人工审核</p></header>
       <div class="step-body question-brief">
         <h3>${esc(question.title)}</h3>
         <p>${esc(question.summary)}</p>
@@ -203,19 +293,30 @@ export function mount(root, ctx) {
 
   // Shown after a question is submitted without a result; the upload flow draws its own.
   function showDone(result) {
+    showing = 'done';
     root.innerHTML = `${ctx.pageStart({ title: '发起题目', section: 'new', heading: '题目已提交审核', meta: sideSteps(0) })}
       <section class="block wrap">${done(result)}</section>${ctx.pageEnd()}`;
     root.onclick = (event) => {
-      if (event.target.closest('[data-act="new-question"]')) { question = blank(); refs?.destroy(); refs = newEditor(); showForm(); scrollTo({ top: 0 }); }
+      if (event.target.closest('[data-act="new-question"]')) newQuestion();
     };
+    scrollTo({ top: 0 });
+  }
+  function newQuestion() {
+    flow?.destroy();
+    flow = null;
+    question = blank();
+    refs?.destroy();
+    refs = newEditor();
+    showForm();
     scrollTo({ top: 0 });
   }
 
   function showUpload() {
+    flowTask = { id: NEW_QUESTION, title: question.title, prompt: question.prompt, templates: question.templates, promptVariants: [] };
     flow = uploadFlow(root, ctx, {
-      task: { id: NEW_QUESTION, title: question.title, prompt: question.prompt, templates: question.templates, promptVariants: [] },
+      task: flowTask,
       draftTask: NEW_QUESTION,
-      lead: { label: '题目信息', html: brief },
+      lead: { label: '题目信息', html: brief, act: 'edit-question' },
       page: (finished) => ({ title: '发起题目', section: 'new', heading: finished ? '题目已提交审核' : '附上一份示例结果',
         description: '选填：用这道题的提示词让模型生成一份结果，展示题目的效果。' }),
       fileNote: '上传用这份提示词让模型生成的结果',
@@ -232,8 +333,8 @@ export function mount(root, ctx) {
       },
       done,
       onAct(act) {
-        if (act === 'edit-question') showForm();
-        if (act === 'new-question') { question = blank(); refs?.destroy(); refs = newEditor(); showForm(); scrollTo({ top: 0 }); }
+        if (act === 'edit-question') void editQuestion();
+        if (act === 'new-question') newQuestion();
       },
     });
   }
@@ -242,20 +343,27 @@ export function mount(root, ctx) {
   if (platform.user) void refreshEligibility();
   return {
     onPlatformChange(reason) {
-      if (flow) flow.onPlatformChange?.(reason);
+      if (showing === 'upload') flow.onPlatformChange?.(reason);
       else {
         const auth = $('[data-publish-auth]', root);
         if (auth) auth.hidden = Boolean(platform.user);
+        // A result held for the form follows the account too; signing out discards it.
+        if (flow) {
+          flow.onPlatformChange(reason);
+          if (!flow.kept()) { flow.destroy(); flow = null; }
+          syncKept();
+        }
       }
       if (reason === 'session') {
         eligibilityDialog?.close();
         eligibility = platform.me?.questionEligibility ?? null;
         updateEligibility();
-        if (platform.user && !flow) void refreshEligibility();
+        if (platform.user && showing === 'form') void refreshEligibility();
       }
     },
     destroy() {
       active = false;
+      removeEventListener('popstate', onPopState);
       eligibilityDialog?.close();
       flow?.destroy();
       refs?.destroy();

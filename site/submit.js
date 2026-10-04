@@ -85,19 +85,24 @@ export function mount(root, ctx) {
 // together with its first result. options.task needs id, title, prompt and templates;
 // the other options replace the page frame, the submit request, the stages and the finished view.
 // options.waiting(result) says whether the finished view should keep following the result.
+// A flow can be suspended while its page shows something else and resumed after the owner
+// changes the task in place; the draft, the trial and the filled fields survive in between.
 export function uploadFlow(root, ctx, options) {
   const { task } = options;
   const draftTask = options.draftTask ?? task.id;
   const offset = options.lead ? 1 : 0;
-  const templates = templatesOf(task);
+  let templates = templatesOf(task);
   const waiting = options.waiting ?? ((result) => result.work?.moderation?.status === 'pending');
-  let active = true;
+  let active = true, suspended = false;
   const state = {
     task, template: templates[0],
     progress: 0, loaded: 0, total: 0, uploading: false, draft: null, error: '',
     trial: freshTrial(), view: 'desktop', confirmed: false, cover: null,
     submitting: false, work: null, result: null, xhr: null, timer: 0, poll: 0, polls: 0,
     resumable: null, peek: task.promptVariants?.[0]?.id ?? null,
+    // fields: the info form's values while it is off screen; notice: why a resumed draft needs
+    // another look ('prompt', or { file } when its format no longer fits).
+    draftTemplate: null, confirmedPrompt: null, fields: null, notice: null,
   };
 
   const maxBytes = () => (state.template === 'text' ? platform.site.limits.uploadBytes : Math.min(platform.site.limits.uploadBytes, HTML_BYTES));
@@ -129,6 +134,7 @@ export function uploadFlow(root, ctx, options) {
     if (state.draft) {
       const d = state.draft;
       return `<div class="step-body">${taskLabel}
+        ${state.notice === 'prompt' ? `<div class="notice is-stale" data-sample-notice>${icon('alert')}<p><b>提示词改过了</b>示例结果需要按新的提示词生成。如果这份文件是按旧提示词生成的，请点「重新选择文件」替换；仍然适用的话，在下面重新确认试加载即可。</p></div>` : ''}
         <p class="file-line">${icon('file')}<b>${esc(d.sourceName)}</b><span>${d.files} 个文件 · ${formatBytes(d.bytes)}</span></p>
         <ul class="checks">${d.checks.map(checkRow).join('')}</ul>
       </div>`;
@@ -145,6 +151,7 @@ export function uploadFlow(root, ctx, options) {
     return `<div class="step-body">${taskLabel}
       ${templates.length > 1 ? `<label class="field"><span class="field-label">提交格式</span><select class="input" data-template${state.uploading ? ' disabled' : ''}>${templates.map((value) => `<option value="${value}"${value === state.template ? ' selected' : ''}>${TEMPLATE_LABELS[value]}</option>`).join('')}</select></label>` : ''}
       ${options.lead ? '' : promptPeek()}
+      ${state.notice?.file ? `<div class="notice is-stale" data-sample-notice>${icon('alert')}<p><b>原来的文件不再适用</b>提交格式改为「${esc(TEMPLATE_LABELS[state.template])}」，已移除「${esc(state.notice.file)}」，请重新选择文件。填过的结果信息会保留。</p></div>` : ''}
       ${state.resumable && !state.uploading ? `<div class="notice resume-draft">${icon('clock')}<p>你之前上传过「${esc(state.resumable.sourceName)}」，试加载保留到 ${esc(formatTime(state.resumable.expiresAt))}。</p><button class="btn primary sm" type="button" data-act="resume">继续试加载</button><button class="btn sm" type="button" data-act="drop-draft">丢弃</button></div>` : ''}
       ${pendingFull() ? `<div class="notice">${icon('clock')}<p>你已有 ${platform.me.pending} 件作品在等待核验，核验之后再上传新的作品吧。</p></div>` : picker}
       ${state.error ? `<p class="form-error" role="alert">${esc(state.error)}</p>` : ''}
@@ -260,12 +267,12 @@ export function uploadFlow(root, ctx, options) {
   }
 
   const step = (n, title, note, body, { locked = false, doneStep = false, action = '' } = {}) => `<section class="step${locked ? ' is-locked' : ''}${doneStep ? ' is-done' : ''}" data-step="${n}">
-    <header class="step-head"><span class="num">0${n + offset}</span><h2>${title}</h2>${note ? `<p>${note}</p>` : ''}${action}</header>
+    <header class="step-head"><span class="num">0${n + offset}</span><h2>${title}</h2>${action}${note ? `<p>${note}</p>` : ''}</header>
     ${body}
   </section>`;
 
   function draw() {
-    if (!active) return;
+    if (!active || suspended) return;
     const limits = platform.site.limits;
     const page = options.page?.(Boolean(state.result)) ?? { title: '上传作品', section: 'questions', heading: state.result ? '作品已提交' : '带来你的答案',
       description: task.title,
@@ -273,7 +280,12 @@ export function uploadFlow(root, ctx, options) {
     const current = state.result ? -1 : !state.draft ? 0 : state.confirmed ? 2 : 1;
     const steps = [...(options.lead ? [options.lead.label] : []), '选择文件', '试加载', options.infoLabel ?? '作品信息'];
     root.innerHTML = `${ctx.pageStart({ ...page,
-      meta: `<ol class="side-steps">${steps.map((label, i) => `<li${i === current + offset ? ' aria-current="step"' : ''}><span>0${i + 1}</span>${label}</li>`).join('')}</ol>` })}
+      meta: `<ol class="side-steps">${steps.map((label, i) => {
+        const text = `<span>0${i + 1}</span>${label}`;
+        // The lead step stays reachable from the sidebar until the result is in.
+        const link = i === 0 && options.lead?.act && !state.result;
+        return `<li${i === current + offset ? ' aria-current="step"' : ''}${!state.result && i < current + offset ? ' class="is-done"' : ''}>${link ? `<button type="button" data-act="${options.lead.act}">${text}</button>` : text}</li>`;
+      }).join('')}</ol>` })}
       <section class="block wrap${state.result ? '' : ' submit-layout'}">
         <div class="submit-main">${state.result ? done() : [
           options.lead?.html() ?? '',
@@ -292,6 +304,28 @@ export function uploadFlow(root, ctx, options) {
     ${ctx.pageEnd()}`;
     document.title = `${page.title} · ${task.title || ctx.DATA.title}`;
     fitTrial();
+    restoreFields();
+  }
+
+  // The info form is rebuilt whenever its step locks or the page redraws; keep what was typed.
+  function saveFields() {
+    const form = $('.submit-form', root);
+    if (form) state.fields = [...form.elements].filter((el) => el.name).map(({ name, value, type, checked }) => ({ name, value, check: type === 'checkbox' || type === 'radio', checked }));
+  }
+  function restoreFields() {
+    const form = $('.submit-form', root);
+    if (!form || !state.fields) return;
+    for (const el of form.elements) {
+      if (!el.name) continue;
+      const check = el.type === 'checkbox' || el.type === 'radio';
+      const saved = state.fields.find((f) => f.name === el.name && (!check || f.value === el.value));
+      if (!saved) continue;
+      if (check) el.checked = saved.checked;
+      else el.value = saved.value;
+    }
+    onWorkFieldChange(form, form.elements.modelName);
+    onWorkFieldChange(form, form.elements.harnessId);
+    if (form.elements.summary?.value || form.elements.note?.value) $('.more-fields', form)?.setAttribute('open', '');
   }
 
   // The trial frame renders at the real viewport size and is scaled to fit the column.
@@ -333,7 +367,7 @@ export function uploadFlow(root, ctx, options) {
   }
 
   const onMessage = (e) => {
-    if (!state.draft || e.data?.source !== 'sp-probe' || e.origin !== new URL(state.draft.preview).origin) return;
+    if (!state.draft || state.trial.settled || e.data?.source !== 'sp-probe' || e.origin !== new URL(state.draft.preview).origin) return;
     const t = state.trial;
     const d = e.data;
     if (d.type === 'boot') t.booted = true;
@@ -350,7 +384,7 @@ export function uploadFlow(root, ctx, options) {
     if (!file || state.uploading) return;
     if (file.size > maxBytes()) { state.error = `文件超过 ${formatBytes(maxBytes())} 上限`; return draw(); }
     if (!FILES[state.template].pattern.test(file.name)) { state.error = FILES[state.template].error; return draw(); }
-    Object.assign(state, { uploading: true, progress: 0, loaded: 0, total: file.size, error: '' });
+    Object.assign(state, { uploading: true, progress: 0, loaded: 0, total: file.size, error: '', notice: null });
     draw();
     const xhr = createUploadRequest(`drafts?task=${encodeURIComponent(draftTask)}&name=${encodeURIComponent(file.name)}&template=${state.template}`);
     state.xhr = xhr;
@@ -371,6 +405,7 @@ export function uploadFlow(root, ctx, options) {
       state.xhr = null;
       if (xhr.status === 200 && data.draft) {
         state.draft = resolveApiMedia(data.draft, 'draft');
+        state.draftTemplate = state.template;
         startTrial();
       } else {
         state.error = data.error ?? `上传失败（${xhr.status}）`;
@@ -392,20 +427,33 @@ export function uploadFlow(root, ctx, options) {
     if (state.draft && !state.result) api(`drafts/${state.draft.id}`, { method: 'DELETE' }).catch(() => {});
   }
 
-  function restart() {
+  // keepFields: picking another file for the same result keeps what was filled in about it.
+  function restart({ keepFields = false } = {}) {
     discard();
     clearTimeout(state.timer);
     clearTimeout(state.poll);
-    Object.assign(state, { draft: null, error: '', trial: freshTrial(), confirmed: false, cover: null, work: null, result: null, polls: 0 });
+    if (keepFields) saveFields();
+    Object.assign(state, { draft: null, error: '', trial: freshTrial(), confirmed: false, cover: null, work: null, result: null, polls: 0, notice: null,
+      ...(keepFields ? {} : { fields: null }) });
     draw();
   }
 
   function setConfirmed(confirmed) {
     state.confirmed = confirmed;
+    if (confirmed) {
+      state.confirmedPrompt = task.prompt;
+      if (state.notice === 'prompt') { state.notice = null; $('[data-sample-notice]', root)?.remove(); }
+    } else saveFields();
     const three = $('[data-step="3"]', root);
     three.outerHTML = step(3, options.infoLabel ?? '作品信息', confirmed ? '核验时会对照这些信息' : '', stepThree(), { locked: !confirmed });
+    restoreFields();
     $('[data-step="2"]', root).classList.toggle('is-done', confirmed);
-    $$('.side-steps li', root).forEach((li, i) => (i === (confirmed ? 2 : 1) + offset ? li.setAttribute('aria-current', 'step') : li.removeAttribute('aria-current')));
+    const current = (confirmed ? 2 : 1) + offset;
+    $$('.side-steps li', root).forEach((li, i) => {
+      if (i === current) li.setAttribute('aria-current', 'step');
+      else li.removeAttribute('aria-current');
+      li.classList.toggle('is-done', i < current);
+    });
     if (confirmed) $('[data-step="3"]', root).scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -465,7 +513,7 @@ export function uploadFlow(root, ctx, options) {
     try {
       const payload = { ...body, draftId: state.draft.id, confirmed: true, cover: state.cover, trial: trialSummary() };
       const result = options.submit ? await options.submit(payload) : await api('works', { method: 'POST', body: payload });
-      Object.assign(state, { result, work: result.work, polls: 0 });
+      Object.assign(state, { result, work: result.work, polls: 0, fields: null });
       clearTimeout(state.timer);
       if (!options.submit) toast(['pending', 'review'].includes(result.work.moderation?.status) ? '作品已提交，正在内容审核' : '作品已提交');
       await refreshPlatform('upload');
@@ -491,76 +539,80 @@ export function uploadFlow(root, ctx, options) {
     } catch { /* an older API has no draft lookup */ }
   }
 
-  root.onclick = (e) => {
-    if (e.target.matches('input[type="file"]')) return;
-    const drop = e.target.closest('[data-drop]');
-    if (drop && !state.uploading) { $('input[type="file"]', drop).click(); return; }
-    const view = e.target.closest('[data-view]');
-    if (view && view.dataset.view !== state.view) {
-      state.view = view.dataset.view;
-      const stage = $('[data-trial-stage]', root);
-      stage.style.setProperty('--w', VIEWS[state.view].width);
-      stage.style.setProperty('--h', VIEWS[state.view].height);
-      $$('[data-view]', root).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === state.view)));
-      fitTrial();
-      return;
-    }
-    const peek = e.target.closest('[data-peek]');
-    if (peek) {
-      state.peek = peek.dataset.peek;
-      $$('[data-peek]', root).forEach((b) => b.setAttribute('aria-pressed', String(b === peek)));
-      $('.prompt-peek pre', root).innerHTML = linkReferences(task.promptVariants.find((v) => v.id === state.peek).prompt, task.references, task.id);
-      return;
-    }
-    const act = e.target.closest('[data-act]')?.dataset.act;
-    if (act === 'resume') {
-      Object.assign(state, { draft: resolveApiMedia(state.resumable, 'draft'), resumable: null, error: '' });
-      startTrial();
-      draw();
-    } else if (act === 'drop-draft') {
-      api(`drafts/${state.resumable.id}`, { method: 'DELETE' }).catch(() => {});
-      state.resumable = null;
-      draw();
-    } else if (act === 'cancel-upload') state.xhr?.abort();
-    else if (act === 'restart') restart();
-    else if (act === 'another') restart();
-    else if (act === 'reload') { startTrial(); drawTrial(); const frame = $('.trial iframe', root); frame.src = state.draft.preview; }
-    else if (act === 'pick-cover') $('[data-cover-input]', root).click();
-    else if (act === 'drop-cover') { state.cover = null; $('.cover-pick', root).outerHTML = coverPick(); }
-    else if (act) options.onAct?.(act);
-  };
-  root.onkeydown = (e) => {
-    const drop = e.target.closest?.('[data-drop]');
-    if (drop && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); drop.click(); }
-  };
-  root.onchange = (e) => {
-    if (e.target.matches('[data-template]')) {
-      state.template = e.target.value;
-      state.error = '';
-      return draw();
-    }
-    if (e.target.matches('.dropzone input[type="file"]')) return upload(e.target.files[0]);
-    if (e.target.matches('[data-manual]')) {
-      state.trial.manual = e.target.checked;
-      return drawTrial();
-    }
-    if (e.target.matches('[data-confirm]')) return setConfirmed(e.target.checked);
-    const form = e.target.closest('.submit-form');
-    if (form) onWorkFieldChange(form, e.target);
-    if (e.target.matches('[data-cover-input]')) {
-      const file = e.target.files[0];
-      if (!file) return;
-      if (file.size > platform.site.limits.coverBytes) return toast(`封面不能超过 ${formatBytes(platform.site.limits.coverBytes)}`);
-      const reader = new FileReader();
-      reader.onload = () => { if (active) { state.cover = reader.result; $('.cover-pick', root).outerHTML = coverPick(); } };
-      reader.readAsDataURL(file);
-    }
-  };
-  root.onsubmit = (e) => {
-    if (!e.target.matches('.submit-form')) return;
-    e.preventDefault();
-    submit(e.target);
-  };
+  // The page handlers belong to the flow while it is on screen; a resume takes them back.
+  function bind() {
+    root.onclick = (e) => {
+      if (e.target.matches('input[type="file"]')) return;
+      const drop = e.target.closest('[data-drop]');
+      if (drop && !state.uploading) { $('input[type="file"]', drop).click(); return; }
+      const view = e.target.closest('[data-view]');
+      if (view && view.dataset.view !== state.view) {
+        state.view = view.dataset.view;
+        const stage = $('[data-trial-stage]', root);
+        stage.style.setProperty('--w', VIEWS[state.view].width);
+        stage.style.setProperty('--h', VIEWS[state.view].height);
+        $$('[data-view]', root).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === state.view)));
+        fitTrial();
+        return;
+      }
+      const peek = e.target.closest('[data-peek]');
+      if (peek) {
+        state.peek = peek.dataset.peek;
+        $$('[data-peek]', root).forEach((b) => b.setAttribute('aria-pressed', String(b === peek)));
+        $('.prompt-peek pre', root).innerHTML = linkReferences(task.promptVariants.find((v) => v.id === state.peek).prompt, task.references, task.id);
+        return;
+      }
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'resume') {
+        Object.assign(state, { draft: resolveApiMedia(state.resumable, 'draft'), draftTemplate: state.resumable.template ?? state.template, resumable: null, error: '', notice: null });
+        startTrial();
+        draw();
+      } else if (act === 'drop-draft') {
+        api(`drafts/${state.resumable.id}`, { method: 'DELETE' }).catch(() => {});
+        state.resumable = null;
+        draw();
+      } else if (act === 'cancel-upload') state.xhr?.abort();
+      else if (act === 'restart') restart({ keepFields: true });
+      else if (act === 'another') restart();
+      else if (act === 'reload') { startTrial(); drawTrial(); const frame = $('.trial iframe', root); frame.src = state.draft.preview; }
+      else if (act === 'pick-cover') $('[data-cover-input]', root).click();
+      else if (act === 'drop-cover') { state.cover = null; $('.cover-pick', root).outerHTML = coverPick(); }
+      else if (act) options.onAct?.(act);
+    };
+    root.onkeydown = (e) => {
+      const drop = e.target.closest?.('[data-drop]');
+      if (drop && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); drop.click(); }
+    };
+    root.onchange = (e) => {
+      if (e.target.matches('[data-template]')) {
+        state.template = e.target.value;
+        state.error = '';
+        return draw();
+      }
+      if (e.target.matches('.dropzone input[type="file"]')) return upload(e.target.files[0]);
+      if (e.target.matches('[data-manual]')) {
+        state.trial.manual = e.target.checked;
+        return drawTrial();
+      }
+      if (e.target.matches('[data-confirm]')) return setConfirmed(e.target.checked);
+      const form = e.target.closest('.submit-form');
+      if (form) onWorkFieldChange(form, e.target);
+      if (e.target.matches('[data-cover-input]')) {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > platform.site.limits.coverBytes) return toast(`封面不能超过 ${formatBytes(platform.site.limits.coverBytes)}`);
+        const reader = new FileReader();
+        reader.onload = () => { if (active) { state.cover = reader.result; $('.cover-pick', root).outerHTML = coverPick(); } };
+        reader.readAsDataURL(file);
+      }
+    };
+    root.onsubmit = (e) => {
+      if (!e.target.matches('.submit-form')) return;
+      e.preventDefault();
+      submit(e.target);
+    };
+  }
+  bind();
   const onDrag = (e) => {
     const drop = e.target.closest?.('[data-drop]');
     if (!drop) return;
@@ -573,6 +625,43 @@ export function uploadFlow(root, ctx, options) {
   draw();
   findDraft();
   return {
+    uploading: () => state.uploading,
+    finished: () => Boolean(state.result),
+    // What a suspended flow holds, for the page shown instead of it.
+    kept: () => (state.draft && !state.result ? { file: state.draft.sourceName, confirmed: state.confirmed,
+      filled: Boolean(state.fields?.some((f) => !f.check && f.value.trim())) } : null),
+    suspend() {
+      saveFields();
+      suspended = true;
+      state.xhr?.abort();
+      resizeObserver?.disconnect();
+    },
+    // Called after the owner changed the task in place. Returns true when the draft needs another look.
+    resume() {
+      suspended = false;
+      templates = templatesOf(task);
+      if (!templates.includes(state.template)) state.template = templates[0];
+      if (state.draft && !templates.includes(state.draftTemplate ?? state.template)) {
+        const file = state.draft.sourceName;
+        discard();
+        Object.assign(state, { draft: null, trial: freshTrial(), confirmed: false, notice: { file } });
+      } else if (state.draft && state.confirmed && state.confirmedPrompt !== task.prompt) {
+        state.confirmed = false;
+        state.notice = 'prompt';
+        state.fields?.filter((f) => f.check).forEach((f) => { f.checked = false; });
+      }
+      // A confirmed trial keeps its record while the frame reloads; an unconfirmed one starts over.
+      if (state.draft && state.confirmed) state.trial.settled = true;
+      else if (state.draft) startTrial();
+      bind();
+      draw();
+      return Boolean(state.notice);
+    },
+    // Gives up the draft with the flow, when the owner goes on without it.
+    drop() {
+      discard();
+      this.destroy();
+    },
     onPlatformChange(reason) {
       // A submit in flight already consumed the draft; redrawing would reload its dead preview.
       if (reason === 'upload' || state.submitting) return;
@@ -587,6 +676,8 @@ export function uploadFlow(root, ctx, options) {
       resizeObserver?.disconnect();
       removeEventListener('message', onMessage);
       for (const type of ['dragover', 'dragleave', 'drop']) root.removeEventListener(type, onDrag);
+      // A suspended flow no longer owns the page handlers.
+      if (suspended) return;
       root.onkeydown = null;
       root.onsubmit = null;
     },
