@@ -55,7 +55,7 @@ export function workFieldsHtml(ctx, task, work = null, { extra = '', expanded = 
   const provider = ctx.providerOf(w)?.id ?? '';
   const filled = ['summary', 'note'].some((key) => w[key]);
   return `
-    <label class="field"><span class="field-label">作品标题<i>*</i></span><input class="input" name="title" maxlength="40" required placeholder="例如：云山古刹" value="${esc(w.title ?? '')}"></label>
+    <label class="field"><span class="field-label">作品标题<small>选填</small></span><input class="input" name="title" maxlength="40" placeholder="例如：云山古刹" value="${esc(w.title ?? '')}"><span class="field-hint">不填则显示为「模型名称 · 推理档位」。</span></label>
     ${variants.length ? `<label class="field"><span class="field-label">提示词版本<i>*</i></span><select class="input" name="promptVariant" required><option value="">选择生成时用的版本</option>${variants.map((v) => option(v.id, v.label, v.id === w.promptVariant)).join('')}</select><span class="field-hint">展厅会把同一模型的各版本合成一张卡片，可切换对比。</span></label>` : ''}
     <div class="field-row">
       <label class="field"><span class="field-label">模型名称<i>*</i></span><input class="input" name="modelName" required maxlength="60" list="${modelList}" value="${esc(modelName)}" placeholder="选择或填写模型名称"><datalist id="${modelList}" data-models>${modelOptions(ctx)}</datalist><span class="field-hint">优先从列表选择；列表里没有就直接输入新模型名称。</span></label>
@@ -112,7 +112,8 @@ export function readWorkFields(form, task, { requireComplete = true } = {}) {
   const text = (name) => (data[name] ?? '').trim();
   const modelName = text('modelName');
   const modelId = registeredModel(form, modelName);
-  if (!text('title')) return fail(form, 'title', '请填写作品标题');
+  const title = (text('title') || [modelName, text('effort')].filter(Boolean).join(' · ')).slice(0, 40);
+  if (!title) return fail(form, 'modelName', '请填写作品标题，或填写模型名称作为默认标题');
   if (requireComplete && (task?.promptVariants ?? []).length && !data.promptVariant) return fail(form, 'promptVariant', '请选择生成时用的提示词版本');
   if (requireComplete && !modelName) return fail(form, 'modelName', '请选择或填写模型名称');
   if (requireComplete && !text('effort')) return fail(form, 'effort', '请选择或填写推理档位');
@@ -122,7 +123,7 @@ export function readWorkFields(form, task, { requireComplete = true } = {}) {
   if (requireComplete && !data.generationMode) return fail(form, 'generationMode', '请选择生成方式');
   if (requireComplete && !data.humanIntervention) return fail(form, 'humanIntervention', '请选择人工介入程度');
   return { body: {
-    title: text('title'),
+    title,
     summary: data.summary ?? '',
     ...(data.promptVariant !== undefined ? { promptVariant: data.promptVariant } : {}),
     ...(modelId ? { modelId } : { modelName, vendor: text('vendor') }),
