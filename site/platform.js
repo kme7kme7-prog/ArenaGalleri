@@ -63,10 +63,11 @@ export async function refreshPlatform(reason = 'refresh') {
 }
 
 export class ApiError extends Error {
-  constructor(status, message, code) {
+  constructor(status, message, code, retryAfter = 0) {
     super(message);
     this.status = status;
     this.code = code;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -93,7 +94,8 @@ export async function api(path, { method = 'GET', body, signal } = {}) {
       platform.user = null;
       emit('session');
     }
-    throw new ApiError(response.status, data.error ?? `请求失败（${response.status}）`, data.code);
+    throw new ApiError(response.status, data.error ?? `请求失败（${response.status}）`, data.code,
+      Number(data.retryAfter ?? response.headers.get('Retry-After')) || 0);
   }
   const endpoint = path === 'me' || path === 'review' ? path
     : path === 'admin/questions' ? 'questions'
@@ -242,19 +244,35 @@ export function confirmDialog({ title, message, confirm = '确认', danger = fal
 // code and returns the notice to show. widgetFor() resolves the challenge; by default the form
 // mounts its own.
 export function codeSender(sheet, form, request, widgetFor = formWidget(sheet, form)) {
-  let countdown = 0;
+  let deadline = 0;
   let timer = null;
+  let cooldownMessage = '';
+  let lastErrorText = '';
   const send = $('[data-send]', form);
   const errorLine = $('.form-error', form);
   const notice = $('.code-notice', form);
   const tick = () => {
+    const countdown = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    const wait = countdown >= 60 ? `${Math.floor(countdown / 60)} 分 ${countdown % 60} 秒` : `${countdown} 秒`;
     send.disabled = countdown > 0;
-    send.textContent = countdown > 0 ? `${countdown} 秒后重发` : '发送验证码';
+    send.textContent = countdown > 0 ? `${wait}后重发` : '发送验证码';
+    if (cooldownMessage && errorLine.textContent === lastErrorText) {
+      lastErrorText = countdown > 0 ? `${cooldownMessage}请在 ${wait}后重试。` : '';
+      errorLine.textContent = lastErrorText;
+    }
+    if (!countdown) { clearInterval(timer); timer = null; }
+  };
+  const coolDown = (seconds) => {
+    clearInterval(timer);
+    deadline = Date.now() + seconds * 1000;
+    tick();
+    timer = setInterval(tick, 1000);
   };
   send.addEventListener('click', async () => {
     if (send.disabled) return;
     send.disabled = true;
     errorLine.textContent = '';
+    cooldownMessage = '';
     notice.textContent = '';
     let widget = null;
     try {
@@ -262,18 +280,27 @@ export function codeSender(sheet, form, request, widgetFor = formWidget(sheet, f
       if (!sheet.el.isConnected) return;
       if (widget && !widget.token) { errorLine.textContent = '请先完成人机验证。'; send.disabled = false; return; }
       notice.textContent = `${await request(widget?.token)}没收到请检查垃圾邮件箱。`;
-      countdown = 60;
-      tick();
-      timer = setInterval(() => { countdown--; tick(); if (!countdown) clearInterval(timer); }, 1000);
+      if (!sheet.el.isConnected) return;
+      coolDown(60);
       form.code.focus();
     } catch (error) {
+      if (!sheet.el.isConnected) return;
       errorLine.textContent = error.message;
-      send.disabled = false;
+      if (error.status === 429 && Number.isFinite(error.retryAfter) && error.retryAfter > 0) {
+        cooldownMessage = error.message;
+        lastErrorText = error.message;
+        coolDown(error.retryAfter);
+      } else send.disabled = false;
     } finally {
       widget?.reset();
     }
   });
-  sheet.el.addEventListener('close', () => clearInterval(timer));
+  const refreshCountdown = () => { if (timer !== null) tick(); };
+  document.addEventListener('visibilitychange', refreshCountdown);
+  sheet.el.addEventListener('close', () => {
+    clearInterval(timer);
+    document.removeEventListener('visibilitychange', refreshCountdown);
+  });
 }
 
 function formWidget(sheet, form) {
