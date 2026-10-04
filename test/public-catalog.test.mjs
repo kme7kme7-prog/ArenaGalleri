@@ -29,6 +29,7 @@ test('the display catalog keeps prompts and runtime paths without private source
   assert.equal(display.tasks[0].results[0].scene, result.scene);
   assert.equal(display.tasks[0].results[0].previewModel, result.previewModel);
   assert.equal(display.buildInfo.datapack, info.datapack, 'write/version compatibility identifiers remain available');
+  assert.equal(display.buildInfo.frontendCommit, undefined);
   assert.ok(!JSON.stringify(display).includes(privateValue));
   assert.equal(raw.tasks[0].results[0].source, privateValue, 'the private input is unchanged');
 });

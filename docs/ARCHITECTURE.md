@@ -10,7 +10,7 @@
 
 `scripts/public-catalog.mjs` 明确列出公开字段并排除内部文件。`assemble-site.mjs` 只复制可发布资源，再写入展示目录，原始包不改动。输入与站点出现路径碰撞时失败。
 
-`cache-bust.mjs` 根据前端 commit 和资产内容生成统一版本，覆盖主站 import map、入口与 CSS。修改 API 配置也会改变资产版本。同一版本写入 `version.json`；跨发布仍打开的旧标签页在懒加载失败时与自身 `?v=` 比对，不同则提示整页刷新。部署须最后发布该文件且不能长缓存。海报指纹只覆盖渲染相关文件；修改这些文件须在数据仓库重新生成海报。
+`cache-bust.mjs` 根据主站 HTML、JS、CSS 和运行配置内容生成统一哈希版本，覆盖主站 import map、入口与 CSS，不输出前端 Git SHA。同一版本写入 `version.json`；跨发布仍打开的旧标签页在懒加载失败时与自身 `?v=` 比对，不同则提示整页刷新。构建同时对最终内联启动代码和 import map 生成 CSP 哈希，写入最前面的 meta 策略；它与 Nginx 响应头策略同时生效，禁止其他内联脚本和事件处理器，保留 Cloudflare 验证和 Blob Worker。部署须整体发布 HTML 与资产，最后发布 `version.json`，且不能长缓存。海报指纹只覆盖渲染相关文件；修改这些文件须在数据仓库重新生成海报。
 
 ## 模块
 

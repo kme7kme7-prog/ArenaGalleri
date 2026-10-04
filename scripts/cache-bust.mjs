@@ -19,17 +19,17 @@ export function mainSiteAssets(dist, site) {
   return { scripts: [...scripts, ...vendor].sort(), styles: styles.sort() };
 }
 
-export function cacheBustSite(dist, site, frontendCommit) {
+export function cacheBustSite(dist, site) {
   const { scripts, styles } = mainSiteAssets(dist, site);
   const paths = [...scripts, ...styles].map(path => [relative(dist, path).replaceAll('\\', '/'), path])
     .sort(([a], [b]) => a.localeCompare(b, 'en'));
   const digest = createHash('sha256');
-  digest.update(frontendCommit ?? 'source-export');
+  digest.update(readFileSync(join(site, 'index.html')));
   for (const [path, file] of paths) {
     digest.update('\0' + path + '\0');
     digest.update(readFileSync(file));
   }
-  const version = `${frontendCommit ?? 'source-export'}-${digest.digest('hex').slice(0, 16)}`;
+  const version = digest.digest('hex').slice(0, 24);
   const versioned = new Map(paths.filter(([path]) => path.endsWith('.js')).map(([path]) => [path, `./${path}?v=${version}`]));
   const htmlFile = join(dist, 'index.html');
   let html = readFileSync(htmlFile, 'utf8');
@@ -49,6 +49,14 @@ export function cacheBustSite(dist, site, frontendCommit) {
   };
   html = html.replace(/(<script\b[^>]*\bsrc=")([^"]+)(")/g, (_, before, url, after) => before + appendVersion(url) + after);
   html = html.replace(/(<link\b(?=[^>]*\brel="stylesheet")[^>]*\bhref=")([^"]+)(")/g, (_, before, url, after) => before + appendVersion(url) + after);
+  // Static hosting cannot mint a nonce. Hash the final inline boots and import map;
+  // the browser intersects this policy with any additional Nginx header policy.
+  html = html.replace(/<meta id="gallery-script-csp"[^>]*>\s*/g, '');
+  const hashes = [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)]
+    .map((match) => `'sha256-${createHash('sha256').update(match[1].replaceAll('\r\n', '\n')).digest('base64')}'`);
+  const policy = `script-src 'self' ${hashes.join(' ')} https://challenges.cloudflare.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'`;
+  const meta = `<meta id="gallery-script-csp" http-equiv="Content-Security-Policy" content="${policy}">`;
+  html = html.includes('<head>') ? html.replace('<head>', `<head>\n${meta}`) : meta + html;
   writeFileSync(htmlFile, html);
   // A tab open across a release compares this with its own ?v= before offering a full reload.
   writeFileSync(join(dist, 'version.json'), `${JSON.stringify({ assets: version })}\n`);

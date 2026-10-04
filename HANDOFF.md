@@ -898,3 +898,10 @@
 | [protection-deploy](docs/archive/2026-09-30-protection-deploy-wsnxxxs.md) | 独立 Gallery 部署、私有文件与共享限流验收、备份位置说明 |
 | [shared-question-intake](docs/archive/2026-09-30-shared-question-intake-wsnxxxs.md) | 功能分支交付与本地验收；当时尚未合并，现已由 release 完成 |
 | [clean-gallery-migration](docs/archive/2026-09-30-clean-gallery-migration-wsnxxxs.md) | 干净仓库迁移、公开/私有边界和初始验证 |
+
+## 漏洞报告核查与修复（2026-10-05，本地完成，未推送、未部署）
+
+- 逐项核对用户提供的报告：存在真实缺口，也有旧版本、正常设计和未证实推断。用户要求竞猜先搁置，V-01/V-04/V-05 未改；报告中的建议不作为额外任务授权。
+- Gallery 构建改为内容哈希版本，公开目录移除 frontendCommit；最终 HTML 的启动脚本和 import map 用 CSP 哈希授权，保留 Blob Worker；盲评 iframe 消息校验当前窗口与源、明确发送目标。独立后端修复验证码请求限流、登录挑战占位、代理配置兼容、半配置 Turnstile、相机消息、后台 CSP、内容 HSTS/错误转义、统计路径及分页参数；游戏只收紧构建 CSP，三仓分别提交。
+- Gallery check60/0、test28/28、build176件/66site、严格intake0错/8既有提示；后端check96/0、test302/302；游戏lint/typecheck/build:check通过。隔离浏览器核对两站首页、题库、恶意内联/onclick阻止、Blob Worker与真实3D后台相机抓取；伪造来源/窗口消息拒绝。未保存取景、生产写入或测全部作品。
+- SSH密码认证/旧版本和SPF/DMARC仅只读核查，待运维处理；SSH模板尚未安装，未部署，不宣称线上已修。用户允许只追加本轮HANDOFF；其他会话的投稿页面及未提交记录保留、不纳入安全提交。[逐项核查与修复记录](docs/archive/2026-10-05-security-review-wsnxxxs.md)。

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { cacheBustSite } from '../scripts/cache-bust.mjs';
 
 function fixture() {
@@ -27,6 +28,7 @@ function fixture() {
   save(join(dist, 'vendor', 'OrbitControls.js'), "import * as THREE from 'three';");
   save(join(dist, 'results', 'original.js'), 'keep this byte for byte');
   save(join(dist, 'index.html'), '<link rel="stylesheet" href="style.css"><script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script><script src="runtime-config.js"></script><script type="module" src="app.js"></script>');
+  save(join(site, 'index.html'), readFileSync(join(dist, 'index.html')));
   return { root, site, dist };
 }
 
@@ -46,6 +48,12 @@ test('versions the complete local module graph and direct HTML assets under eith
     assert.match(html, new RegExp(`src="runtime-config\\.js\\?v=${version}"`));
     assert.match(html, new RegExp(`src="app\\.js\\?v=${version}"`));
     assert.deepEqual(JSON.parse(readFileSync(join(dist, 'version.json'), 'utf8')), { assets: version });
+    assert.match(version, /^[a-f0-9]{24}$/);
+    const policy = html.match(/id="gallery-script-csp"[^>]*content="([^"]+)"/)[1];
+    assert.ok(!policy.includes('unsafe-inline'));
+    for (const match of html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)) {
+      assert.ok(policy.includes(`'sha256-${createHash('sha256').update(match[1]).digest('base64')}'`));
+    }
     for (const base of ['https://example.test/', 'https://example.test/gallery/']) {
       const staticImport = new URL(imports['./helper.js'], base);
       const dynamicImport = new URL(imports['./lazy.js'], base);

@@ -1,7 +1,6 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { checkDatapack } from './datapack.mjs';
 import { readSource } from './datapack-client.mjs';
@@ -26,9 +25,7 @@ const { data, errors, works } = checkDatapack(DATAPACK, SITE);
 if (errors.length) throw new Error(`Invalid datapack:\n${errors.join('\n')}`);
 const config = JSON.parse(readFileSync(join(ROOT, 'site-config.json'), 'utf8'));
 const origin = readSource(DATAPACK);
-let frontendCommit = process.env.GITHUB_SHA || null;
-if (!frontendCommit) try { frontendCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim(); } catch { /* Source export. */ }
-const buildInfo = { frontendCommit, datapack: origin?.source === 'github' ? origin.commit : null,
+const buildInfo = { datapack: origin?.source === 'github' ? origin.commit : null,
   catalogDigest: createHash('sha256').update(readFileSync(join(DATAPACK, 'data.json'))).digest('hex'), schemaVersion: data.schemaVersion ?? 1 };
 for (const field of ['title', 'subtitle', 'description', 'repo']) {
   if (typeof config[field] !== 'string' || !config[field].trim()) throw new Error(`site-config.json must set ${field}`);
@@ -94,6 +91,6 @@ if (process.env.API_BASE_URL || process.env.MEDIA_BASE_URL) {
   writeFileSync(join(DIST, 'runtime-config.js'), `globalThis.SAME_PROMPT_CONFIG = ${JSON.stringify(runtime)};\n`);
 }
 
-const assetVersion = cacheBustSite(DIST, SITE, frontendCommit);
+const assetVersion = cacheBustSite(DIST, SITE);
 
 console.log(`Assembled dist/: ${works} result(s) + ${overlaid} site file(s), no collisions. Assets: ${assetVersion}`);

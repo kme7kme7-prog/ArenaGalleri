@@ -318,7 +318,8 @@ function match(root, ctx, first, scope) {
 
   const currentFrame = (side) => $(`[data-body="${side}"] iframe`, el);
   function syncControls(side) {
-    currentFrame(side)?.contentWindow?.postMessage({ source: 'sp-arena', fold: !state.controlsShown[side] }, '*');
+    const frame = currentFrame(side);
+    if (frame) frame.contentWindow?.postMessage({ source: 'sp-arena', fold: !state.controlsShown[side] }, new URL(frame.src).origin);
   }
 
   // Desktop split: state.split is A's share of the stage; 0 and 1 collapse one side to a rail. The
@@ -359,7 +360,8 @@ function match(root, ctx, first, scope) {
   const onFold = (event) => {
     if (event.data?.source !== 'sp-fold' || !(event.data.count > 0)) return;
     for (const side of ['a', 'b']) {
-      if (event.source !== currentFrame(side)?.contentWindow) continue;
+      const frame = currentFrame(side);
+      if (!frame || event.source !== frame.contentWindow || event.origin !== new URL(frame.src).origin) continue;
       state.controls[side] = event.data.count;
       drawControls();
       syncControls(side);
