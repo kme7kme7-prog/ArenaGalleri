@@ -1,6 +1,6 @@
 // Platform layer: session, uploads, reactions and the dialogs they share. The gallery runs
 // without it as a static archive; `platform.available` is false when no API answers.
-import { $, $$, esc, icon } from './ui.js';
+import { $, $$, esc, formatDate, icon } from './ui.js';
 import { compatibleBuild, fetchApi, resolveApiMedia, setDatapackVersion, staleBuild } from './platform-api.js';
 import { loadTurnstile, mountTurnstile } from './turnstile.js';
 import { CONTACT } from './legal.js';
@@ -188,7 +188,9 @@ export const canDecide = (w) => isSenior() || (isStaff() && !w.mine);
 // Staff publish under the site's name; packaged items carry no author and count as staff.
 export const byStaff = (item) => (item?.author?.role ?? 'admin') !== 'user';
 // Questions are always reviewed by a person, so a pending one waits for a senior admin.
-export const QUESTION_LABELS = { pending: '等待人工审核' };
+export const QUESTION_LABELS = { pending: '等待人工审核', rejected: '未通过' };
+// A reviewer's reason as its author reads it: the 朱批 on a rejected question, with when it was decided.
+export const reviewVerdict = (moderation, label = '审核意见') => `<div class="question-verdict"><p class="question-verdict-head">${icon('alert')}${label}${moderation.at ? `<span>· ${esc(formatDate(moderation.at))}</span>` : ''}</p><p>${esc(moderation.reason)}</p></div>`;
 // Everything waiting on an admin: unverified or held works, and questions under review.
 export const reviewCount = () => (platform.review?.unverified ?? 0) + (platform.review?.questions ?? 0) + (platform.review?.content ?? 0);
 

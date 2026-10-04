@@ -576,6 +576,30 @@ dialog.edit-work-sheet { width: min(720px, calc(100% - 32px)); }
 .question-brief p { margin: 0 0 8px; color: var(--ink-2); font-size: 13.5px; }
 .question-samples { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--ink-2); }
 .question-samples li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 4px 0; }
+/* A rejection the author answers (朱批), and the last decision and changes a reviewer compares. */
+.question-verdict { margin: 12px 0 0; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: var(--radius-sm); background: var(--accent-soft); }
+.question-verdict p { margin: 4px 0 0; color: var(--ink); font-size: 13.5px; line-height: 1.7; }
+.question-verdict .question-verdict-head, .question-history .question-history-head { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; font-weight: 600; }
+.question-verdict-head { color: var(--accent); }
+.question-verdict-head span, .question-history-head span { color: var(--muted); font-weight: 400; }
+.question-verdict-head .i, .question-history-head .i { width: 14px; height: 14px; color: var(--accent); }
+.question-previous { margin-top: 8px; }
+.question-previous p { margin: 0; padding: 0 14px 12px; color: var(--ink-2); font-size: 13px; }
+.question-history { margin: 12px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.question-history > p { margin: 4px 0 0; color: var(--ink-2); font-size: 13px; }
+.question-history .question-history-head { color: var(--ink-2); }
+.question-changes { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
+.question-changes li { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 3px 0; }
+.question-changes b { color: var(--ink-2); font-weight: 500; }
+.question-changes del { color: var(--muted); }
+.line-diff { max-height: 320px; margin: 8px 0 0; padding: 8px 0 0; overflow: auto; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.9; }
+.line-diff > div { display: grid; grid-template-columns: 20px minmax(0, 1fr); min-height: 1.9em; padding-right: 8px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.line-diff .line-op { font-family: var(--mono); text-align: center; }
+.line-diff .is-add { background: var(--surface-2); color: var(--ink); }
+.line-diff .is-del span:last-child { text-decoration: line-through; }
+.publish-form .question-verdict { margin: 0; }
+.publish-samples .is-removed { color: var(--muted); text-decoration: line-through; }
+.field-label .badge { margin-left: 8px; }
 .edit-work-sheet .sheet-text { margin: 0 0 16px; }
 .dropzone {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 180px; padding: 28px;
