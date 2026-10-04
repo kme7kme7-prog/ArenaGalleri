@@ -3,7 +3,7 @@ import { $, $$, brandMark, esc, formatBytes, formatDate, formatTime, icon, img }
 import { api, apiRemembered, arenaText, autoRejected, avatarFace, byStaff, canDecide, confirmDialog, injected, isSenior, isStaff, moderationBadge, openBindEmail, openDialog, platform, QUESTION_LABELS, recall, refreshPlatform, requireUser, reviewCount, riskLabels, ROLE_LABELS, setFaces, statusBadge, toast } from './platform.js';
 import { onWorkFieldChange, readWorkFields, workFieldsHtml } from './work-fields.js';
 import { openWorkManagement } from './work-management.js';
-import { categoryLabel, domainsOf, matchesQuery } from './categories.js';
+import { CATEGORIES, categoryLabel, domainsOf, matchesQuery } from './categories.js';
 import { categoryField, domainField, syncDomains } from './question-fields.js';
 import { referenceEditor, referenceSheet, referencesEnabled } from './references.js';
 import { moderated, pendingLimit, stageTrack } from './submit.js';
@@ -1049,7 +1049,7 @@ const BULK = {
 function review(root, ctx) {
   const [routeTab = '', routeQuery = ''] = (ctx.param ?? '').split('?');
   const state = { works: null, audit: [], questions: null, questionsError: '', error: '', tab: null, filter: FILTER_TABS[routeTab] ?? 'all', picked: new Set(),
-    catalog: { filter: 'all', query: '' }, managed: { filter: 'all', query: '', task: new URLSearchParams(routeQuery).get('task') ?? '', arena: 'all', sort: 'latest' } };
+    catalog: { filter: 'all', query: '', category: '', domain: '', sort: 'latest' }, managed: { filter: 'all', query: '', task: new URLSearchParams(routeQuery).get('task') ?? '', arena: 'all', sort: 'latest' } };
   // Packaged works come without media; they show the data pack's screenshots and scene.
   const settle = (data, questions) => Object.assign(state, { works: data.works.map((w) => ({ ...ctx.packagedWork(w.task, w.id), ...w })), audit: data.audit, error: '',
     questions: questions.list ?? state.questions ?? [], questionsError: questions.error ?? '' });
@@ -1161,17 +1161,45 @@ function review(root, ctx) {
     syncBulk();
     ctx.settleImages();
   }
-  // 全部题目, narrowed by the filter and the search; redrawn alone while typing.
-  function catalogList() {
-    const { filter, query } = state.catalog;
-    const questions = (state.questions ?? []).filter((q) => catalogIn(q, filter) && (!query || matchesQuery(q, query)));
+  // 全部题目, laid out like 全部作品: the search and selects set the scope the chips count within.
+  function catalogQuestions({ filtered = true } = {}) {
+    const { filter, query, category, domain, sort } = state.catalog;
+    const term = query.toLocaleLowerCase();
+    const when = (q) => Date.parse(q.createdAt ?? q.date) || 0;
+    return (state.questions ?? []).filter((q) => (!category || q.category === category) && (!domain || domainsOf(q).includes(domain))
+      && (!filtered || catalogIn(q, filter)) && (!query || matchesQuery(q, query) || publisher(ctx, q).toLocaleLowerCase().includes(term)))
+      .sort((a, b) => sort === 'title' ? a.title.localeCompare(b.title, 'zh-CN', { numeric: true })
+        : sort === 'works' ? (b.works ?? 0) - (a.works ?? 0) : (sort === 'oldest' ? 1 : -1) * (when(a) - when(b)));
+  }
+  function catalogChips() {
+    const scope = catalogQuestions({ filtered: false });
+    return Object.entries(CATALOG_FILTERS).map(([id, label]) => `<button class="chip" type="button" data-catalog-filter="${id}" aria-pressed="${state.catalog.filter === id}">${label}<span>${scope.filter((q) => catalogIn(q, id)).length}</span></button>`).join('');
+  }
+  function catalogResults() {
+    const questions = catalogQuestions(), total = (state.questions ?? []).length;
     const buckets = new Map();
     for (const w of state.works ?? []) {
       if (!buckets.has(w.task)) buckets.set(w.task, []);
       buckets.get(w.task).push(reviewBucket(ctx, w, state.questions ?? []));
     }
-    return questions.length ? `<div class="submission-questions">${questions.map((q) => catalogRow(ctx, q, buckets.get(q.id) ?? [])).join('')}</div>`
-      : `<div class="board-empty"><p class="board-empty-title">${query ? '没有匹配的题目' : `没有${CATALOG_FILTERS[filter]}的题目`}</p></div>`;
+    return `<p class="work-manage-list-meta">显示 ${questions.length} / ${total} 道题目</p>
+      ${questions.length ? `<div class="submission-questions">${questions.map((q) => catalogRow(ctx, q, buckets.get(q.id) ?? [])).join('')}</div>` : '<div class="board-empty"><p class="board-empty-title">没有匹配的题目</p><button class="btn sm" type="button" data-catalog-reset>清除筛选</button></div>'}`;
+  }
+  function catalogList() {
+    const questions = state.questions ?? [];
+    const domains = [...new Set(questions.flatMap(domainsOf))];
+    const options = (items, current) => items.map(([id, label]) => `<option value="${esc(id)}"${id === current ? ' selected' : ''}>${esc(label)}</option>`).join('');
+    return `<div class="work-management"><div class="work-manage-heading"><h3>全部题目<span>${questions.length}</span></h3><p>公开状态、投稿与作品分别管理</p></div>
+      <div class="work-manage-tools"><label class="collection-search">${icon('search')}<input type="search" data-catalog-search aria-label="搜索题目、提示词或发布者" placeholder="搜索题目、提示词或发布者" value="${esc(state.catalog.query)}"></label>
+        <select name="category" data-catalog-select aria-label="按题目类型筛选">${options([['', '全部类型'], ...CATEGORIES.map((c) => [c.name, c.label])], state.catalog.category)}</select>
+        <select name="domain" data-catalog-select aria-label="按领域筛选">${options([['', '全部领域'], ...domains.map((d) => [d, d])], state.catalog.domain)}</select>
+        <select name="sort" data-catalog-select aria-label="题目排序">${options([['latest', '最新在前'], ['oldest', '最早在前'], ['title', '按题目名称'], ['works', '作品最多']], state.catalog.sort)}</select></div>
+      <div class="chips work-manage-filters" data-catalog-chips>${catalogChips()}</div><div class="work-manage-results" data-catalog-results>${catalogResults()}</div></div>`;
+  }
+  // Preserve input focus while filters and search redraw only the result area.
+  function updateCatalog() {
+    root.querySelector('[data-catalog-chips]').innerHTML = catalogChips();
+    root.querySelector('[data-catalog-results]').innerHTML = catalogResults();
   }
   function draw() {
     if (!platform.user) return signedOut(root, ctx, '请先登录管理员账号');
@@ -1215,9 +1243,7 @@ function review(root, ctx) {
         : `${waiting.length ? `${bulk}<div class="submission-questions">${waiting.map((q) => reviewQuestionRow(ctx, q, state.picked.has(q.id))).join('')}</div>` : empty(REVIEW_EMPTY.questions)}
           <p class="fine">处理过的题目在<a href="#/review/catalog">全部题目</a>里。</p>`;
     } else if (tab === 'catalog') {
-      const chips = `<div class="chips review-filters">${Object.entries(CATALOG_FILTERS).map(([id, text]) => `<button class="chip${id === state.catalog.filter ? ' on' : ''}" type="button" data-catalog-filter="${id}" aria-pressed="${id === state.catalog.filter}">${text} · ${questions.filter((q) => catalogIn(q, id)).length}</button>`).join('')}</div>`;
-      list = state.questionsError ? `<p class="muted">${esc(state.questionsError)}</p>`
-        : `<div class="catalog-tools"><label class="collection-search">${icon('search')}<input type="search" data-catalog-search aria-label="搜索题目或提示词" placeholder="搜索题目或提示词" value="${esc(state.catalog.query)}"></label>${chips}</div><div data-catalog-list>${catalogList()}</div>`;
+      list = state.questionsError ? `<p class="muted">${esc(state.questionsError)}</p>` : catalogList();
     } else if (tab === 'works') {
       list = managedList();
     } else if (tab === 'content') {
@@ -1406,6 +1432,11 @@ function review(root, ctx) {
       state.managed[select.name] = select.value;
       return updateManaged();
     }
+    const catalogSelect = e.target.closest('[data-catalog-select]');
+    if (catalogSelect) {
+      state.catalog[catalogSelect.name] = catalogSelect.value;
+      return updateCatalog();
+    }
     const box = e.target.closest('[data-pick], [data-pick-all]');
     if (!box) return;
     if (box.dataset.pick !== undefined) {
@@ -1417,7 +1448,7 @@ function review(root, ctx) {
     }
     syncBulk();
   };
-  // Typing in 全部题目 redraws the list only, so the search keeps its focus.
+  // Typing in either management list redraws its results only, so the search keeps its focus.
   root.oninput = (e) => {
     const managed = e.target.closest('[data-managed-search]');
     if (managed) {
@@ -1427,8 +1458,7 @@ function review(root, ctx) {
     const search = e.target.closest('[data-catalog-search]');
     if (!search) return;
     state.catalog.query = search.value.trim();
-    const list = root.querySelector('[data-catalog-list]');
-    if (list) list.innerHTML = catalogList();
+    updateCatalog();
   };
   root.onclick = async (e) => {
     const managedFilter = e.target.closest('[data-managed-filter]');
@@ -1459,6 +1489,10 @@ function review(root, ctx) {
     const catalogFilter = e.target.closest('[data-catalog-filter]');
     if (catalogFilter) {
       state.catalog.filter = catalogFilter.dataset.catalogFilter;
+      return updateCatalog();
+    }
+    if (e.target.closest('[data-catalog-reset]')) {
+      Object.assign(state.catalog, { filter: 'all', query: '', category: '', domain: '' });
       return draw();
     }
     const bulkFace = e.target.closest('[data-bulk-face]');

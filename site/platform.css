@@ -735,15 +735,12 @@ dialog.review-sheet { width: min(980px, calc(100% - 32px)); }
 .review-question .row-pick { flex: 0 0 18px; }
 .bulk-bar { position: sticky; top: var(--topbar); z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 0; background: var(--bg); color: var(--ink-2); font-size: 13px; }
 .bulk-bar .row-pick { width: 18px; }
-/* 全部题目: search first, then the filters. */
-.catalog-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 20px; }
-.catalog-tools .chips { margin: 0; }
 .bulk-bar [data-bulk-count] { margin-right: auto; }
 .bulk-list { max-height: 200px; overflow: auto; margin: 0 0 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; list-style: none; color: var(--ink); font-size: 13px; line-height: 1.7; }
 .bulk-list span { margin-left: 6px; color: var(--muted); font-size: 12px; }
 dialog.bulk-sheet { width: min(520px, calc(100% - 32px)); }
 
-/* ---- all works: information and display settings share one management view ---- */
+/* ---- all works and all questions: information and display settings share one management view ---- */
 .work-manage-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 18px; }
 .work-management > .work-manage-heading h3 { font: 600 16px var(--sans); }
 .work-management > .work-manage-heading h3 span { margin-left: 9px; color: var(--muted); font: 12px var(--mono); }
