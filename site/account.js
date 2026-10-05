@@ -25,7 +25,7 @@ const DONE_FILTERS = { all: '全部', public: '已公开', noarena: '不进盲�
 const FILTER_TABS = { verified: 'public', off: 'off', questioned: 'questioned', rejected: 'rejected', noarena: 'noarena', machine: 'machine', injection: 'injection' };
 const ME_TABS = { overview: '概览', works: '我的作品', questions: '我的题目' };
 const ACCOUNT = { title: '个人中心', description: '每一道提问，每一份解答，都是你的创作足迹。' };
-const ACTIONS = { submit: '提交作品', verified: '通过核验', questioned: '标记存疑', unverified: '退回未验证', delete: '删除作品',
+const ACTIONS = { submit: '提交作品', verified: '通过核验', questioned: '标记存疑', unverified: '退回未验证', delete: '下架作品', 'delete-followup': '下架后处理',
   'question-create': '发起题目', 'question-review': '审核题目', 'question-edit': '编辑题目', 'question-resubmit': '重新提交题目', 'question-delete': '删除题目',
   'content-review': '内容审核', 'content-retry': '重新自动审核', meta: '编辑信息', 'face-settings': '调整展示设置', role: '调整角色' };
 
@@ -157,7 +157,7 @@ function adminAction(w, bucket) {
   return {
     content: `<button class="btn sm primary" data-content="${id}">审核内容</button>`,
     auto: `<button class="btn sm" data-content="${id}">人工审核</button>`,
-    rejected: `${w.moderation?.status === 'rejected' && canDecide(w) ? `<button class="btn sm" data-content="${id}">重新审核内容</button>` : ''}${isSenior() ? `<button class="icon-btn" data-delete="${id}" title="删除作品" aria-label="删除「${esc(w.title)}」">${icon('trash')}</button>` : ''}`,
+    rejected: `${w.moderation?.status === 'rejected' && canDecide(w) ? `<button class="btn sm" data-content="${id}">重新审核内容</button>` : ''}${isSenior() ? `<button class="icon-btn" data-delete="${id}" title="下架作品" aria-label="下架「${esc(w.title)}」">${icon('trash')}</button>` : ''}`,
     unverified: `<button class="btn sm primary" data-review="${id}">核验</button>`,
     verified: `${details}${arena}`,
     off: `${details}${faceButton(w, 'restore', true)}`,
@@ -198,7 +198,7 @@ function workRow(ctx, w, { bucket = null, questions = [], picked } = {}) {
       <div class="actions">
         ${admin
           ? adminAction(w, bucket)
-          : `${w.status === 'unverified' && task ? `<button class="btn sm" data-edit-work="${esc(pickId(w))}">编辑信息</button>` : ''}<button class="icon-btn" data-delete="${esc(pickId(w))}" title="删除作品" aria-label="删除「${esc(w.title)}」">${icon('trash')}</button>`}
+          : `${w.status === 'unverified' && task ? `<button class="btn sm" data-edit-work="${esc(pickId(w))}">编辑信息</button>` : ''}<button class="icon-btn" data-delete="${esc(pickId(w))}" title="下架作品" aria-label="下架「${esc(w.title)}」">${icon('trash')}</button>`}
       </div>
     </div>
   </article>`;
@@ -242,15 +242,15 @@ function editWork(ctx, w) {
 async function removeWork(w, { admin }) {
   const verified = w.status === 'verified';
   const ok = await confirmDialog({
-    title: '删除这件作品？',
-    message: `「${w.title}」的文件会被永久删除，展厅中不再显示。${verified ? '它参与过的盲评投票会从榜单中移出。' : ''}${admin ? '操作会记入审核记录。' : ''}`,
-    confirm: '删除',
+    title: '下架这件作品？',
+    message: `「${w.title}」会从展厅和盲评中下架。${verified ? '已计入的盲评票继续保留在榜单中；' : ''}没有对局记录的作品会同时删除文件。${admin ? '操作会记入审核记录。' : ''}`,
+    confirm: '下架',
     danger: true,
   });
   if (!ok) return false;
   try {
     await api(`works/${encodeURIComponent(w.task)}/${encodeURIComponent(w.id)}`, { method: 'DELETE' });
-    toast('作品已删除');
+    toast('作品已下架');
     await refreshPlatform('delete');
     return true;
   } catch (error) {
@@ -681,7 +681,7 @@ export function openReview(ctx, w, { questions = [], onDecided } = {}) {
         <p class="form-error" role="alert"></p>
         ${canDecide(w) ? '' : `<div class="review-blocked">${icon('alert')}<p>这是你发布的作品，需要由其他管理员核验。</p></div>`}
         <div class="sheet-actions">
-          ${isSenior() ? `<button type="button" class="btn danger ghost" data-remove>${icon('trash')}删除</button>` : ''}
+          ${isSenior() ? `<button type="button" class="btn danger ghost" data-remove>${icon('trash')}下架</button>` : ''}
           <span class="spacer"></span>
           ${canDecide(w) && w.status === 'verified' && faceOn(w) ? '<button type="button" class="btn ghost" data-decide="off">撤下</button>' : ''}
           ${canDecide(w) ? `<button type="button" class="btn" data-decide="questioned">${icon('alert')}标记存疑</button>

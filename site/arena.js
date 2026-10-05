@@ -216,7 +216,7 @@ function match(root, ctx, first, scope) {
   }
   function revealHead(side, unseal) {
     const work = state.result[side];
-    if (!work) return `<span class="pane-letter">${letter(side)}</span><span class="arena-who">作品已不可用</span>${paneTools(side)}`;
+    if (!work) return `<span class="pane-letter">${letter(side)}</span><span class="arena-who">作品已下架</span>${paneTools(side)}`;
     const model = ctx.modelOf({ model: work.model, modelName: work.modelName, vendor: work.vendor });
     const chosen = state.result.choice === side;
     return `<span class="pane-letter">${letter(side)}</span>${brandMark(model, 'brand-mark sm')}

@@ -1,6 +1,6 @@
 // Work metadata and display settings share a sheet; review decisions keep their own dialogs.
 import { $, $$, brandMark, esc, formatTime, icon, img } from './ui.js';
-import { api, byStaff, canDecide, confirmDialog, isSenior, moderationBadge, openDialog, refreshPlatform, ROLE_LABELS, setFaces, statusBadge, toast } from './platform.js';
+import { api, byStaff, canDecide, isSenior, moderationBadge, openDialog, refreshPlatform, ROLE_LABELS, setFaces, statusBadge, toast } from './platform.js';
 import { templatesOf } from './categories.js';
 import { workFieldsHtml } from './work-fields.js';
 
@@ -82,7 +82,7 @@ export function openWorkManagement(ctx, w, { questions = [], audit = [], createE
       </div></div>
       <footer class="work-manage-actions">
         <p class="form-error" role="alert"></p>
-        ${isSenior() ? `<button type="button" class="btn ghost danger" data-work-delete>${icon('trash')}删除作品</button>` : ''}
+        ${isSenior() ? `<button type="button" class="btn ghost danger" data-work-delete>${icon('trash')}下架作品</button>` : ''}
         <span class="spacer"></span><button type="button" class="btn" data-sheet-close>取消</button><button type="submit" class="btn primary">保存修改</button>
       </footer>
     </form>`,
@@ -159,19 +159,45 @@ export function openWorkManagement(ctx, w, { questions = [], audit = [], createE
     setBusy(true);
     error.textContent = '';
     try {
-      const confirmed = await confirmDialog({
-        title: '删除这件作品？',
-        message: `「${w.title}」的目录记录会软删除，公开页面不再显示。${packaged ? '数据包中的原始资源会保留。' : '托管的作品文件和截图会一并删除。'}已有盲评记录的作品不能删除，请使用撤下或标记存疑。操作会记入审核记录。`,
-        confirm: '删除作品', danger: true,
-      });
-      if (!confirmed || !sheet.el.open) return;
-      await api(`works/${encodeURIComponent(w.task)}/${encodeURIComponent(w.id)}`, { method: 'DELETE' });
+      const body = await withdrawDialog(w, packaged);
+      if (!body || !sheet.el.open) return;
+      await api(`works/${encodeURIComponent(w.task)}/${encodeURIComponent(w.id)}`, { method: 'DELETE', body });
       sheet.close();
-      toast('作品已删除');
+      toast(body.void ? '作品已下架，对局已作废' : '作品已下架');
       await refreshPlatform('delete');
     } catch (err) { error.textContent = err.message; }
     finally { setBusy(false); }
   });
   syncSettings();
   return sheet;
+}
+
+// Withdrawal keeps counted ballots; voiding drops them (reason shown in the audit log) and purging
+// erases hosted files. Vote-free uploads lose their files either way.
+function withdrawDialog(w, packaged) {
+  return new Promise((resolve) => {
+    let answer = null;
+    const sheet = openDialog({
+      title: '下架这件作品？',
+      className: 'confirm-sheet',
+      body: `<form class="withdraw-form">
+        <p class="sheet-text">「${esc(w.title)}」会从展厅和盲评中下架。已计入的盲评票默认继续保留在榜单中。操作会记入审核记录。</p>
+        <label class="work-display-setting"><span><b>作废它参与的对局</b><small>冒名、作弊或生成方式不实时使用，相关票从榜单移出</small></span><input type="checkbox" role="switch" name="void"></label>
+        <label class="field" hidden data-void-reason><span class="field-label">作废原因</span><textarea class="input" name="reason" rows="2" maxlength="500"></textarea></label>
+        ${packaged ? '<p class="fine">数据包中的原始资源由数据仓库维护，不会删除。</p>' : '<label class="work-display-setting"><span><b>清除托管文件</b><small>侵权、违法或隐私问题时使用，删除后无法恢复；没有对局记录的作品总会清除</small></span><input type="checkbox" role="switch" name="purge"></label>'}
+        <p class="form-error" role="alert"></p>
+        <div class="sheet-actions"><button class="btn" type="button" data-sheet-close>取消</button><button class="btn primary danger" type="submit">下架</button></div>
+      </form>`,
+      onClose: () => resolve(answer),
+    });
+    const form = $('form', sheet.el);
+    form.void.addEventListener('change', () => { $('[data-void-reason]', form).hidden = !form.void.checked; });
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const reason = form.reason.value.trim();
+      if (form.void.checked && !reason) { $('.form-error', form).textContent = '作废对局时请写明原因'; return; }
+      answer = { ...(form.void.checked ? { void: true, reason } : {}), ...(form.purge?.checked ? { purge: true } : {}) };
+      sheet.close();
+    });
+  });
 }
