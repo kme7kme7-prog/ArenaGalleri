@@ -38,6 +38,12 @@ export function openWorkManagement(ctx, w, { questions = [], audit = [], createE
   const initial = flagsOf(w);
   const decision = held(w) ? 'content' : 'review';
   const canOpenDecision = canDecide(w) && (decision === 'content' ? Boolean(onContent) : !questionHidden && Boolean(onReview));
+  // Uploads can be re-homed to another question; package works keep the question the data pack gives them.
+  const movable = !packaged && canDecide(w);
+  const homes = new Map([...ctx.DATA.tasks, ...questions].map((q) => [q.id, q.title]));
+  if (!homes.has(w.task)) homes.set(w.task, task?.title ?? w.task);
+  const homeHint = packaged ? '数据包作品的归属题目由数据仓库维护。' : !movable ? '你发布的作品需由其他管理员调整归属题目。'
+    : '改到其他题目后，这件作品的盲评记录、评论和表情一起迁移。';
   const sheet = openDialog({
     title: '管理作品',
     className: 'work-manage-sheet',
@@ -65,6 +71,7 @@ export function openWorkManagement(ctx, w, { questions = [], audit = [], createE
         </aside>
         <section class="work-manage-fields">
           <h3 class="mini-heading">作品信息</h3>
+          <label class="field"><span class="field-label">所属题目</span><select class="input" name="task"${movable ? '' : ' disabled'}>${[...homes].map(([id, title]) => `<option value="${esc(id)}"${id === w.task ? ' selected' : ''}>${esc(title)}</option>`).join('')}</select><span class="field-hint">${homeHint}</span></label>
           ${workFieldsHtml(ctx, task, w, { expanded: true })}
           <div class="work-display-settings"><h3 class="mini-heading">展示设置</h3>
             <label class="work-display-setting"><span><b>展览馆公开展示</b><small data-gallery-hint></small></span><input type="checkbox" role="switch" name="show_gallery" aria-label="展览馆公开展示"${initial.show_gallery ? ' checked' : ''}></label>
@@ -118,6 +125,7 @@ export function openWorkManagement(ctx, w, { questions = [], audit = [], createE
     error.textContent = '';
     let meta;
     try { meta = editor.collect(); } catch (err) { error.textContent = err.message; return; }
+    if (movable && form.elements.task.value !== w.task) meta.task = form.elements.task.value;
     const faces = {};
     if (canDecide(w) && !blockedReason) {
       for (const key of ['show_gallery', 'show_arena']) {

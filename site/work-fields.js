@@ -58,8 +58,10 @@ export function workFieldsHtml(ctx, task, work = null, { extra = '', expanded = 
   const harnessName = ctx.HARNESSES.get(w.harness)?.name ?? w.harnessName ?? w.harness ?? '';
   const provider = ctx.providerOf(w)?.id ?? '';
   const filled = ['summary', 'note'].some((key) => w[key]);
+  // A title that is only the default name follows later model and effort edits.
+  const autoTitle = Boolean(w.title) && w.title === defaultTitle(modelName, w.effort ?? '');
   return `
-    <label class="field"><span class="field-label">作品标题<small>选填</small></span><input class="input" name="title" maxlength="40" placeholder="例如：云山古刹" value="${esc(w.title ?? '')}"><span class="field-hint">不填则显示为「模型名称 · 推理档位」。</span></label>
+    <label class="field"><span class="field-label">作品标题<small>选填</small></span><input class="input" name="title" maxlength="40" placeholder="例如：云山古刹" value="${esc(w.title ?? '')}"${autoTitle ? ` data-auto-title="${esc(w.title)}"` : ''}><span class="field-hint">不填则显示为「模型名称 · 推理档位」。</span></label>
     ${variants.length ? `<label class="field"><span class="field-label">提示词版本<i>*</i></span><select class="input" name="promptVariant" required><option value="">选择生成时用的版本</option>${variants.map((v) => option(v.id, v.label, v.id === w.promptVariant)).join('')}</select><span class="field-hint">展厅会把同一模型的各版本合成一张卡片，可切换对比。</span></label>` : ''}
     <div class="field-row">
       <label class="field"><span class="field-label">模型名称<i>*</i></span><input class="input" name="modelName" required maxlength="60" list="${modelList}" value="${esc(modelName)}" placeholder="选择或填写模型名称"><datalist id="${modelList}" data-models>${modelOptions(ctx)}</datalist><span class="field-hint">优先从列表选择；列表里没有就直接输入新模型名称。</span></label>
@@ -82,8 +84,14 @@ export function workFieldsHtml(ctx, task, work = null, { extra = '', expanded = 
     </div></details>`;
 }
 
+const defaultTitle = (modelName, effort) => [modelName.trim(), effort.trim()].filter(Boolean).join(' · ').slice(0, 40);
+
 // Shows the "other" inputs that belong to the changed field.
 export function onWorkFieldChange(form, target) {
+  const title = form.elements.title;
+  if (['modelName', 'effort'].includes(target.name) && title?.dataset.autoTitle && title.value === title.dataset.autoTitle) {
+    title.value = title.dataset.autoTitle = defaultTitle(form.elements.modelName.value, form.elements.effort.value);
+  }
   if (target.name === 'modelName') {
     const name = target.value.trim();
     $('[data-other-model]', form).hidden = !name || Boolean(registeredModel(form, name));
@@ -114,7 +122,7 @@ export function readWorkFields(form, task, { requireComplete = true } = {}) {
   const modelId = registeredModel(form, modelName);
   const harnessName = text('harnessName');
   const harnessId = registeredHarness(form, harnessName);
-  const title = (text('title') || [modelName, text('effort')].filter(Boolean).join(' · ')).slice(0, 40);
+  const title = text('title') || defaultTitle(modelName, text('effort'));
   if (!title) return fail(form, 'modelName', '请填写作品标题，或填写模型名称作为默认标题');
   if (requireComplete && (task?.promptVariants ?? []).length && !data.promptVariant) return fail(form, 'promptVariant', '请选择生成时用的提示词版本');
   if (requireComplete && !modelName) return fail(form, 'modelName', '请选择或填写模型名称');
