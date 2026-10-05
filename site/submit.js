@@ -324,7 +324,6 @@ export function uploadFlow(root, ctx, options) {
       else el.value = saved.value;
     }
     onWorkFieldChange(form, form.elements.modelName);
-    onWorkFieldChange(form, form.elements.harnessId);
     if (form.elements.summary?.value || form.elements.note?.value) $('.more-fields', form)?.setAttribute('open', '');
   }
 

@@ -29,8 +29,11 @@ function harnessOptions(ctx, selected) {
   const listed = [...ctx.HARNESSES.values()].filter((h) => h.listed || h.id === selected);
   if (selected && !ctx.HARNESSES.has(selected)) listed.push({ id: selected, name: selected });
   // The data registry orders common tools first; keep that order in every work form.
-  return listed.map((h) => option(h.id, h.name, h.id === selected)).join('');
+  return listed.map((h) => `<option value="${esc(h.name)}" data-harness-id="${esc(h.id)}"></option>`).join('')
+    + (listed.some((h) => h.name === 'Pi') ? '' : '<option value="Pi"></option>');
 }
+
+const registeredHarness = (form, name) => [...$('datalist[data-harnesses]', form).options].find((o) => o.value === name)?.dataset.harnessId;
 
 function providerOptions(ctx, selected) {
   return [...ctx.PROVIDERS.values()].map((p) => option(p.id, p.name, p.id === selected)).join('');
@@ -51,7 +54,8 @@ export function workFieldsHtml(ctx, task, work = null, { extra = '', expanded = 
   const inputId = ++workInputId;
   const modelList = `work-models-${inputId}`;
   const effortList = `work-efforts-${inputId}`;
-  const harness = w.harness ?? (w.harnessName ? '__other' : '');
+  const harnessList = `work-harnesses-${inputId}`;
+  const harnessName = ctx.HARNESSES.get(w.harness)?.name ?? w.harnessName ?? w.harness ?? '';
   const provider = ctx.providerOf(w)?.id ?? '';
   const filled = ['summary', 'note'].some((key) => w[key]);
   return `
@@ -63,10 +67,9 @@ export function workFieldsHtml(ctx, task, work = null, { extra = '', expanded = 
     </div>
     <label class="field" data-other-model${custom ? '' : ' hidden'}><span class="field-label">模型厂商</span><input class="input" name="vendor" maxlength="40" placeholder="例如 OpenAI、DeepSeek" value="${esc(custom ? w.vendor || guess : '')}" data-guess="${esc(guess)}"><span class="field-hint">这是未登记的自定义模型，填写厂商便于展厅归类；能从名称判断时已预填，可修改，不清楚可留空。</span></label>
     <div class="field-row">
-      <label class="field"><span class="field-label">Harness<i>*</i></span><select class="input" name="harnessId" required><option value="">选择 Harness</option>${harnessOptions(ctx, w.harness)}${option('__other', '其他（手动填写）', harness === '__other')}</select><span class="field-hint">生成用的工具或环境，例如 Claude Code、Cursor、官方网页对话。</span></label>
+      <label class="field"><span class="field-label">Harness<i>*</i></span><input class="input" name="harnessName" required maxlength="40" list="${harnessList}" value="${esc(harnessName)}" placeholder="选择或填写 Harness"><datalist id="${harnessList}" data-harnesses>${harnessOptions(ctx, w.harness)}</datalist><span class="field-hint">选择生成用的工具或环境；列表里没有就直接填写名称。</span></label>
       <label class="field"><span class="field-label">服务商<i>*</i></span><select class="input" name="providerId" required><option value="">选择服务商</option>${providerOptions(ctx, provider)}</select><span class="field-hint">「官方」指模型厂商自己的 API、网页或 App。</span></label>
     </div>
-    <label class="field" data-other-harness${harness === '__other' ? '' : ' hidden'}><span class="field-label">其他 Harness<i>*</i></span><input class="input" name="harnessOther" maxlength="40" placeholder="填写工具或环境名称" value="${esc(harness === '__other' ? w.harnessName : '')}"></label>
     <div class="field-row">
       <label class="field"><span class="field-label">生成方式<i>*</i></span><select class="input" name="generationMode" required><option value="">请选择</option>${GENERATION_MODES.map(([value, text]) => option(value, text, value === w.generationMode)).join('')}</select></label>
       <label class="field"><span class="field-label">人工介入<i>*</i></span><select class="input" name="humanIntervention" required><option value="">请选择</option>${INTERVENTIONS.map(([value, text]) => option(value, text, value === w.humanIntervention)).join('')}</select></label>
@@ -89,9 +92,6 @@ export function onWorkFieldChange(form, target) {
     if (!vendor.value.trim() || vendor.value === vendor.dataset.guess) vendor.value = vendor.dataset.guess = name ? guessVendor(name) : '';
     return;
   }
-  const toggle = { harnessId: '[data-other-harness]' }[target.name];
-  if (!toggle) return;
-  $(toggle, form).hidden = target.value !== '__other';
 }
 
 function fail(form, name, message) {
@@ -112,13 +112,14 @@ export function readWorkFields(form, task, { requireComplete = true } = {}) {
   const text = (name) => (data[name] ?? '').trim();
   const modelName = text('modelName');
   const modelId = registeredModel(form, modelName);
+  const harnessName = text('harnessName');
+  const harnessId = registeredHarness(form, harnessName);
   const title = (text('title') || [modelName, text('effort')].filter(Boolean).join(' · ')).slice(0, 40);
   if (!title) return fail(form, 'modelName', '请填写作品标题，或填写模型名称作为默认标题');
   if (requireComplete && (task?.promptVariants ?? []).length && !data.promptVariant) return fail(form, 'promptVariant', '请选择生成时用的提示词版本');
   if (requireComplete && !modelName) return fail(form, 'modelName', '请选择或填写模型名称');
   if (requireComplete && !text('effort')) return fail(form, 'effort', '请选择或填写推理档位');
-  if (requireComplete && !data.harnessId) return fail(form, 'harnessId', '请选择 Harness');
-  if (data.harnessId === '__other' && !text('harnessOther')) return fail(form, 'harnessOther', '请填写 Harness 名称');
+  if (requireComplete && !harnessName) return fail(form, 'harnessName', '请选择或填写 Harness');
   if (requireComplete && !['official', 'unofficial'].includes(data.providerId)) return fail(form, 'providerId', '请选择服务商');
   if (requireComplete && !data.generationMode) return fail(form, 'generationMode', '请选择生成方式');
   if (requireComplete && !data.humanIntervention) return fail(form, 'humanIntervention', '请选择人工介入程度');
@@ -128,7 +129,7 @@ export function readWorkFields(form, task, { requireComplete = true } = {}) {
     ...(data.promptVariant !== undefined ? { promptVariant: data.promptVariant } : {}),
     ...(modelId ? { modelId } : { modelName, vendor: text('vendor') }),
     effort: text('effort'),
-    ...(data.harnessId === '__other' ? { harnessOther: text('harnessOther') } : { harnessId: data.harnessId }),
+    ...(harnessId ? { harnessId } : harnessName ? { harnessOther: harnessName } : { harnessId: '' }),
     providerId: data.providerId,
     generationMode: data.generationMode,
     humanIntervention: data.humanIntervention,

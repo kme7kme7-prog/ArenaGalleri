@@ -1,5 +1,11 @@
 # HANDOFF.md · 当前状态
 
+## Harness 单框输入与 Pi（2026-10-05）
+
+- 共用投稿、作者编辑与管理员审核：Harness改为候选输入框，加入Pi，移除单独其他Harness。登记项发送原ID，自定义及尚未登记的Pi发送现有harnessOther。
+- check63/0、test29/29、build176件/68site、严格intake0错/8既有提示；本地表单核对回填、Pi、自定义、登记ID、空值及390手机。未做生产投稿或审核保存。
+- 用户授权先提交推送再部署；提交时待部署，资产目标465a5700a96f182a44bb06d1。最终执行结果在忽略目录output/harness-pi-20261005/deploy-result.json，旧站备份/root/aob-harness-pi-20261005/gallery-backup。[本轮记录](docs/archive/2026-10-05-harness-pi-wsnxxxs.md)。
+
 ## 更正模型名后清除旧榜单归属（2026-10-05，已上线）
 
 - 用户反馈更正模型名后旧名仍排名；只读生产证据确认滕王阁上传作品已改为 GPT-6.1 Sol / Max，但6条 arena 历史票仍用 GPT6.1 原快照计分，公开按模型榜复现截图。根因在后端快照归属，不是 Gallery 缓存。
