@@ -48,6 +48,8 @@
 
 启动时并行读取本地展示目录和后台 bootstrap，bootstrap 8 秒没有响应就按静态档案运行。数据版本仍用于写请求兼容，API 契约不可用时保留静态浏览。后台地址由 `runtime-config.js` 或构建环境变量配置，服务端密钥不得进入前端。
 
+Gallery 独立主机的生产构建必须设置 `API_BASE_URL=https://api.arenaofbias.icu/api/` 再运行 `npm run build`，不能发布默认相对 `api/` 的本地配置。上线后运行 `npm run check:deployment -- https://gallery.arenaofbias.icu/ https://api.arenaofbias.icu/api/`，校验网站实际配置的 API、CORS、数据包兼容性及公开题目总数；浏览器另核对全部社区题目 ID 均出现在题库中。静态数据包只有20题，显示20题不能作为完整生产题库验收。
+
 题库只对有解答的题读取代表作品榜单，空题直接显示等待首份答案，避免无用请求触发共享读取限制。同题长短版本保持题目 ID，卡片按模型、推理档位与来源分组；每份作品保留独立 ID，并排预览两栏各自选择已收录版本。
 
 ## 验证与部署

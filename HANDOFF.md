@@ -1,5 +1,11 @@
 # HANDOFF.md · 当前状态
 
+## 生产API配置热修复与社区题库恢复（2026-10-05，已上线）
+
+- 更正上一轮验收：未设置生产API_BASE_URL的构建覆盖了生产runtime-config为相对api/，Gallery主机bootstrap404，静态回退只显示包内20题，遗漏19道社区题及后台作品。后端仍有39公开题，无题目/作品数据删除；主代理漏查实际配置API与全题目数。
+- 已恢复生产绝对API地址，并按生产环境重建发布资产a021f7b3a179302e1878f1b8，index/version已切换，默认works保留。只改静态Gallery，后端/数据库/正式包未动，catalog字节不变。
+- 新增check:deployment校验公网runtime实际API地址、bootstrap、CORS、兼容与题目覆盖，ARCHITECTURE补生产命令及逐题ID验收。check64/0、test29/29、build176件/68site、严格intake0错/8既有提示；新公网检查通过。浏览器39题ID与bootstrap完全一致，missing/extra0，486件计数（不计存疑），降序、1280桌面和390手机目检通过，无横溢/脚本错误。
+- 忽略证据output/api-config-hotfix-20261005/；静态切换备份/root/aob-api-config-hotfix-20261005/gallery-backup。没有生产登录、邮件、投稿、审核或有效计票。[交付记录](docs/archive/2026-10-05-production-api-hotfix-wsnxxxs.md)。
 ## 题库默认作品数降序与联合发布（2026-10-05，已上线）
 
 - 用户授权提交、联调、适用分支合并推送与部署；三个 GPT-6.1 Sol / medium 子任务分别负责排序、后端、游戏与数据复核。题库默认 works（作品数多到少），保留已有排序偏好和原计数/并列规则，PRODUCT同步；既有 Gallery 作品移动提交0615641和后端管理编辑ec6af47一起发布。
