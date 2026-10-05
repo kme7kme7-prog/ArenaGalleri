@@ -1,5 +1,12 @@
 # HANDOFF.md · 当前状态
 
+## 新数据包、下架后端与Gallery部署（2026-10-05，已上线）
+
+- 用户明确部署新包、后端和Gallery，包含c5209ef有票作品下架；GPT-6.1 Sol / medium子任务复核后端与生产副本。Gallery发布源码d5ed0ce（含1fe187a），明确生产API构建资产8a4433f19ad112b9b87bbad5；后端f02861b（含c5209ef）及新正式包已上线。准确私有包版本保存在忽略配置/证据，游戏未改，旧包保留服务旧对局。
+- Gallery check64/0、test29/29、生产build176件/68site、严格intake0错/8既有提示、当前后端新包integration通过；后端本地/Linux check108/0、test317/317与CI通过；包2288文件逐远端Git blob匹配。源码首次传输不完整在暂存校验拦截，压缩重传SHA正确后继续，未影响旧服务。
+- 生产一致副本旧后端旧包/新后端旧包/新后端新包均3757有效票，没有新增恢复/退出票，原行与schema未变。停服备份切换前后21表原列原行摘要一致；启动后4035原票逐行保留，v40、integrity ok、外键0、服务active/running、NRestarts0。全Gallery和包SHA匹配目标，游戏文件不变。
+- 公网check:deployment及17项检查通过，新注册显示名/作品归属/下架UI核对；浏览器39题ID无遗漏且works降序，1280桌面/390手机目检，无横溢/脚本错误。API498作品，题库496可计数作品。此前模型名与下架轮的未部署状态由本节覆盖。
+- 未操作生产下架/作废/清除/有效投票；未做已有投稿模型登记或0902历史票归属更正，仍为待办。回退/root/aob-model-package-release-20261005/backup/，忽略证据output/model-package-release-20261005/。[交付记录](docs/archive/2026-10-05-model-package-deployment-wsnxxxs.md)。
 ## 统一模型名与数据包 pin（2026-10-05，已推送，未部署）
 
 - 数据仓 7fde837 出包 640346405751b4f1a22e84bea356d35cacc14c35：MiniMax M3.1 显示为 MiniMax M3.1 Flash Preview，中式建筑 Qwen3.8 Max 0902 作品归入 qwen3.8-max；后端 f02861b 与本地 datapack.json 已改指向。check64/0、test29/29、build176件/68site、严格intake0错/8既有提示。
