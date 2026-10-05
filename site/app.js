@@ -197,7 +197,7 @@ const sideNav = (label, links) => `<nav class="side-nav section-nav" aria-label=
 const pageEnd = () => `${footer()}</main></div>`;
 const searchControl = (type, placeholder, value = '') => `<label class="collection-search">${icon('search')}<input type="search" data-${type}-search aria-label="${placeholder}" placeholder="${placeholder}" value="${esc(value)}"></label>`;
 const questionSorts = { date: '发布时间（最新在前）', works: '解答数量（多到少）', title: '题目名称（A–Z）' };
-const homeState = { category: '', domain: '', model: '', query: '', view: 'tasks', sort: Object.hasOwn(questionSorts, store.get('question-sort')) ? store.get('question-sort') : 'date', modelQuery: '', vendor: '' };
+const homeState = { category: '', domain: '', model: '', query: '', view: 'tasks', sort: Object.hasOwn(questionSorts, store.get('question-sort')) ? store.get('question-sort') : 'works', modelQuery: '', vendor: '' };
 
 // ---- home -----------------------------------------------------------------------------
 // Questioned works stay visible as reference but are left out of every count.

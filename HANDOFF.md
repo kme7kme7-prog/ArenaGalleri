@@ -1,5 +1,12 @@
 # HANDOFF.md · 当前状态
 
+## 题库默认作品数降序与联合发布（2026-10-05，已上线）
+
+- 用户授权提交、联调、适用分支合并推送与部署；三个 GPT-6.1 Sol / medium 子任务分别负责排序、后端、游戏与数据复核。题库默认 works（作品数多到少），保留已有排序偏好和原计数/并列规则，PRODUCT同步；既有 Gallery 作品移动提交0615641和后端管理编辑ec6af47一起发布。
+- 四仓fetch核对后，全部功能分支已包含于main，无新增合并。后端2d073149、游戏e9bcb7e（origin/fork）、数据b325758（origin）已同步；游戏与数据本轮仅复核归档，无业务/正式包变化。Gallery本轮源码与归档统一英文提交推送。
+- Gallery check63/0、test29/29、build176件/68site、严格intake0错/8既有提示；当前真实后端integration smoke通过。后端check108/0、test317/317、公开CI成功；游戏与数据适用检查全部通过。临时库浏览器验证默认降序、排序保持、作品移动保存和Pi；1280桌面及390手机核对，无脚本错误或横溢。
+- 2026-10-05 21:49 AEST已上线Gallery资产a84b499a08d45f89c07a8a0e、后端2d073149；公网17项和生产题库降序/桌面手机目检通过。停服备份后切换，21表原列原行摘要一致，v40、integrity ok、外键0、服务active/running、NRestarts0；catalog字节不变，全Gallery SHA匹配。旧Python暂存解包失败在停服前，修兼容后成功。
+- 未做生产登录、真实邮件、投稿、审核、移动真实作品或有效计票；未测全部作品。回退材料/root/aob-sort-release-20261005/backup/，忽略证据output/sort-release-20261005/。保留旧worktree与其他会话文件。[交付记录](docs/archive/2026-10-05-question-sort-release-wsnxxxs.md)。
 ## 作品管理调整归属题目与默认标题跟随（2026-10-05，已提交，未推送部署）
 
 - 用户反馈管理后台改信息后作品仍按原模型合组，且不能改作品所属题目。主因在后端仓库管理后台弹窗（模型登记 ID 覆盖改名），见后端 HANDOFF。
