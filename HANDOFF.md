@@ -1,5 +1,11 @@
 # HANDOFF.md · 当前状态
 
+## OMP Harness 候选（2026-10-07，已上线）
+
+- 共用表单补充 OMP 回退候选，按登记名称去重，Pi 独立保留；PRODUCT 说明登记与手填两种行为。跟踪文件无待替换的旧名称，数据包及私有仓库未改。
+- check64/0、test29/29、正式build176件/68site、严格intake0错/8既有提示。构建产物实际投稿表单本地夹具：登记/去登记均仅一个 OMP，提交分别为 harnessId=omp / harnessOther=OMP；1280桌面及390手机目检无横溢。无脚本错误，2条iframe浏览器提示。未做生产登录、投稿保存、真机或全部交互验证。
+- 已部署至用户指定服务器，资产 0f44e6373582a250b59d1936，仅3个静态文件变化；完整目录SHA及公网3文件SHA通过，data.json与API配置一致。公网check:deployment通过（49题/29社区题），线上模块登记/回退值核对通过，浏览器错误/警告0。本轮一条英文提交，不推送。回退 /root/aob-omp-20261007/gallery-backup；忽略证据 output/playwright/omp-20261007/。[交付记录](docs/archive/2026-10-07-omp-harness-wsnxxxs.md)。
+
 ## Xiaomi MiMo Harness 候选（2026-10-06，已上线）
 
 - 共用作品表单补充 Xiaomi MiMo Desktop、Xiaomi MiMo Code，覆盖投稿、作者编辑、管理员审核及作品管理；未登记时发送 harnessOther，登记后沿用登记 ID，无重复候选。PRODUCT 同步。
