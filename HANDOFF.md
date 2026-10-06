@@ -1,5 +1,13 @@
 # HANDOFF.md · 当前状态
 
+## Dots3-Note-Preview 登记与联合发布（2026-10-06，已上线）
+
+- 用户授权接续提交、推送、部署和线上改登记。Gallery 发布源码 dbea8e7，生产 API 根地址构建，资产 5ad2894c7118400476fe77ae；后端 e9f3282 与新正式包连续部署，版本一致。准确私有产物仅保存在忽略配置与运维证据。
+- shadow 经后端 setMeta 将 little-red-riding-hood/up-n2x66q0t 改登记为 dots3-note，自动更正 6 侧；停服前后有效比较 4945→4945，重跑作品编辑/票更正/新审计均0。公网旧键消失，新行 Dots3-Note-Preview / rednote hilab，6 次比较、1 件作品。5232 条票的原始列保留，718 件作品除目标登记字段与更新时间外逐列相同，仅新增7审计；v40、integrity ok、外键0、服务active/running、NRestarts0。
+- check64/0、test29/29、生产build176件/68site、严格intake0错/8既有提示；后端本地/Linux check109/0、test318/318。新包2288文件逐Git blob验证、4文件差异试应用，Gallery4文件差异且全量manifest/精确文件集合通过，version最后独立发布。
+- check:deployment 补齐与前端相同的根API地址规范化，并明确检查数据包是否一致；公网检查通过（47题、27社区题）。浏览器榜单搜索Dots3目检通过，无未收录标记、无脚本警告/错误；未测真机、所有交互、登录/投稿/新增有效票或旧标签页加载失败恢复。
+- 源注册表listed:true；构建包和公开data.json会裁掉listed字段，模型已进入公开列表。备份保留/root/aob-dots3-release-20261006/backup/，忽略证据output/dots3-release-20261006/；未改游戏、模型ID或凭据。[交付记录](docs/archive/2026-10-06-dots3-registration-release-wsnxxxs.md)。
+
 ## 新数据包、下架后端与Gallery部署（2026-10-05，已上线）
 
 - 用户明确部署新包、后端和Gallery，包含c5209ef有票作品下架；GPT-6.1 Sol / medium子任务复核后端与生产副本。Gallery发布源码d5ed0ce（含1fe187a），明确生产API构建资产8a4433f19ad112b9b87bbad5；后端f02861b（含c5209ef）及新正式包已上线。准确私有包版本保存在忽略配置/证据，游戏未改，旧包保留服务旧对局。
