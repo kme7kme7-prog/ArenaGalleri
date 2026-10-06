@@ -1,5 +1,11 @@
 # HANDOFF.md · 当前状态
 
+## Xiaomi MiMo Harness 候选（2026-10-06，已上线）
+
+- 共用作品表单补充 Xiaomi MiMo Desktop、Xiaomi MiMo Code，覆盖投稿、作者编辑、管理员审核及作品管理；未登记时发送 harnessOther，登记后沿用登记 ID，无重复候选。PRODUCT 同步。
+- check64/0、test29/29、正式 build176件/68site、严格 intake0错/8既有提示。共用表单两个名称保存字段核对，桌面/390手机目检；公网模块候选与3个发布文件SHA通过，check:deployment48题/28社区题，线上浏览器错误/警告0。未做生产登录、投稿或审核保存。
+- 已上线资产 d0bc1855fbc63a42cc8cf00c，仅3个静态文件变化，数据目录及生产根API配置一致。初次构建API写法差异在发布前拦截，改用线上配置重建；SSH传输缓慢改用scp，上传SHA及完整目录校验通过后切换。备份 /root/aob-xiaomi-mimo-20261006/gallery-backup，忽略证据 output/playwright/xiaomi-mimo-20261006/。本轮提交，不推送。[交付记录](docs/archive/2026-10-06-xiaomi-mimo-harness-wsnxxxs.md)。
+
 ## Dots3-Note-Preview 登记与联合发布（2026-10-06，已上线）
 
 - 用户授权接续提交、推送、部署和线上改登记。Gallery 发布源码 dbea8e7，生产 API 根地址构建，资产 5ad2894c7118400476fe77ae；后端 e9f3282 与新正式包连续部署，版本一致。准确私有产物仅保存在忽略配置与运维证据。

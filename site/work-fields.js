@@ -30,7 +30,9 @@ function harnessOptions(ctx, selected) {
   if (selected && !ctx.HARNESSES.has(selected)) listed.push({ id: selected, name: selected });
   // The data registry orders common tools first; keep that order in every work form.
   return listed.map((h) => `<option value="${esc(h.name)}" data-harness-id="${esc(h.id)}"></option>`).join('')
-    + (listed.some((h) => h.name === 'Pi') ? '' : '<option value="Pi"></option>');
+    + ['Pi', 'Xiaomi MiMo Desktop', 'Xiaomi MiMo Code']
+      .filter((name) => !listed.some((h) => h.name === name))
+      .map((name) => `<option value="${esc(name)}"></option>`).join('');
 }
 
 const registeredHarness = (form, name) => [...$('datalist[data-harnesses]', form).options].find((o) => o.value === name)?.dataset.harnessId;
