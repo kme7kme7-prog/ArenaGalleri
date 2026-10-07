@@ -6,6 +6,7 @@ import { loadTurnstile, mountTurnstile } from './turnstile.js';
 import { CONTACT } from './legal.js';
 import { openAuthDialog } from './auth-dialog.js';
 import { sticker, stickerName } from './stickers.js';
+import { aiJudged } from './categories.js';
 
 export const platform = {
   available: false,
@@ -49,6 +50,9 @@ export async function connectPlatform(buildInfo = frontendBuildInfo, request = r
       platform.mismatch = true;
       return false;
     }
+    // AI-graded questions have no blind pool, whatever the server still reports for them.
+    const graded = new Set((bootstrap.questions ?? []).filter(aiJudged).map((q) => q.id));
+    bootstrap.arena = Object.fromEntries(Object.entries(bootstrap.arena ?? {}).filter(([id]) => !graded.has(id)));
     Object.assign(platform, resolveApiMedia(bootstrap, 'bootstrap'), { available: true, mismatch: false, stale: staleBuild(buildInfo, bootstrap) });
     return true;
   } catch {

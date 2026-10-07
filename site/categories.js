@@ -1,17 +1,20 @@
-// Questions sit on two axes. The category is the type of the answer (text, design, 3D): it groups the
-// library and the leaderboard and decides which submission formats a question accepts. Stored names
-// stay as they are, so links and votes keep working; `label` is what readers see.
+// Questions sit on two axes. The category is the kind of work asked for (writing, reasoning, design, 3D):
+// it groups the library and the leaderboard, decides which submission formats a question accepts and
+// how its works are judged. Stored names stay as they are, so links and votes keep working; `label` is
+// what readers see. `judging: 'ai'` keeps a category out of blind comparison and the leaderboard; its
+// works will carry an AI grade (see aiScoreOf) once grading opens.
 // Domains say what a question is about (数学, 化学, 建筑…): one or two per question, for browsing only.
 export const CATEGORIES = [
-  { name: '文学', label: '文本', note: '故事、诗歌、推导与证明', slug: 'text', glyph: 'text', templates: ['text'] },
-  { name: '静态网页', label: '设计', note: '页面布局、交互与可视化', slug: 'page', glyph: 'desktop', templates: ['static'] },
-  { name: '建模', label: '三维', note: '三维场景、模型与模拟', slug: 'model', glyph: 'cube', templates: ['static'] },
+  { name: '文学', label: '写作', note: '故事、诗歌、文案与改写', slug: 'text', glyph: 'text', templates: ['text'], judging: 'vote' },
+  { name: '推理', label: '推理', note: '数学、逻辑与哲学 · AI 评分', slug: 'reasoning', glyph: 'reason', templates: ['text'], judging: 'ai' },
+  { name: '静态网页', label: '设计', note: '页面布局、交互与可视化', slug: 'page', glyph: 'desktop', templates: ['static'], judging: 'vote' },
+  { name: '建模', label: '三维', note: '三维场景、模型与模拟', slug: 'model', glyph: 'cube', templates: ['static'], judging: 'vote' },
 ];
 export const TEMPLATE_LABELS = { text: '纯文本 / Markdown', static: '单个 HTML 文件' };
 // The backend may send its own list in bootstrap (`domains`); this one stands in without it.
 export const DOMAIN_GROUPS = [
   { title: '理工与健康', domains: ['数学', '物理', '化学', '生物', '天文', '计算机技术', '工程技术', '医学健康', '地理环境'] },
-  { title: '人文与社会', domains: ['文学艺术', '历史文化', '教育学习', '经济金融', '商业管理', '法律政务', '社会生活'] },
+  { title: '人文与社会', domains: ['文学艺术', '哲学', '历史文化', '教育学习', '经济金融', '商业管理', '法律政务', '社会生活'] },
   { title: '空间与产品', domains: ['建筑', '自然景观', '交通与机械', '产品与品牌'] },
   { title: '生活与娱乐', domains: ['游戏娱乐', '生活服务', '餐饮美食', '旅游出行', '运动体育'] },
 ];
@@ -20,6 +23,15 @@ export const MAX_DOMAINS = 2;
 
 export const categoryOf = (name) => CATEGORIES.find((c) => c.name === name) ?? null;
 export const categoryLabel = (name) => categoryOf(name)?.label ?? name ?? '';
+// Unknown categories are judged by vote, as every category was before AI grading.
+export const aiJudged = (task) => categoryOf(task?.category)?.judging === 'ai';
+export const votedTask = (task) => !aiJudged(task);
+// Reserved for AI grading: { score, max, judge, rationale } on a work, null until a grade arrives.
+export function aiScoreOf(work) {
+  const grade = work?.aiScore;
+  if (!grade || !Number.isFinite(grade.score) || !(grade.max > 0)) return null;
+  return { score: grade.score, max: grade.max, judge: grade.judge ?? '', rationale: grade.rationale ?? '' };
+}
 // Questions that predate formats take their category's; the category itself is never a tag.
 // Pages arrive as one HTML file only: questions stored with the retired ZIP format `vite` take `static`.
 export const templatesOf = (task) => [...new Set((task.templates?.length ? task.templates : categoryOf(task.category)?.templates ?? ['static'])

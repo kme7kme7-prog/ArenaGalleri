@@ -18,7 +18,7 @@ import { CONTACT, aigcLabel, beianLink, mount as renderLegal } from './legal.js'
 import { effortRank, representatives, standard, taskCover } from './featured.js';
 import { groupVariantResults, variantChoices, variantKey, variantsOf } from './prompt-variants.js';
 import { downloadReference, linkReferences, referenceSheet, useReferenceViewer } from './references.js';
-import { categoryLabel, categoryOf, domainList, domainsIn, domainsOf, searchMatch, tracksOf } from './categories.js';
+import { aiJudged, aiScoreOf, categoryLabel, categoryOf, domainList, domainsIn, domainsOf, searchMatch, tracksOf } from './categories.js';
 import { modelResolver } from './models.js';
 import { createWorkControls, workFrameUrl } from './work-controls.js';
 import { hasModelPreview, screenshotOf } from './work-preview-media.js';
@@ -46,6 +46,12 @@ const label = (r) => (r.effort ? `${modelOf(r).name} · ${r.effort}` : modelOf(r
 // Works outside the blind test (multi-turn or with human help) say so on their card.
 const INTERVENTION_TEXT = { 'prompt-guided': '人工提示与指导', 'code-edited': '人工修改了代码' };
 const generationBadges = (r) => standard(r) ? '' : `${r.generationMode === 'multi-turn' ? '<span class="badge" title="多轮生成 · 只展示，不参与盲评">多轮</span>' : ''}${INTERVENTION_TEXT[r.humanIntervention] ? `<span class="badge" title="${INTERVENTION_TEXT[r.humanIntervention]} · 只展示，不参与盲评">人工介入</span>` : ''}`;
+// AI-graded questions show their grade where blind questions rely on the leaderboard.
+const aiScoreBadge = (r) => {
+  const grade = aiScoreOf(r);
+  return grade ? `<span class="badge" title="${esc(grade.judge ? `评分模型：${grade.judge}` : 'AI 评分')}">AI 评分 ${grade.score} / ${grade.max}</span>`
+    : '<span class="badge" title="推理题由 AI 评分，评分开放前不显示">AI 评分待开放</span>';
+};
 const resultBadges = (r) => `${r.effort ? `<span class="badge">${esc(r.effort)}</span>` : ''}${r.sourceLabel ? `<span class="badge source-badge">${esc(r.sourceLabel)}</span>` : ''}${generationBadges(r)}`;
 // Leaderboard entry of a work (model + effort), the same key the server ranks by.
 const normal = (s) => String(s ?? '').normalize('NFKC').trim().toLowerCase();
@@ -535,7 +541,7 @@ function activatePanel(name, updateHash = true) {
 // The task leaderboard doubles as the source of the "榜单评分" sort.
 let taskBoard = null;
 async function loadTaskScores(t) {
-  if (!platform.available) return;
+  if (!platform.available || aiJudged(t)) return;
   try {
     const board = await api(`leaderboard?task=${encodeURIComponent(t.id)}`);
     if (taskState.task !== t.id) return;
@@ -593,7 +599,7 @@ function resultCard(t, r) {
     </div>
     <div class="result-body">
       ${resultVariantButtons(t, r)}
-      <p class="result-model">${brandMark(m, 'brand-mark sm')}<b>${esc(m.name)}</b>${resultBadges(r)}${platform.featured?.[t.id]?.models?.[modelKey(r)] === r.id ? '<span class="badge featured-badge" title="盲评票选出的代表作">代表作</span>' : ''}${statusBadge(r.status, { reason: r.reason })}</p>
+      <p class="result-model">${brandMark(m, 'brand-mark sm')}<b>${esc(m.name)}</b>${resultBadges(r)}${aiJudged(t) ? aiScoreBadge(r) : ''}${platform.featured?.[t.id]?.models?.[modelKey(r)] === r.id ? '<span class="badge featured-badge" title="盲评票选出的代表作">代表作</span>' : ''}${statusBadge(r.status, { reason: r.reason })}</p>
       ${lead ? `<p class="lead-why">${t.cover === coverWork.id ? '管理员指定的本题封面' : platform.featured?.[t.id]?.cover === coverWork.id ? '盲评票选的代表作' : '本题封面作品 · 盲评票数足够后改由票选决定'}</p>` : ''}
       <h3><a href="${viewHref(t, r.id)}">${esc(r.title)}${icon('arrow')}</a></h3>
       <p class="result-by">${esc(authorName(r))} 发布${sourceLine(r) || r.tool ? ` · ${esc(sourceLine(r) || r.tool)}` : ''}${r.addedAt ? ` · ${formatDate(r.addedAt)}` : ''}</p>
@@ -699,7 +705,8 @@ function renderTask(t) {
   const works = counted(t);
   const pool = platform.arena[t.id];
   const actions = platform.available ? `<div class="task-acts">
-    ${(pool?.entries ?? 0) >= 2 ? act('judge', `#/arena/${esc(t.id)}`, AB, '参与盲评', `可盲评 ${pool.works} 件`) : act('judge', '', AB, '参与盲评', '作品不足', '至少需要两个模型配置的作品进入盲评池')}
+    ${aiJudged(t) ? act('judge', '', icon('reason'), 'AI 评分', '暂未开放', '推理题由 AI 评分，不参与盲评和排行榜')
+      : (pool?.entries ?? 0) >= 2 ? act('judge', `#/arena/${esc(t.id)}`, AB, '参与盲评', `可盲评 ${pool.works} 件`) : act('judge', '', AB, '参与盲评', '作品不足', '至少需要两个模型配置的作品进入盲评池')}
     ${t.acceptsUploads ? act('upload', `#/submit/${esc(t.id)}`, icon('upload'), '上传作品', '交一份你的答案') : act('upload', '', icon('upload'), '暂不接受投稿', t.promptPending ? '提示词原文尚未公开' : '这道题暂时关闭了投稿')}
   </div>` : '';
 
@@ -712,7 +719,7 @@ function renderTask(t) {
       <nav class="side-nav task-nav" aria-label="本页">
         <button class="side-link" data-go="results" aria-pressed="true">${icon('grid')}作品<span class="nav-count">${t.results.length}</span></button>
         ${t.conditions.length ? `<button class="side-link" data-go="shots" aria-pressed="false">${icon('image')}截图对照</button>` : ''}
-        ${platform.available ? `<button class="side-link" data-go="board" aria-pressed="false">${icon('rank')}排行榜</button>` : ''}
+        ${platform.available && !aiJudged(t) ? `<button class="side-link" data-go="board" aria-pressed="false">${icon('rank')}排行榜</button>` : ''}
         ${hasExhibition(t) ? `<p class="nav-sep">全屏查看</p>
         <a class="side-link" href="${sandtableHref(t)}">${icon('full')}三维沙盘<span class="nav-ext">${icon('arrow')}</span></a>
         <a class="side-link" href="#/${t.id}/exhibition">${icon('grid')}原作展厅<span class="nav-ext">${icon('arrow')}</span></a>` : ''}
@@ -753,7 +760,7 @@ function renderTask(t) {
       <p class="fine">自动截图可能使用软件渲染；实际光影与帧率请以在线预览为准。</p>
     </section>` : ''}
 
-    ${platform.available ? `<section id="board" data-panel="board" class="block wrap" hidden>
+    ${platform.available && !aiJudged(t) ? `<section id="board" data-panel="board" class="block wrap" hidden>
       <div class="block-head"><h2>榜单</h2><p>这道题的盲评结果 · 按模型与推理档位分别计分</p>${(pool?.entries ?? 0) >= 2 ? `<a class="block-hint text-link" href="#/arena/${esc(t.id)}">参与这道题的盲评${icon('right')}</a>` : ''}</div>
       <div id="board-body"><p class="muted">正在载入榜单…</p></div>
     </section>` : ''}
@@ -1556,6 +1563,7 @@ function resultOf(pack, w) {
     files: w.files,
     bytes: w.bytes,
     arena: w.arena,
+    aiScore: w.aiScore ?? pack?.aiScore ?? null,
   };
 }
 function stable(map, key, fresh) {

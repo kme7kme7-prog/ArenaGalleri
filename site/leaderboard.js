@@ -2,7 +2,7 @@
 // and the panel on each task page.
 import { $, brandMark, esc, icon, pad, store, vendorLine } from './ui.js';
 import { apiRemembered, platform, recall } from './platform.js';
-import { domainsIn, domainList, domainsOf, tracksOf } from './categories.js';
+import { domainsIn, domainList, domainsOf, tracksOf, votedTask } from './categories.js';
 
 const UNITS = { config: '按配置', model: '按模型' };
 // A domain board below either line is shown, but flagged as too thin to rank on.
@@ -175,14 +175,16 @@ export function mountBoard(container, ctx) {
   };
 }
 
-// The page's views are 综合 plus one per task category; a task narrows its category's view.
+// The page's views are 综合 plus one per voted category; a task narrows its category's view.
 // A domain narrows 综合 or a category (never a task) and rides as the last part of the address.
+// AI-graded questions are not ranked here.
 export function mount(root, ctx) {
-  const tracks = tracksOf(ctx.DATA.tasks);
+  const tasks = ctx.DATA.tasks.filter(votedTask);
+  const tracks = tracksOf(tasks);
   const [first = null, second = null] = location.hash.replace(/^#\/?/, '').split('#')[0].split('/').filter(Boolean).map(decodeURIComponent).slice(1);
-  const task = first ? ctx.DATA.tasks.find((t) => t.id === first) ?? null : null;
+  const task = first ? tasks.find((t) => t.id === first) ?? null : null;
   const track = task ? tracks.find((x) => x.name === task.category) ?? null : first ? tracks.find((x) => x.slug === first) ?? null : null;
-  const hasDomain = (name) => ctx.DATA.tasks.some((t) => domainsOf(t).includes(name));
+  const hasDomain = (name) => tasks.some((t) => domainsOf(t).includes(name));
   const domain = task ? null : !track && hasDomain(first) ? first : track && hasDomain(second) ? second : null;
   if (first && !task && !track && !domain) {
     location.replace('#/leaderboard');
@@ -201,7 +203,7 @@ export function mount(root, ctx) {
       <option value="">全部题目（${listed.length}）</option>
       ${listed.map((t) => `<option value="${esc(t.id)}"${t === task ? ' selected' : ''}${ready(t) || t === task ? '' : ' disabled'}>${esc(t.title)}${ready(t) ? `（${platform.arena[t.id].works}）` : '（作品不足）'}</option>`).join('')}
     </select></label>` : '';
-  const domains = task ? [] : domainsIn(track?.tasks ?? ctx.DATA.tasks, domainList(platform));
+  const domains = task ? [] : domainsIn(track?.tasks ?? tasks, domainList(platform));
   const domainSelect = domains.length ? `<label class="result-sort">领域<select data-board-domain aria-label="按领域查看">
       <option value="">全部领域</option>
       ${domains.map((d) => `<option value="${esc(d.name)}"${d.name === domain ? ' selected' : ''}>${esc(d.name)}（${d.tasks.length} 题）</option>`).join('')}
@@ -213,7 +215,7 @@ export function mount(root, ctx) {
           <div><dt>有效比较</dt><dd>${pad(platform.totals.votes)}</dd></div>
           <div><dt>参与者</dt><dd>${pad(platform.totals.voters)}</dd></div>
         </dl>`,
-    nav: ctx.sideNav('榜单范围', [['#/leaderboard', 'rank', '综合', !track && !task && !domain, ctx.DATA.tasks.length],
+    nav: ctx.sideNav('榜单范围', [['#/leaderboard', 'rank', '综合', !track && !task && !domain, tasks.length],
       ...tracks.map((x) => [`#/leaderboard/${encodeURIComponent(x.slug)}`, x.glyph, x.label, x === track, x.tasks.length])]) })}
     <section class="block wrap">
       <div data-board><p class="muted">正在载入榜单…</p></div>

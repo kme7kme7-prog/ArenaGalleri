@@ -5,7 +5,7 @@
 import { $, $$, brandMark, esc, icon, pad, themeButton } from './ui.js';
 import { api, arenaScope, isStaff, needsEmail, openAuth, openDialog, platform, reactionBar, requireUser, toast } from './platform.js';
 import { aigcLabel } from './legal.js';
-import { domainsOf, matchesQuery, tracksOf } from './categories.js';
+import { domainsOf, matchesQuery, tracksOf, votedTask } from './categories.js';
 import { linkReferences, referenceSheet } from './references.js';
 
 const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-pointer-lock allow-downloads';
@@ -32,7 +32,7 @@ export function mount(root, ctx) {
   const task = random ? null : ctx.DATA.tasks.find((t) => t.id === ctx.param);
   // A random round draws from the tasks the starting page was showing, as far as they can be judged.
   const scope = random ? ctx.DATA.tasks.filter((t) => isOpen(t) && (arenaScope.get() ?? [t.id]).includes(t.id)) : [];
-  if (random ? !scope.length : !task) {
+  if (random ? !scope.length : !task || !votedTask(task)) {
     location.replace('#/arena');
     return {};
   }
@@ -42,7 +42,8 @@ export function mount(root, ctx) {
 // The lobby follows the leaderboard: category views in the sidebar, one list on the right with the
 // open tasks first and the ones still short of works folded away, the rules folded at the end.
 function lobby(root, ctx) {
-  const tracks = tracksOf(ctx.DATA.tasks);
+  const tasks = ctx.DATA.tasks.filter(votedTask);
+  const tracks = tracksOf(tasks);
   const view = { track: '', query: '' };
   const pool = (t) => platform.arena[t.id] ?? { works: 0, entries: 0 };
   const ready = isOpen;
@@ -64,7 +65,7 @@ function lobby(root, ctx) {
   // The tasks in view: the chosen category, narrowed by the search.
   function scope() {
     const query = view.query.trim().toLowerCase();
-    const scoped = ctx.DATA.tasks.filter((t) => (!view.track || t.category === view.track)
+    const scoped = tasks.filter((t) => (!view.track || t.category === view.track)
       && matchesQuery(t, query));
     return { scoped, open: scoped.filter(ready), closed: scoped.filter((t) => !ready(t)) };
   }

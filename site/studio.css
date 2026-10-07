@@ -643,7 +643,7 @@ button.ref-tile:hover img.is-loaded { transform: scale(1.045); }
 .format-options input { accent-color: var(--ink); }
 fieldset.field { padding: 0; border: 0; }
 fieldset.field > legend { padding: 0; margin-bottom: 6px; }
-.category-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.category-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .category-option { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 12px 13px; border: 1px solid var(--line-2); border-radius: 6px; color: var(--ink-2); cursor: pointer; transition: border-color .2s, background-color .2s, color .2s; }
 .category-option:hover { border-color: var(--ink-2); color: var(--ink); }
 .category-option input { position: absolute; opacity: 0; pointer-events: none; }
