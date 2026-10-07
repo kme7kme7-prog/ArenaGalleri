@@ -1,5 +1,12 @@
 # HANDOFF.md · 当前状态
 
+## Gemini Max 改 High 与历史票合并（2026-10-07，已上线）
+
+- 用户授权统一 Gemini Max 结果并合并投票；线上可维护作品仅飞尘工地 Gemini 3.8 Flash 一件。沿用现场后端版本，在一致副本验证后停服备份，通过后端 setMeta 改 High，自动更正19侧历史票、新增20审计。原票/原快照/既有审计保留，其他表逐行一致；重跑修改/更正/审计均0，v40、integrity ok、外键0、服务active/running、NRestarts0。
+- 公网配置榜 Max 行消失，Gemini 3.8 Flash High 比较309→328、作品24→25；总有效票5712、参与者147不变，配置115→114。bootstrap目标作品High，check:deployment通过（51题/31社区题）；1280桌面榜单及作品预览截图目检通过，脚本错误0，原作材质参数和iframe属性警告保留。未测手机、全交互、登录或新增投票。
+- 私有数据仓同步manifest及说明，作品ID/路径/源码不变；本轮不重发包、修改消费pin或部署前后端源码。后端其他会话未提交变更未动。另有一条已下架未核验投稿的原始Max记录保留，不在展厅/可维护作品集合，也无Max有效票归属。
+- Gallery check64/0、test29/29、build176件/68site、严格intake0错/8既有提示；数据仓check33/0、test9/9、严格intake176件/0错/8既有提示。本轮两仓各一条英文提交，不推送。备份/root/aob-gemini-high-20261007/backup/platform.db；忽略证据output/gemini-high-20261007/及output/playwright/gemini-high-20261007/。[交付记录](docs/archive/2026-10-07-gemini-high-votes-wsnxxxs.md)。
+
 ## OMP Harness 候选（2026-10-07，已上线）
 
 - 共用表单补充 OMP 回退候选，按登记名称去重，Pi 独立保留；PRODUCT 说明登记与手填两种行为。跟踪文件无待替换的旧名称，数据包及私有仓库未改。
