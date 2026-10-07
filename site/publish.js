@@ -90,7 +90,7 @@ export function mount(root, ctx) {
     const category = categoryOf(question.category);
     if (!category) return '<span class="field-label">允许的提交格式 *</span><p class="fine">选择题目类型后显示可用格式。</p>';
     const [only] = category.templates;
-    if (category.templates.length === 1) return `<span class="field-label">提交格式</span><input type="hidden" name="templates" value="${only}"><p class="format-fixed">${esc(TEMPLATE_LABELS[only])}</p><p class="fine">${only === 'text' ? '上传 .txt 或 .md 文件，站内按统一版式展示；.md 支持表格与 LaTeX 公式。' : '上传单个 .html 文件，资源需写进页面。'}</p>`;
+    if (category.templates.length === 1) return `<span class="field-label">提交格式</span><input type="hidden" name="templates" value="${only}"><p class="format-fixed">${esc(TEMPLATE_LABELS[only])}</p><p class="fine">${only === 'text' ? '直接粘贴原文，或上传 .txt / .md 文件，站内按统一版式展示；Markdown 支持表格与 LaTeX 公式。' : '上传单个 .html 文件，资源需写进页面。'}</p>`;
     return `<span class="field-label">允许的提交格式 *</span><div class="format-options">
       ${category.templates.map((value) => `<label><input type="checkbox" name="templates" value="${value}"${question.templates.includes(value) ? ' checked' : ''}>${TEMPLATE_LABELS[value]}</label>`).join('')}
     </div>`;

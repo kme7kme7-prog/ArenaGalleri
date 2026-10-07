@@ -1,5 +1,11 @@
 # HANDOFF.md · 当前状态
 
+## 文本投稿更新整理与发布（2026-10-07，已上线并推送）
+
+- 用户授权整理、提交、推送并部署 Gallery。本轮文本入口支持粘贴原文、选择或拖入 .txt/.md、Markdown/纯文本切换、20万字符计数和 Ctrl/Command+Enter；预览全文后确认，「修改原文」保留内容。PRODUCT 与发起题目格式说明同步；后端接口沿用原 drafts 上传。
+- check64/0、test29/29、生产API构建176件/68site、严格intake0错/8既有提示。沿用前轮真实本地后端粘贴/拖文件/修改验证；本轮构建产物夹具1280桌面和375手机目检、字符计数/格式切换通过，无横溢、脚本错误或警告。未走完第三步提交、未生产登录投稿、未测全部交互或真机。
+- 发布仅5个静态文件；数据包、API配置、后端和数据库不改。资产46e0b821de041e68103608a0，上传SHA、完整目录SHA及公网5文件SHA通过，check:deployment通过（54题/34社区题）；公网首页目检正常，脚本错误/警告0。回退 /root/aob-text-release-20261007/gallery-backup，证据 output/playwright/text-release-20261007/。本轮一条英文提交，推送 main 及此前3条本地提交；旧记录中的未推送状态由本节覆盖。[交付记录](docs/archive/2026-10-07-text-entry-release-wsnxxxs.md)。
+
 ## Gemini Max 改 High 与历史票合并（2026-10-07，已上线）
 
 - 用户授权统一 Gemini Max 结果并合并投票；线上可维护作品仅飞尘工地 Gemini 3.8 Flash 一件。沿用现场后端版本，在一致副本验证后停服备份，通过后端 setMeta 改 High，自动更正19侧历史票、新增20审计。原票/原快照/既有审计保留，其他表逐行一致；重跑修改/更正/审计均0，v40、integrity ok、外键0、服务active/running、NRestarts0。

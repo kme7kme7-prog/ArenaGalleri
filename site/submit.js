@@ -23,6 +23,9 @@ const FILES = {
 };
 // A page is one HTML file of at most 30 MB, whatever the server would take.
 const HTML_BYTES = 30 * 1024 * 1024;
+// Text is pasted or dropped into one box; pasted text goes up as a file of the chosen format.
+const TEXT_CHARS = 200000;
+const TEXT_FORMATS = [['md', 'Markdown'], ['txt', '纯文本']];
 
 const freshTrial = () => ({ booted: false, loaded: false, loadMs: null, errors: [], failed: [], blocked: [], paint: null, timedOut: false, manual: false });
 
@@ -103,7 +106,10 @@ export function uploadFlow(root, ctx, options) {
     // fields: the info form's values while it is off screen; notice: why a resumed draft needs
     // another look ('prompt', or { file } when its format no longer fits).
     draftTemplate: null, confirmedPrompt: null, fields: null, notice: null,
+    // text: what was pasted for a text result, kept while the author goes back to change it.
+    text: '', textFormat: 'md',
   };
+  const isText = () => state.template === 'text';
 
   const maxBytes = () => (state.template === 'text' ? platform.site.limits.uploadBytes : Math.min(platform.site.limits.uploadBytes, HTML_BYTES));
   const pendingFull = () => pendingLimit() !== null && (platform.me?.pending ?? 0) >= pendingLimit();
@@ -112,7 +118,8 @@ export function uploadFlow(root, ctx, options) {
   function fileRules() {
     if (state.template === 'text') return {
       summary: ['UTF-8 编码', '最多 20 万字符', `最大 ${formatBytes(maxBytes())}`],
-      rules: ['内容为模型生成的原文。Markdown 支持标题、段落、列表、引用、强调、代码、表格与 LaTeX 公式（$…$、$$…$$）；.txt 按纯文本显示，不解析公式。',
+      rules: ['内容为模型生成的原文。Markdown 支持标题、段落、列表、引用、强调、代码、表格与 LaTeX 公式（$…$、$$…$$）；纯文本与 .txt 原样显示，不解析公式。',
+        '从聊天界面复制时，请用回答自带的「复制」按钮，才能保留 Markdown 标记；直接选中复制只得到排版后的文字。',
         'HTML 标签、链接和图片按原文字显示；平台用统一版式排版，预览、盲评与截图都用排版后的页面。'],
     };
     return {
@@ -143,6 +150,7 @@ export function uploadFlow(root, ctx, options) {
     const picker = state.uploading
       ? `<div class="upload-progress" data-upload-progress><b data-progress-label>${progressLabel()}</b><button class="btn sm" type="button" data-act="cancel-upload">取消</button>
           <span class="progress"><i style="width:${Math.round(state.progress * 100)}%"></i></span><span data-progress-bytes>${progressBytes()}</span></div>`
+      : isText() ? textEntry()
       : `<div class="dropzone" data-drop tabindex="0" role="button" aria-label="选择或拖入作品文件">
           ${icon('upload')}<b>${FILES[state.template].prompt}</b>
           <span class="drop-meta"><span>或点击选择</span>${summary.map((item) => `<span>${item}</span>`).join('')}</span>
@@ -155,8 +163,26 @@ export function uploadFlow(root, ctx, options) {
       ${state.resumable && !state.uploading ? `<div class="notice resume-draft">${icon('clock')}<p>你之前上传过「${esc(state.resumable.sourceName)}」，试加载保留到 ${esc(formatTime(state.resumable.expiresAt))}。</p><button class="btn primary sm" type="button" data-act="resume">继续试加载</button><button class="btn sm" type="button" data-act="drop-draft">丢弃</button></div>` : ''}
       ${pendingFull() ? `<div class="notice">${icon('clock')}<p>你已有 ${platform.me.pending} 件作品在等待核验，核验之后再上传新的作品吧。</p></div>` : picker}
       ${state.error ? `<p class="form-error" role="alert">${esc(state.error)}</p>` : ''}
-      ${pendingFull() ? '' : `<details class="fold"><summary>${icon('right')}全部文件要求</summary><ul class="plain">${rules.map((rule) => `<li>${rule}</li>`).join('')}</ul></details>`}
+      ${pendingFull() ? '' : `<details class="fold"><summary>${icon('right')}${isText() ? '全部原文要求' : '全部文件要求'}</summary><ul class="plain">${rules.map((rule) => `<li>${rule}</li>`).join('')}</ul></details>`}
     </div>`;
+  }
+
+  const textCount = () => Array.from(state.text).length;
+  const textReady = () => Boolean(state.text.trim()) && textCount() <= TEXT_CHARS;
+  const textCountLabel = () => `${textCount().toLocaleString()} / ${TEXT_CHARS.toLocaleString()} 字符`;
+
+  // One box for a text result: paste the model's output, or drop a .txt / .md file on it.
+  function textEntry() {
+    return `<div class="text-entry" data-text-drop>
+        <textarea class="input" data-text-input rows="12" spellcheck="false" aria-label="作品原文" placeholder="粘贴模型输出的完整原文，或把 .txt / .md 文件拖到这里">${esc(state.text)}</textarea>
+        <div class="text-entry-bar">
+          <div class="seg" role="group" aria-label="排版方式">${TEXT_FORMATS.map(([id, label]) => `<button type="button" data-text-format="${id}" aria-pressed="${id === state.textFormat}">${label}</button>`).join('')}</div>
+          <span class="text-count${textCount() > TEXT_CHARS ? ' is-over' : ''}" data-text-count>${textCountLabel()}</span>
+          <button class="link" type="button" data-act="pick-text-file">${icon('upload')}选择文件</button>
+          <button class="btn primary sm" type="button" data-act="send-text"${textReady() ? '' : ' disabled'}>预览排版${icon('right')}</button>
+        </div>
+        <input type="file" accept="${FILES.text.accept}" hidden>
+      </div>`;
   }
 
   const progressLabel = () => (state.progress < 1 ? `正在上传 ${Math.round(state.progress * 100)}%` : '正在检查文件…');
@@ -208,11 +234,11 @@ export function uploadFlow(root, ctx, options) {
   const confirmText = () => {
     const t = state.trial;
     const warned = t.errors.length || t.failed.length || t.blocked.length || state.draft?.checks.some((c) => c.state === 'warn');
-    return `我已亲自操作过作品，它与题目相符${warned ? '，也看过了上面的提示' : ''}`;
+    return `${isText() ? '我已看过排版后的全文' : '我已亲自操作过作品'}，它与题目相符${warned ? '，也看过了上面的提示' : ''}`;
   };
 
   function stepTwo() {
-    if (!state.draft) return '<p class="step-placeholder">选好文件后，作品会在这里试运行。</p>';
+    if (!state.draft) return `<p class="step-placeholder">${isText() ? '填入原文后，在这里预览排版。' : '选好文件后，作品会在这里试运行。'}</p>`;
     const view = VIEWS[state.view];
     return `<div class="step-body">
       <div class="trial">
@@ -278,7 +304,7 @@ export function uploadFlow(root, ctx, options) {
       description: task.title,
       crumbs: [ctx.LIBRARY, { text: task.title, href: ctx.taskHref(task) }, { text: '上传作品' }] };
     const current = state.result ? -1 : !state.draft ? 0 : state.confirmed ? 2 : 1;
-    const steps = [...(options.lead ? [options.lead.label] : []), '选择文件', '试加载', options.infoLabel ?? '作品信息'];
+    const steps = [...(options.lead ? [options.lead.label] : []), isText() ? '填入原文' : '选择文件', isText() ? '预览排版' : '试加载', options.infoLabel ?? '作品信息'];
     root.innerHTML = `${ctx.pageStart({ ...page,
       meta: `<ol class="side-steps">${steps.map((label, i) => {
         const text = `<span>0${i + 1}</span>${label}`;
@@ -289,8 +315,8 @@ export function uploadFlow(root, ctx, options) {
       <section class="block wrap${state.result ? '' : ' submit-layout'}">
         <div class="submit-main">${state.result ? done() : [
           options.lead?.html() ?? '',
-          step(1, '选择文件', options.fileNote ?? '', stepOne(), { doneStep: Boolean(state.draft), action: state.draft ? '<button class="link step-action" data-act="restart">重新选择文件</button>' : '' }),
-          step(2, '试加载', state.draft && !state.confirmed ? '请在下面亲自操作一遍' : '', stepTwo(), { locked: !state.draft, doneStep: state.confirmed }),
+          step(1, steps[offset], options.fileNote ?? '', stepOne(), { doneStep: Boolean(state.draft), action: state.draft ? `<button class="link step-action" data-act="restart">${isText() ? '修改原文' : '重新选择文件'}</button>` : '' }),
+          step(2, steps[offset + 1], state.draft && !state.confirmed ? isText() ? '请在下面通读一遍' : '请在下面亲自操作一遍' : '', stepTwo(), { locked: !state.draft, doneStep: state.confirmed }),
           step(3, options.infoLabel ?? '作品信息', state.confirmed ? '核验时会对照这些信息' : '', stepThree(), { locked: !state.confirmed }),
         ].join('')}</div>
         ${state.result ? '' : `<aside class="submit-aside">
@@ -422,6 +448,10 @@ export function uploadFlow(root, ctx, options) {
     xhr.send(file);
   }
 
+  function sendText() {
+    if (textReady()) upload(new File([state.text], `粘贴文本.${state.textFormat}`, { type: 'text/plain' }));
+  }
+
   function discard() {
     if (state.draft && !state.result) api(`drafts/${state.draft.id}`, { method: 'DELETE' }).catch(() => {});
   }
@@ -433,7 +463,7 @@ export function uploadFlow(root, ctx, options) {
     clearTimeout(state.poll);
     if (keepFields) saveFields();
     Object.assign(state, { draft: null, error: '', trial: freshTrial(), confirmed: false, cover: null, work: null, result: null, polls: 0, notice: null,
-      ...(keepFields ? {} : { fields: null }) });
+      ...(keepFields ? {} : { fields: null, text: '' }) });
     draw();
   }
 
@@ -561,6 +591,12 @@ export function uploadFlow(root, ctx, options) {
         $('.prompt-peek pre', root).innerHTML = linkReferences(task.promptVariants.find((v) => v.id === state.peek).prompt, task.references, task.id);
         return;
       }
+      const format = e.target.closest('[data-text-format]');
+      if (format) {
+        state.textFormat = format.dataset.textFormat;
+        $$('[data-text-format]', root).forEach((b) => b.setAttribute('aria-pressed', String(b === format)));
+        return;
+      }
       const act = e.target.closest('[data-act]')?.dataset.act;
       if (act === 'resume') {
         Object.assign(state, { draft: resolveApiMedia(state.resumable, 'draft'), draftTemplate: state.resumable.template ?? state.template, resumable: null, error: '', notice: null });
@@ -575,12 +611,24 @@ export function uploadFlow(root, ctx, options) {
       else if (act === 'another') restart();
       else if (act === 'reload') { startTrial(); drawTrial(); const frame = $('.trial iframe', root); frame.src = state.draft.preview; }
       else if (act === 'pick-cover') $('[data-cover-input]', root).click();
+      else if (act === 'pick-text-file') $('[data-text-drop] input[type="file"]', root).click();
+      else if (act === 'send-text') sendText();
       else if (act === 'drop-cover') { state.cover = null; $('.cover-pick', root).outerHTML = coverPick(); }
       else if (act) options.onAct?.(act);
     };
     root.onkeydown = (e) => {
       const drop = e.target.closest?.('[data-drop]');
       if (drop && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); drop.click(); }
+      if (e.target.matches('[data-text-input]') && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendText(); }
+    };
+    // Typing in the text box updates its count and button without redrawing the box.
+    root.oninput = (e) => {
+      if (!e.target.matches('[data-text-input]')) return;
+      state.text = e.target.value;
+      const count = $('[data-text-count]', root);
+      count.textContent = textCountLabel();
+      count.classList.toggle('is-over', textCount() > TEXT_CHARS);
+      $('[data-act="send-text"]', root).disabled = !textReady();
     };
     root.onchange = (e) => {
       if (e.target.matches('[data-template]')) {
@@ -588,7 +636,7 @@ export function uploadFlow(root, ctx, options) {
         state.error = '';
         return draw();
       }
-      if (e.target.matches('.dropzone input[type="file"]')) return upload(e.target.files[0]);
+      if (e.target.matches('.dropzone input[type="file"], [data-text-drop] input[type="file"]')) return upload(e.target.files[0]);
       if (e.target.matches('[data-manual]')) {
         state.trial.manual = e.target.checked;
         return drawTrial();
@@ -613,8 +661,9 @@ export function uploadFlow(root, ctx, options) {
   }
   bind();
   const onDrag = (e) => {
-    const drop = e.target.closest?.('[data-drop]');
-    if (!drop) return;
+    const drop = e.target.closest?.('[data-drop], [data-text-drop]');
+    // Dragging selected text into the text box stays an ordinary edit.
+    if (!drop || drop.matches('[data-text-drop]') && !e.dataTransfer?.types.includes('Files')) return;
     e.preventDefault();
     drop.classList.toggle('is-over', e.type === 'dragover');
     if (e.type === 'drop') upload(e.dataTransfer.files[0]);
@@ -678,6 +727,7 @@ export function uploadFlow(root, ctx, options) {
       // A suspended flow no longer owns the page handlers.
       if (suspended) return;
       root.onkeydown = null;
+      root.oninput = null;
       root.onsubmit = null;
     },
   };

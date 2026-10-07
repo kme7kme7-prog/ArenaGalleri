@@ -612,6 +612,17 @@ dialog.edit-work-sheet { width: min(720px, calc(100% - 32px)); }
 .dropzone:hover, .dropzone.is-over { border-color: var(--ink-2); background: var(--surface-2); }
 .dropzone.is-disabled { cursor: not-allowed; opacity: 0.55; }
 .dropzone.is-busy { cursor: progress; }
+.text-entry { border: 1px dashed var(--line-2); border-radius: var(--radius); background: var(--surface); transition: border-color 0.2s, background-color 0.2s; }
+.text-entry.is-over { border-color: var(--ink-2); background: var(--surface-2); }
+.text-entry textarea { display: block; width: 100%; min-height: 240px; border: 0; border-radius: var(--radius) var(--radius) 0 0; background: none; font: 14px/1.75 var(--mono); resize: vertical; }
+.text-entry textarea:focus { outline: none; box-shadow: none; }
+.text-entry-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 10px; border-top: 1px solid var(--line); }
+.text-entry-bar .seg { padding: 2px; }
+.text-entry-bar .seg button { min-height: 28px; font-size: 12.5px; }
+.text-entry-bar .link { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; }
+.text-entry-bar .link .i { width: 14px; height: 14px; }
+.text-count { flex: 1; min-width: 8em; color: var(--muted); font-size: 12px; }
+.text-count.is-over { color: var(--accent); }
 .progress { display: block; width: min(320px, 80%); height: 3px; margin-bottom: 10px; overflow: hidden; border-radius: 3px; background: var(--line); }
 .progress i { display: block; height: 100%; background: var(--ink); transition: width 0.2s; }
 .file-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0; font-size: 13.5px; }
