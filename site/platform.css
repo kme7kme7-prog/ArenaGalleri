@@ -94,6 +94,15 @@ select.input:disabled { opacity: 0.6; }
 .field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
 .field-hint { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
 .field-hint:empty { display: none; }
+.field:has(> .suggest) { position: relative; }
+.suggest {
+  position: absolute; left: 0; right: 0; z-index: 30; max-height: min(320px, 50vh); margin: 0; padding: 4px; overflow-y: auto; list-style: none;
+  border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--raised); box-shadow: var(--shadow-lg);
+}
+.suggest li { display: flex; align-items: baseline; gap: 10px; padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+.suggest li b { min-width: 0; overflow: hidden; color: var(--ink); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.suggest li small { margin-left: auto; flex: none; color: var(--muted); font-size: 12px; }
+.suggest li:hover, .suggest li[aria-selected="true"] { background: var(--surface-2); }
 .form-error { margin: 0 0 12px; color: var(--accent); font-size: 13px; }
 .form-error:empty { display: none; }
 

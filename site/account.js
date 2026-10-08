@@ -2,7 +2,7 @@
 import { $, $$, brandMark, esc, formatBytes, formatDate, formatTime, icon, img } from './ui.js';
 import { memberChips, memberList, memberResults, membersState, openMember } from './member-management.js';
 import { api, apiRemembered, arenaText, autoRejected, avatarFace, byStaff, canDecide, confirmDialog, injected, isSenior, isStaff, moderationBadge, openBindEmail, openDialog, platform, QUESTION_LABELS, recall, refreshPlatform, requireUser, reviewCount, reviewVerdict, riskLabels, ROLE_LABELS, setFaces, statusBadge, toast } from './platform.js';
-import { onWorkFieldChange, readWorkFields, workFieldsHtml } from './work-fields.js';
+import { effortOptions, onWorkFieldChange, readWorkFields, workFieldsHtml } from './work-fields.js';
 import { openWorkManagement } from './work-management.js';
 import { CATEGORIES, categoryLabel, domainsOf, matchesQuery } from './categories.js';
 import { categoryField, domainField, syncDomains } from './question-fields.js';
@@ -1377,7 +1377,7 @@ function review(root, ctx) {
       const missing = [noEffort && `${noEffort} 件缺推理档位`, noProvider && `${noProvider} 件缺服务商`].filter(Boolean).join('、');
       extra = `<p class="sheet-text">${missing ? `其中 ${missing}，可以在下面统一补上，否则会失败。` :'所选作品的推理档位和服务商都已登记。'}</p>
         <div class="field-row">
-          <label class="field"><span class="field-label">推理档位<small>留空保持各自原值</small></span><input class="input" name="effort" maxlength="20" list="bulk-efforts"><datalist id="bulk-efforts">${['Default', ...(platform.site.efforts ?? [])].map((e) => `<option value="${esc(e)}"></option>`).join('')}</datalist></label>
+          <label class="field"><span class="field-label">推理档位<small>留空保持各自原值</small></span><input class="input" name="effort" maxlength="20" data-suggest="bulk-efforts" role="combobox" aria-autocomplete="list" aria-expanded="false" autocomplete="off"><datalist id="bulk-efforts">${effortOptions().map((e) => `<option value="${esc(e)}"></option>`).join('')}</datalist></label>
           <label class="field"><span class="field-label">服务商<small>留空保持各自原值</small></span><select class="input" name="providerId"><option value="">保持原值</option>${[...ctx.PROVIDERS.values()].map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label>
         </div>
         <p class="fine">填写的项会覆盖所选全部作品的对应信息；其他必填信息不完整的作品会保留待处理，需要逐件打开补齐。</p>`;

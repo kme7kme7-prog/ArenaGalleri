@@ -9,7 +9,7 @@ import { hasModelPreview, screenshotOf } from './work-preview-media.js';
 export const standard = (r) => (!r.generationMode || r.generationMode === 'single-turn')
   && (!r.humanIntervention || r.humanIntervention === 'none');
 
-const EFFORT_RANK = { max: 5, xhigh: 4, high: 3, medium: 2, low: 1 };
+const EFFORT_RANK = { ultracode: 7, ultra: 6, max: 5, xhigh: 4, high: 3, medium: 2, low: 1 };
 export const effortRank = (r) => EFFORT_RANK[String(r.effort ?? '').trim().toLowerCase()] ?? 0;
 const added = (r) => Date.parse(r.addedAt) || Infinity;
 

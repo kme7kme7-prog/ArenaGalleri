@@ -1,7 +1,8 @@
 // The description of an upload, shared by submission, author editing and admin review.
 // Field names follow the API body of POST /api/works and PATCH /api/works/:task/:id.
 import { $, $$, byName, esc, icon } from './ui.js';
-import { platform } from './platform.js';
+import { isStaff, platform } from './platform.js';
+import './suggest.js';
 
 const GENERATION_MODES = [
   ['single-turn', '一轮（智能体自主迭代也算一轮）'],
@@ -13,11 +14,33 @@ const INTERVENTIONS = [
   ['code-edited', '人工改过代码'],
 ];
 
+// Efforts the site offers on top of the server's list; free text still accepts any other.
+export const effortOptions = () => ['Default', ...new Set([...(platform.site.efforts ?? []), 'Ultra', 'Ultracode'])];
+// The suggestion list behind a datalist (see suggest.js); the datalist still names registered entries.
+const suggest = (list) => `data-suggest="${list}" role="combobox" aria-autocomplete="list" aria-expanded="false" autocomplete="off"`;
+
 const option = (value, text, selected) => `<option value="${esc(value)}"${selected ? ' selected' : ''}>${esc(text)}</option>`;
 let workInputId = 0;
 
-function modelOptions(ctx) {
-  return [...ctx.DATA.models].sort((a, b) => byName(a.name, b.name)).map((m) => `<option value="${esc(m.name)}" data-model-id="${esc(m.id)}">${esc(m.vendor)}</option>`).join('');
+// How many works on the site use each model, harness and effort, and when a model's first
+// work arrived (the registry has no release dates). Suggestions put common and new ones first.
+function usage(ctx) {
+  const count = (map, key) => key && map.set(key, (map.get(key) ?? 0) + 1);
+  const models = new Map(), harnesses = new Map(), efforts = new Map(), since = new Map();
+  for (const r of ctx.DATA.tasks.flatMap((t) => t.results)) {
+    const model = ctx.modelOf(r).name;
+    count(models, model);
+    const added = Date.parse(r.addedAt);
+    if (added && !(since.get(model) <= added)) since.set(model, added);
+    count(harnesses, ctx.harnessOf(r)?.name);
+    count(efforts, String(r.effort ?? '').trim().toLowerCase());
+  }
+  return { models, harnesses, efforts, since };
+}
+const used = (map, key) => ` data-count="${map.get(key) ?? 0}"`;
+
+function modelOptions(ctx, use) {
+  return [...ctx.DATA.models].sort((a, b) => byName(a.name, b.name)).map((m) => `<option value="${esc(m.name)}" data-model-id="${esc(m.id)}" data-keys="${esc((m.aliases ?? []).join(' '))}"${used(use.models, m.name)}${use.since.has(m.name) ? ` data-since="${use.since.get(m.name)}"` : ''}>${esc(m.vendor)}</option>`).join('');
 }
 
 // A name that matches no registered model is a custom model and carries its own vendor.
@@ -25,14 +48,14 @@ const registeredModel = (form, name) => [...$('datalist[data-models]', form).opt
 // Its vendor field starts from the vendor its name suggests (see models.js); set by workFieldsHtml.
 let guessVendor = () => '';
 
-function harnessOptions(ctx, selected) {
+function harnessOptions(ctx, selected, use) {
   const listed = [...ctx.HARNESSES.values()].filter((h) => h.listed || h.id === selected);
   if (selected && !ctx.HARNESSES.has(selected)) listed.push({ id: selected, name: selected });
   // The data registry orders common tools first; keep that order in every work form.
-  return listed.map((h) => `<option value="${esc(h.name)}" data-harness-id="${esc(h.id)}"></option>`).join('')
+  return listed.map((h) => `<option value="${esc(h.name)}" data-harness-id="${esc(h.id)}"${used(use.harnesses, h.name)}></option>`).join('')
     + ['Pi', 'OMP', 'Xiaomi MiMo Desktop', 'Xiaomi MiMo Code']
       .filter((name) => !listed.some((h) => h.name === name))
-      .map((name) => `<option value="${esc(name)}"></option>`).join('');
+      .map((name) => `<option value="${esc(name)}"${used(use.harnesses, name)}></option>`).join('');
 }
 
 const registeredHarness = (form, name) => [...$('datalist[data-harnesses]', form).options].find((o) => o.value === name)?.dataset.harnessId;
@@ -46,13 +69,15 @@ function providerOptions(ctx, selected) {
 // extra is appended inside the fold, e.g. the submit page's cover picker.
 // expanded keeps optional information visible during admin review.
 export function workFieldsHtml(ctx, task, work = null, { extra = '', expanded = false } = {}) {
-  const w = work ?? {};
+  // Staff upload mostly standard works by hand, so a new upload starts from the usual answers.
+  const w = work ?? (isStaff() ? { provider: 'official', generationMode: 'single-turn', humanIntervention: 'none' } : {});
   const variants = task?.promptVariants ?? [];
   const modelName = ctx.MODELS.get(w.model)?.name ?? w.modelName ?? '';
   const custom = Boolean(modelName) && ![...ctx.DATA.models].some((m) => m.name === modelName);
   guessVendor = (name) => ctx.modelOf({ modelName: name }).vendor;
   const guess = custom && !w.vendor ? guessVendor(modelName) : '';
-  const efforts = ['Default', ...(platform.site.efforts ?? [])];
+  const efforts = effortOptions();
+  const use = usage(ctx);
   const inputId = ++workInputId;
   const modelList = `work-models-${inputId}`;
   const effortList = `work-efforts-${inputId}`;
@@ -66,12 +91,12 @@ export function workFieldsHtml(ctx, task, work = null, { extra = '', expanded = 
     <label class="field"><span class="field-label">作品标题<small>选填</small></span><input class="input" name="title" maxlength="40" placeholder="例如：云山古刹" value="${esc(w.title ?? '')}"${autoTitle ? ` data-auto-title="${esc(w.title)}"` : ''}><span class="field-hint">不填则显示为「模型名称 · 推理档位」。</span></label>
     ${variants.length ? `<label class="field"><span class="field-label">提示词版本<i>*</i></span><select class="input" name="promptVariant" required><option value="">选择生成时用的版本</option>${variants.map((v) => option(v.id, v.label, v.id === w.promptVariant)).join('')}</select><span class="field-hint">展厅会把同一模型的各版本合成一张卡片，可切换对比。</span></label>` : ''}
     <div class="field-row">
-      <label class="field"><span class="field-label">模型名称<i>*</i></span><input class="input" name="modelName" required maxlength="60" list="${modelList}" value="${esc(modelName)}" placeholder="选择或填写模型名称"><datalist id="${modelList}" data-models>${modelOptions(ctx)}</datalist><span class="field-hint">优先从列表选择；列表里没有就直接输入新模型名称。</span></label>
-      <label class="field"><span class="field-label">推理档位<i>*</i></span><input class="input" name="effort" required maxlength="20" list="${effortList}" value="${esc(w.effort ?? '')}" placeholder="选择或填写档位"><datalist id="${effortList}">${efforts.map((e) => `<option value="${esc(e)}">${e === 'Default' ? '默认（Default）' : esc(e)}</option>`).join('')}</datalist><span class="field-hint">可选常用档位，也可直接手填；使用默认设置请填 Default。</span></label>
+      <label class="field"><span class="field-label">模型名称<i>*</i></span><input class="input" name="modelName" required maxlength="60" ${suggest(modelList)} value="${esc(modelName)}" placeholder="选择或填写模型名称"><datalist id="${modelList}" data-models>${modelOptions(ctx, use)}</datalist><span class="field-hint">输入名称或版本号查找，如 56 即 5.6；列表里没有就直接输入新模型名称。</span></label>
+      <label class="field"><span class="field-label">推理档位<i>*</i></span><input class="input" name="effort" required maxlength="20" ${suggest(effortList)} value="${esc(w.effort ?? '')}" placeholder="选择或填写档位"><datalist id="${effortList}">${efforts.map((e) => `<option value="${esc(e)}"${used(use.efforts, e.toLowerCase())}>${e === 'Default' ? '默认（Default）' : esc(e)}</option>`).join('')}</datalist><span class="field-hint">可选常用档位，也可直接手填；使用默认设置请填 Default。</span></label>
     </div>
     <label class="field" data-other-model${custom ? '' : ' hidden'}><span class="field-label">模型厂商</span><input class="input" name="vendor" maxlength="40" placeholder="例如 OpenAI、DeepSeek" value="${esc(custom ? w.vendor || guess : '')}" data-guess="${esc(guess)}"><span class="field-hint">这是未登记的自定义模型，填写厂商便于展厅归类；能从名称判断时已预填，可修改，不清楚可留空。</span></label>
     <div class="field-row">
-      <label class="field"><span class="field-label">Harness<i>*</i></span><input class="input" name="harnessName" required maxlength="40" list="${harnessList}" value="${esc(harnessName)}" placeholder="选择或填写 Harness"><datalist id="${harnessList}" data-harnesses>${harnessOptions(ctx, w.harness)}</datalist><span class="field-hint">选择生成用的工具或环境；列表里没有就直接填写名称。</span></label>
+      <label class="field"><span class="field-label">Harness<i>*</i></span><input class="input" name="harnessName" required maxlength="40" ${suggest(harnessList)} value="${esc(harnessName)}" placeholder="选择或填写 Harness"><datalist id="${harnessList}" data-harnesses>${harnessOptions(ctx, w.harness, use)}</datalist><span class="field-hint">选择生成用的工具或环境；列表里没有就直接填写名称。</span></label>
       <label class="field"><span class="field-label">服务商<i>*</i></span><select class="input" name="providerId" required><option value="">选择服务商</option>${providerOptions(ctx, provider)}</select><span class="field-hint">「官方」指模型厂商自己的 API、网页或 App。</span></label>
     </div>
     <div class="field-row">
