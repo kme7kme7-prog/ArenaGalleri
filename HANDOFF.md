@@ -1,5 +1,14 @@
 # HANDOFF.md · 当前状态
 
+## 模型候选与搜索联合发布（2026-10-08，已推送、已上线）
+
+- 用户授权推送、部署。Gallery dc03ef8 与后台 f492d80 已推送 main；后台正常合并并保留远端已上线目录提速/媒体缓存，HANDOFF 两侧记录均保留，无功能冲突或强推。两仓功能提交公开 CI 成功。
+- 现场 marker 与公网 bootstrap 均 c4583e4，完整运行 SHA 匹配 Git 归档；后台5个运行文件变化，Gallery10文件变化（新增match.js），完整2353文件集合及SHA一致。data.json/runtime-config.js字节不变，无数据包、Nginx或另一前端改动；后端先上线，再切 Gallery，最后发布版本标记，资产d663fe5cfd009c1580e3217b。
+- Gallery check68/0、test33/33，固定提交build176件/70site，严格intake0错/8既有提示；固定源码真实HTTP临时库integration通过。根integration.json的旧数据源码pin未改，仅隔离复制配置按已验证包sourceCommit校准。后台合并后Windows/Linux check111/0、test328/328；合并前首轮随机端口bad port，重跑327/327，未改测试。
+- 最新一致副本及停服最新备份均通过：7079票/966作品/v41，模型/配置榜64/130行、6686/6801有效比较、177参与者全字段一致，全部旧表逐行保留；最终integrity ok、外键0、服务active/running、NRestarts0。备份与发布复验切换约53.09秒。
+- 公网12文件SHA及check:deployment通过（56题/36社区题/844作品，统计会随用户操作变化）；后台下发Ultra/Ultracode、capture/contentModeration/autoModeration均true。Playwright公网模型索引56→3模型、榜单gpt56 luna→Luna配置/模型结果，桌面/390手机截图目检、无整页横溢，控制台错误/警告0。未生产管理员登录、投稿、投票、付费审核、真机或全交互验收。
+- 备份/root/aob-model-suggest-20261008/backup/（platform.db、runtime.tar.gz、旧gallery）；忽略证据output/model-suggest-release-20261008/与output/playwright/model-release-*。上传连接改用压缩传输，远程Python旧版不支持tarfile filter的准备脚本参数已适配，均在生产切换前解决。仅本轮交接与归档收尾一条英文提交并推送。[发布记录](docs/archive/2026-10-08-model-suggest-release-wsnxxxs.md)。
+
 ## 后台模型名称去点与只读报告（2026-10-08，已提交 a23efb7，未推送、未部署）
 
 - 相邻后台 modelNameKey 已按 Gallery compact 只保留 NFKC/小写后的字母和数字；修改前完整名称/别名检查262模型、442写法、303键，跨模型冲突0。该键只用于内存名称索引，无持久化消费者；x:榜单键保持，不在读榜时自动归登记模型，不做错字匹配。
