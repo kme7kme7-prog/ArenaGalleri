@@ -12,6 +12,8 @@ export const platform = {
   available: false,
   mismatch: false,
   stale: false,
+  connecting: false,
+  connectionError: null,
   serverVersion: null,
   serverDatapack: null,
   user: null,
@@ -30,17 +32,38 @@ const listeners = new Set();
 export const onPlatformChange = (listener) => { listeners.add(listener); return () => listeners.delete(listener); };
 const emit = (reason) => listeners.forEach((listener) => listener(reason));
 
-// The first bootstrap read starts alongside the gallery's own data; a platform that does not answer
-// in time leaves the gallery a static archive.
-export const requestBootstrap = () => fetchApi('bootstrap', { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+// Bootstrap includes the public catalog; allow a slow response before offering recovery.
+export const requestBootstrap = () => fetchApi('bootstrap', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
 let frontendBuildInfo = null;
-export async function connectPlatform(buildInfo = frontendBuildInfo, request = requestBootstrap()) {
+let connection = null;
+export function connectPlatform(buildInfo = frontendBuildInfo, request) {
+  if (connection) return connection;
   frontendBuildInfo = buildInfo;
   setDatapackVersion(buildInfo?.datapack);
+  platform.connecting = true;
+  connection = readPlatform(buildInfo, request ?? requestBootstrap()).finally(() => {
+    platform.connecting = false;
+    connection = null;
+  });
+  return connection;
+}
+async function readPlatform(buildInfo, request) {
   try {
     const response = await request;
     if (response.status === 409) { platform.available = false; platform.mismatch = true; return false; }
-    if (!response.ok || !(response.headers.get('content-type') ?? '').includes('application/json')) return false;
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const limited = response.status === 429;
+      const retryAfter = limited ? Number(data.retryAfter ?? response.headers.get('Retry-After')) || 30 : 2;
+      platform.connectionError = {
+        kind: response.status === 404 ? 'missing' : limited ? 'limited' : 'http',
+        status: response.status,
+        message: limited ? '访问较频繁，请稍后再试。' : '平台服务暂时不可用，请稍后重试。作品仍可浏览。',
+        retryAt: Date.now() + retryAfter * 1000,
+      };
+      return false;
+    }
+    if (!(response.headers.get('content-type') ?? '').includes('application/json')) throw new Error('Invalid platform response');
     const bootstrap = await response.json();
     // Keep diagnostics even when business data must not be merged.
     platform.serverVersion = bootstrap.serverVersion ?? null;
@@ -53,17 +76,33 @@ export async function connectPlatform(buildInfo = frontendBuildInfo, request = r
     // AI-graded questions have no blind pool, whatever the server still reports for them.
     const graded = new Set((bootstrap.questions ?? []).filter(aiJudged).map((q) => q.id));
     bootstrap.arena = Object.fromEntries(Object.entries(bootstrap.arena ?? {}).filter(([id]) => !graded.has(id)));
-    Object.assign(platform, resolveApiMedia(bootstrap, 'bootstrap'), { available: true, mismatch: false, stale: staleBuild(buildInfo, bootstrap) });
+    Object.assign(platform, resolveApiMedia(bootstrap, 'bootstrap'), { available: true, mismatch: false, stale: staleBuild(buildInfo, bootstrap), connectionError: null });
     return true;
-  } catch {
+  } catch (error) {
+    platform.connectionError = {
+      kind: 'network',
+      message: ['TimeoutError', 'AbortError'].includes(error.name) ? '平台连接超时，请重试。作品仍可浏览。' : '平台连接失败，请检查网络后重试。作品仍可浏览。',
+      retryAt: Date.now() + 2000,
+    };
     return false;
   }
 }
 
 export async function refreshPlatform(reason = 'refresh') {
-  if (!platform.available) return;
-  await connectPlatform();
+  if (!frontendBuildInfo || platform.mismatch || Date.now() < (platform.connectionError?.retryAt ?? 0)) return false;
+  const connected = await connectPlatform();
   emit(reason);
+  return connected;
+}
+
+let recoveryStarted = false;
+// One delayed retry after startup; later retries follow an explicit click or a network/focus event.
+export function startPlatformRecovery() {
+  recoveryStarted = true;
+  if (platform.available || platform.mismatch || platform.connectionError?.kind === 'missing') return;
+  setTimeout(() => {
+    if (!platform.available) void refreshPlatform('reconnect');
+  }, Math.max(2000, (platform.connectionError?.retryAt ?? 0) - Date.now()));
 }
 
 export class ApiError extends Error {
@@ -125,16 +164,21 @@ export async function apiRemembered(path, options) {
 let sessionCheckedAt = 0;
 let sessionChecking = false;
 async function checkSession() {
-  if (!platform.available || sessionChecking || Date.now() - sessionCheckedAt < 5000) return;
+  if (!recoveryStarted || platform.mismatch || sessionChecking || Date.now() - sessionCheckedAt < 5000) return;
   sessionCheckedAt = Date.now();
   sessionChecking = true;
   try {
+    if (!platform.available) {
+      if (platform.connectionError?.kind !== 'missing') await refreshPlatform('reconnect');
+      return;
+    }
     const { user } = await api('auth/me');
     if ((user?.id ?? null) !== (platform.user?.id ?? null)) await refreshPlatform('session');
   } catch { /* A network failure does not prove the session changed. */ }
   finally { sessionChecking = false; }
 }
 window.addEventListener('focus', checkSession);
+window.addEventListener('online', checkSession);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') void checkSession();
 });

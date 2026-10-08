@@ -12,7 +12,7 @@
 //   #/me · #/review           personal center · review queue (platform)
 //   #/terms · #/privacy       terms of use and disclaimer · privacy policy
 import { $, $$, LOGO, brandMark, byName, esc, ext, formatBytes, formatDate, icon, img, pad, store, syncThemeUi, themeButton, versionedMedia } from './ui.js';
-import { STATUS, accountControl, api, arenaScope, arenaText, avatarFace, byStaff, connectPlatform, isStaff, onPlatformChange, platform, reactionBar, refreshAccountControls, refreshPlatform, requestBootstrap, setFaces, statusBadge, toast } from './platform.js';
+import { STATUS, accountControl, api, arenaScope, arenaText, avatarFace, byStaff, connectPlatform, isStaff, onPlatformChange, platform, reactionBar, refreshAccountControls, refreshPlatform, requestBootstrap, setFaces, startPlatformRecovery, statusBadge, toast } from './platform.js';
 import { mount as renderLanding } from './home.js';
 import { CONTACT, aigcLabel, beianLink, mount as renderLegal } from './legal.js';
 import { effortRank, representatives, standard, taskCover } from './featured.js';
@@ -1436,13 +1436,29 @@ const PLATFORM_PAGES = { arena: './arena.js', leaderboard: './leaderboard.js', n
 const PAGE_TITLES = { arena: '盲评', leaderboard: '榜单', new: '发起题目', submit: '上传作品', me: '个人中心', review: '审核' };
 const PAGE_SECTIONS = { arena: 'arena', leaderboard: 'leaderboard', new: 'new', submit: 'questions', me: 'me', review: 'me' };
 function platformOffline(name) {
+  const missing = platform.connectionError?.kind === 'missing';
   // The page itself explains a version mismatch, so the header notice is not repeated.
   root.innerHTML = `${header([{ text: PAGE_TITLES[name] }], false, PAGE_SECTIONS[name], { notice: false })}<main class="page wrap empty-page">
     <p class="kicker"><span class="num">${esc(PAGE_TITLES[name])}</span></p>
-    <h1>${platform.mismatch ? `${esc(PAGE_TITLES[name])}暂时不可用` : '这里需要平台服务'}</h1>
-    <p>${platform.mismatch ? '作品数据与平台服务版本不一致，平台功能已暂停。可能是新版本正在发布，稍后刷新即可恢复；作品可照常浏览。' : `当前打开的是静态作品档案。连接平台服务后即可使用${esc(PAGE_TITLES[name])}。`}</p>
-    <div class="empty-actions"><a class="btn primary" href="#/questions">回到题库${icon('right')}</a>${platform.mismatch ? '<button type="button" class="btn" data-reload>刷新页面</button>' : ''}</div>
+    <h1>${platform.mismatch ? `${esc(PAGE_TITLES[name])}暂时不可用` : missing ? '这里需要平台服务' : '平台连接暂时失败'}</h1>
+    <p role="status">${platform.mismatch ? '作品数据与平台服务版本不一致，平台功能已暂停。可能是新版本正在发布，稍后刷新即可恢复；作品可照常浏览。' : missing ? `当前地址没有可用的平台服务。连接后即可使用${esc(PAGE_TITLES[name])}，作品仍可浏览。` : esc(platform.connectionError?.message)}</p>
+    <div class="empty-actions">${platform.mismatch ? '<button type="button" class="btn primary" data-reload>刷新页面</button>' : '<button type="button" class="btn primary" data-platform-retry>重新连接</button>'}<a class="btn" href="#/questions">回到题库${icon('right')}</a></div>
   </main>${footer()}`;
+  const button = $('[data-platform-retry]', root);
+  if (!button) return {};
+  const update = () => {
+    const seconds = Math.max(0, Math.ceil(((platform.connectionError?.retryAt ?? 0) - Date.now()) / 1000));
+    button.disabled = platform.connecting || seconds > 0;
+    button.textContent = platform.connecting ? '正在连接…' : seconds ? `${seconds} 秒后可重试` : '重新连接';
+  };
+  update();
+  const timer = setInterval(update, 1000);
+  root.onclick = (event) => {
+    if (!event.target.closest('[data-platform-retry]') || button.disabled) return;
+    void refreshPlatform('reconnect');
+    update();
+  };
+  return { destroy: () => clearInterval(timer) };
 }
 
 // ---- the way back ---------------------------------------------------------------------
@@ -1660,7 +1676,7 @@ async function show(version, visit, scrollBack) {
     else if (taskId === 'questions') page = renderLibrary(parts.slice(1), Boolean(visit && !visit.returning));
     else if (taskId === 'terms' || taskId === 'privacy') page = renderLegal(root, context(), taskId);
     else if (platformPage) {
-      if (!platform.available) platformOffline(platformPage);
+      if (!platform.available) page = platformOffline(platformPage);
       else {
         root.innerHTML = `${header([{ text: PAGE_TITLES[platformPage] }], false, PAGE_SECTIONS[platformPage])}<main class="page wrap empty-page"><p class="muted">正在打开…</p></main>`;
         try {
@@ -1736,6 +1752,7 @@ try {
   addEventListener('hashchange', (event) => route({ from: event.oldURL }));
   await route({ from: '' });
   await window.ArenaEntry?.ready(root);
+  startPlatformRecovery();
 } catch (err) {
   window.ArenaEntry?.fail();
   root.innerHTML = err.status === 429
