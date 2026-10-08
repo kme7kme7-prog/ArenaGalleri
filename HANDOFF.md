@@ -1,6 +1,6 @@
 # HANDOFF.md · 当前状态
 
-## 后台模型名称去点与只读报告（2026-10-08，未提交、未推送、未部署）
+## 后台模型名称去点与只读报告（2026-10-08，已提交 a23efb7，未推送、未部署）
 
 - 相邻后台 modelNameKey 已按 Gallery compact 只保留 NFKC/小写后的字母和数字；修改前完整名称/别名检查262模型、442写法、303键，跨模型冲突0。该键只用于内存名称索引，无持久化消费者；x:榜单键保持，不在读榜时自动归登记模型，不做错字匹配。
 - 新增只读 scripts/report-model-duplicates.mjs（--db 一致副本，--dist 可选），列出空model_id且model_other精确匹配登记名称/别名的作品、题目、登记模型和当前config/model有效票数；无迁移、自动合并或写库，修正仍由用户逐件决定后走library.setMeta。
@@ -8,12 +8,12 @@
 - 已有一致副本（2026-10-08 02:25:55 Brisbane，v40）874作品/6645票，16件未登记中精确匹配疑似重复0件；只读前后DB/WAL SHA不变，不代表当前生产数量。后台忽略证据 output/model-name-duplicates-20261008/。
 - 未提交、推送、部署或写生产数据；不改schema/历史作品/私有包。无本轮前端源码和数据包变化，未重新build/intake或浏览器/真机/生产验收；前后端可任意顺序上线。[本轮记录](docs/archive/2026-10-08-model-name-duplicates-wsnxxxs.md)。
 
-## 模型名称提示与搜索匹配（2026-10-08，本地完成，未提交）
+## 模型名称提示与搜索匹配（2026-10-08，已提交，未推送、未部署）
 
 - 前两轮记录已提交：后台 eec8a54（Ultra/Ultracode），Gallery fd14e3c（记录）。本轮匹配规则抽成纯模块 `site/match.js`（分词、版本号去点、连续匹配优先、作品数与新旧排序），`site/suggest.js` 只留候选列表界面。
 - 模型名称未登记但与已登记模型写法相同（大小写/空格/连字符/点/词序/别名）或长词个别错字时，下方提示「是否指 X？」，点击改用登记模型并提交 modelId；数字与短词须一致，现有注册表两两互查无误报（此前 Ling Flash/Flash VL、Laguna S/XS、GLM-5/5V 已排除）。题目页作品搜索、题库模型索引（含别名）与排行榜搜索改用同一 `textMatches`。
 - check68/0、test33/33、build176件/70site、严格intake0错/8既有提示。表单夹具：gpt5.6 luna 出提示，点击后 modelId=gpt-5.6-luna、厂商栏隐藏；静态构建题库模型索引 56→3模型、luna 56→1；波音787作品搜索 56→3、qwen38→1。排行榜需平台，本地无后端未在浏览器验证（同一函数已单测）；未测真实后端、真机。
-- 后台提示词 output/upload-defaults-20261008/backend-model-name-prompt.md（modelNameKey 去点、只读重复报告脚本，不自动合并）。等用户授权提交。
+- 后台提示词 output/upload-defaults-20261008/backend-model-name-prompt.md 已由另一 agent 执行：后台 a23efb7（modelNameKey 去点、只读重复报告，不自动合并）。Gallery a417d4a；均未推送、未部署。[本轮记录](docs/archive/2026-10-08-model-name-hint-search-wsnxxxs.md)。
 
 ## 后台登记 Ultra 与 Ultracode（2026-10-08，未提交、未推送、未部署）
 
