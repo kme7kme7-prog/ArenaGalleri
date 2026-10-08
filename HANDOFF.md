@@ -6,6 +6,14 @@
 - 匿名线上bootstrap两次200，完整读取约5.737秒/3.763秒、JSON约769KB；榜单200约1.104秒。Chrome首次bootstrap约5.902秒，正常榜单及两次刷新均可显示。仅在独立浏览器拦截bootstrap：首次429及延迟9秒都复现整页提示；429后等待10秒并触发focus仍只请求1次，超时请求为ERR_ABORTED。源码共享目录限流默认30次/分钟（含bootstrap/榜单，nginx还含data.json）；未读取服务器日志或运行配置，不能确认用户那次为429还是超时。
 - check64/0、test29/29；正常/故障桌面截图已目检。仅记录调查，无源码修复、部署、生产写入或推送；未build/intake，因未改源码或数据包。忽略证据output/playwright/leaderboard-refresh-20261008/；其他会话Haiku交接原样保留且不纳入本轮提交。[调查记录](docs/archive/2026-10-08-leaderboard-refresh-investigation-wsnxxxs.md)。
 
+## Haiku 重复榜单调查与合并（2026-10-08，线上已修复）
+
+- 原因：Haiku 注册前的旧自填作品 up-ik30ozcw 未补登记，模型榜同时存在 claude-haiku-5.5 与 x:claude haiku 5.5。前端名称匹配已显示相同名称，后端计分键仍不同。现行后端新投稿已有名称归一逻辑，本轮不改功能源码或注册表。
+- 一致副本演练后停服备份，通过现行 library.setMeta 把该作品登记为 claude-haiku-5.5，保留 XHigh/OMP/官方、作品ID、题目、内容及其他字段；历史1侧票按相同内容摘要实时归属，不写原票或 correction，只新增1条meta审计。模型榜2→1行，17+1→18作品、8+1→9比较，6胜/0平/3负，1120±198，第11；有效比较6462、参与者172不变，上榜模型65→64。配置榜仍保留Max/XHigh，6576比较/129配置不变。
+- 6854条原票、912作品及其他表逐行核对，既有审计保留；v40、integrity ok、外键0、服务active/running、NRestarts0。修复后新一致副本重复执行0修改/0审计。
+- Gallery check64/0、test29/29、build176件/68site、严格intake0错/8既有提示；公网check:deployment56题/36社区题/794作品通过。1280桌面与390手机按模型/按配置核对，模型榜与桌面配置榜截图目检，无整页横溢、浏览器错误/警告0。未生产浏览器登录、投稿、新增投票、全交互或真机验证。
+- 备份/root/aob-haiku-merge-20261008/backup/before-merge.db，忽略证据output/haiku-merge-20261008/。其他仓库遗留未提交文件原样保留；本轮Gallery仅交接与归档一条英文提交，不推送。[完成记录](docs/archive/2026-10-08-haiku-merge-wsnxxxs.md)。
+
 ## 本轮 main 同步（2026-10-08，已推送）
 
 - 用户明确要求推送 main。fetch 后三个相关仓库均无远端分叉，Gallery与后端各1条、私有数据仓2条待推送；均已正常推送并用远端refs/heads/main核对一致，无强推。
