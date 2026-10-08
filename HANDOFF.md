@@ -1,5 +1,19 @@
 # HANDOFF.md · 当前状态
 
+## 取消定期内容复查（2026-10-08，已上线，源码未推送）
+
+- 用户要求取消公开作品复核，仅保留新投稿审核。后端0409233移除扫描/定时器/基线比较与写入/recheck方法及CONTENT_RECHECK_HOURS配置；新投稿初审、失败转人工、pending恢复、人工审核/显式重试保持，历史审核状态/审计/媒体不改。
+- Windows及Linux后端check109/0、test324/324；Gallerycheck65/0、test30/30。最新一致副本和停服最新备份新旧对照均通过：6931票/925作品/v41，全部旧表逐行保留，模型/配置榜64/130行、6538/6653有效比较/173参与者全字段一致，integrity ok、外键0。
+- 只替换moderation/config两个运行文件并更新版本标记，SHA及其余运行文件完整清单一致；17:03:54 Brisbane上线0409233，active/running、NRestarts0，loopback/公网bootstrap的capture/contentModeration/autoModeration均true。停服备份复验约51.47秒；后续短时整机CPU8.8%/1.3%/0.3%，不作为长期负载保证。
+- 备份/root/aob-remove-recheck-20261008/backup/，证据output/remove-periodic-review-20261008/。没有生产投稿/付费审核/业务决定/投票或前端发布，无页面/数据包变化未build/intake或交互验收；源码与本轮Gallery记录各一条英文提交、不push。[完成记录](docs/archive/2026-10-08-remove-periodic-review-release-wsnxxxs.md)。上轮只读调查记录保留，复查建议由本轮取消决定覆盖。
+
+## 审核与定期复查负载调查（2026-10-08，只读完成）
+
+- 定期复查确实持续运行公开投稿页面，是历史高负载的重要嫌疑来源；缺基线/截图不完整不更新复查时间，多件失败作品跨轮次及重启重复30秒超时。默认24小时到期、每小时启动一轮，整轮互斥；约900件候选的固定截图等待每天已约6小时，另有加载/失败重试。135件缺基线，77件已有基线到期；过去24小时44条变化复审通过审计，不能当总复查次数。最近7天人工触发content-retry=0。
+- 生产截图仍由后端本地Chrome承担，独立capture服务inactive、未配置endpoint，后端CPUQuota无限。历史两个服务区间平均约2.18/1.70核，但统计含全部服务子进程，缺历史CPU曲线/停复查对照，不能把全部满载归因复查。
+- Brisbane16:46–16:51采样：4核、内存充足，后端16:44刚重启、当前pending=0，首次定期复查尚未触发；三段整机CPU16.2%/0.6%/4.2%，当时没有持续满载。只读调查，未重启、改配置/业务数据、付费审核、部署或push；建议后续先暂停定期复查做对照，再处理失败退避/单轮预算，建议未执行。
+- Gallery check65/0、test30/30；无源码/页面/数据包改动，未build/intake或交互验收。仅本轮交接/归档，未commit；其他会话发布记录保留。证据output/moderation-load-20261008/；[调查记录](docs/archive/2026-10-08-moderation-load-investigation-wsnxxxs.md)。
+
 ## 固定模型与连接恢复联合发布（2026-10-08，已推送、已上线）
 
 - 用户授权推送联调部署。Gallery c546668（连接恢复）与 2ec1f72（固定模型）、后端 d110623 已正常推送 main，无分叉或强推；两仓功能提交 GitHub CI 成功。此前顶部「未推送、未部署」状态由本节覆盖。
