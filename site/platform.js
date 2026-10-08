@@ -22,6 +22,7 @@ export const platform = {
   questions: [],
   reactions: { counts: {}, mine: {} },
   arena: {},
+  arenaModels: [],
   featured: {},
   totals: { votes: 0, voters: 0, entries: 0 },
   me: null,
@@ -76,7 +77,7 @@ async function readPlatform(buildInfo, request) {
     // AI-graded questions have no blind pool, whatever the server still reports for them.
     const graded = new Set((bootstrap.questions ?? []).filter(aiJudged).map((q) => q.id));
     bootstrap.arena = Object.fromEntries(Object.entries(bootstrap.arena ?? {}).filter(([id]) => !graded.has(id)));
-    Object.assign(platform, resolveApiMedia(bootstrap, 'bootstrap'), { available: true, mismatch: false, stale: staleBuild(buildInfo, bootstrap), connectionError: null });
+    Object.assign(platform, { arenaModels: [] }, resolveApiMedia(bootstrap, 'bootstrap'), { available: true, mismatch: false, stale: staleBuild(buildInfo, bootstrap), connectionError: null });
     return true;
   } catch (error) {
     platform.connectionError = {

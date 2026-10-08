@@ -3,7 +3,7 @@
 // The server picks every pair and hands out opaque frame addresses; nothing on this page
 // knows which work is which until the vote comes back with the reveal.
 import { $, $$, brandMark, esc, icon, pad, themeButton } from './ui.js';
-import { api, arenaScope, isStaff, needsEmail, openAuth, openDialog, platform, reactionBar, requireUser, toast } from './platform.js';
+import { api, arenaScope, isSenior, isStaff, needsEmail, openAuth, openDialog, platform, reactionBar, requireUser, toast } from './platform.js';
 import { aigcLabel } from './legal.js';
 import { domainsOf, matchesQuery, tracksOf, votedTask } from './categories.js';
 import { linkReferences, referenceSheet } from './references.js';
@@ -25,13 +25,24 @@ const REASON = {
 
 const RANDOM = 'random';
 const isOpen = (t) => (platform.arena[t.id]?.entries ?? 0) >= 2;
+// A senior admin may pin a model to place a newcomer quickly: every pair then holds one of its works,
+// on a random side, and the ballots count as usual. The pin lasts for the tab, never in the address.
+const PIN = 'arena-pin';
+const pinned = () => {
+  if (!isSenior()) return null;
+  let key = null;
+  try { key = sessionStorage.getItem(PIN); } catch { /* private mode */ }
+  return platform.arenaModels.find((model) => model.key === key) ?? null;
+};
+const setPin = (key) => { try { key ? sessionStorage.setItem(PIN, key) : sessionStorage.removeItem(PIN); } catch { /* private mode */ } };
+const inPin = (t, pin = pinned()) => !pin || pin.tasks.includes(t.id);
 
 export function mount(root, ctx) {
   if (!ctx.param) return lobby(root, ctx);
   const random = ctx.param === RANDOM;
   const task = random ? null : ctx.DATA.tasks.find((t) => t.id === ctx.param);
   // A random round draws from the tasks the starting page was showing, as far as they can be judged.
-  const scope = random ? ctx.DATA.tasks.filter((t) => isOpen(t) && (arenaScope.get() ?? [t.id]).includes(t.id)) : [];
+  const scope = random ? ctx.DATA.tasks.filter((t) => isOpen(t) && inPin(t) && (arenaScope.get() ?? [t.id]).includes(t.id)) : [];
   if (random ? !scope.length : !task || !votedTask(task)) {
     location.replace('#/arena');
     return {};
@@ -46,7 +57,7 @@ function lobby(root, ctx) {
   const tracks = tracksOf(tasks);
   const view = { track: '', query: '' };
   const pool = (t) => platform.arena[t.id] ?? { works: 0, entries: 0 };
-  const ready = isOpen;
+  const ready = (t) => isOpen(t) && inPin(t);
   const openTasks = () => ctx.DATA.tasks.filter(ready);
 
   const row = (t) => {
@@ -66,7 +77,7 @@ function lobby(root, ctx) {
   function scope() {
     const query = view.query.trim().toLowerCase();
     const scoped = tasks.filter((t) => (!view.track || t.category === view.track)
-      && matchesQuery(t, query));
+      && inPin(t) && matchesQuery(t, query));
     return { scoped, open: scoped.filter(ready), closed: scoped.filter((t) => !ready(t)) };
   }
   const meta = ({ open, closed }) => `${open.length} 道题可以开始${closed.length ? ` · ${closed.length} 道作品不足` : ''}`;
@@ -86,6 +97,13 @@ function lobby(root, ctx) {
       </div></summary><ul class="arena-tasks">${closed.map(row).join('')}</ul></details>` : ''}`;
   }
 
+  function pinField() {
+    const pin = pinned();
+    return `<label class="field arena-pin-field"><span class="field-label">固定模型<small>高级管理员</small></span>
+      <select class="input" data-pin><option value="">不固定</option>${platform.arenaModels.map((model) => `<option value="${esc(model.key)}"${model === pin ? ' selected' : ''}>${esc(model.name)} · ${model.tasks.length} 题</option>`).join('')}</select></label>
+      <p class="side-note">每组必有这个模型的作品，左右随机，对手由后台抽取，选择照常计入榜单。题目只列出它有作品的题。</p>`;
+  }
+
   // Typing redraws the list only, so the search in the toolbar keeps its focus.
   const drawList = () => {
     $('[data-arena-list]', root).innerHTML = list();
@@ -103,7 +121,8 @@ function lobby(root, ctx) {
             <div><dt>有效比较</dt><dd>${pad(platform.totals.votes)}</dd></div>
             ${platform.user ? `<div><dt>你已评</dt><dd>${pad(platform.me?.votes ?? 0)}</dd></div>` : ''}
           </dl>${open.length ? `<button class="btn primary side-cta" data-random>${icon('blind')}随机一组</button><p class="side-cta-note">${view.track || view.query.trim() ? `在当前范围的 ${scope().open.length} 道题里` : `在全部 ${open.length} 道题里`}随机抽组，每一组都可能换题。想专心评一道，点右侧的题目。</p>` : ''}
-          ${platform.user ? '' : '<p class="side-note">未登录可以体验，选择不计入榜单。<button class="link" data-auth="login">登录</button></p>'}`,
+          ${platform.user ? '' : '<p class="side-note">未登录可以体验，选择不计入榜单。<button class="link" data-auth="login">登录</button></p>'}
+          ${isSenior() && platform.arenaModels.length ? pinField() : ''}`,
       nav: `<nav class="side-nav section-nav" aria-label="盲评题型">${link('', 'grid', '全部', open.length)}${tracks.map((x) => link(x.name, x.glyph, x.label, x.tasks.filter(ready).length)).join('')}</nav>` })}
       <section class="block wrap">
         <div class="collection-toolbar"><label class="collection-search">${icon('search')}<input type="search" data-arena-search aria-label="搜索题目" placeholder="搜索题目" value="${esc(view.query)}"></label><span data-arena-meta>${meta(scope())}</span></div>
@@ -133,6 +152,11 @@ function lobby(root, ctx) {
     arenaScope.set(open.map((t) => t.id));
     location.hash = `#/arena/${RANDOM}`;
   };
+  root.onchange = (e) => {
+    if (!e.target.matches('[data-pin]')) return;
+    setPin(e.target.value);
+    draw();
+  };
   root.oninput = (e) => {
     if (!e.target.matches('[data-arena-search]')) return;
     view.query = e.target.value;
@@ -140,13 +164,13 @@ function lobby(root, ctx) {
   };
   document.title = `盲评 · ${ctx.DATA.title}`;
   draw();
-  return { onPlatformChange: draw, destroy() { root.onclick = null; root.oninput = null; } };
+  return { onPlatformChange: draw, destroy() { root.onclick = null; root.onchange = null; root.oninput = null; } };
 }
 
 // A random match (scope given) may draw each pair from a different task; `task` is the one on view.
 function match(root, ctx, first, scope) {
   let task = first;
-  const state = { random: Boolean(scope), scope: scope ?? ctx.DATA.tasks.filter(isOpen), done: new Set(), unavailable: false, prefetch: null, match: null, result: null, ready: {}, seen: {}, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', round: 0, counted: 0, busy: false, prompt: false, slow: false, error: null };
+  const state = { random: Boolean(scope), scope: scope ?? ctx.DATA.tasks.filter(isOpen), pin: pinned(), tally: { win: 0, tie: 0, loss: 0 }, place: '', done: new Set(), unavailable: false, prefetch: null, match: null, result: null, ready: {}, seen: {}, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', round: 0, counted: 0, busy: false, prompt: false, slow: false, error: null };
   const mobile = () => matchMedia('(max-width: 860px)').matches;
   const timers = new Set();
   const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); };
@@ -162,6 +186,7 @@ function match(root, ctx, first, scope) {
           <button data-a="mode" data-mode="random" aria-pressed="false" title="每一组都从范围内随机换题"><span class="mode-long">随机换题</span><span class="mode-short">随机</span></button>
           <button data-a="mode" data-mode="solo" aria-pressed="false" title="下一组仍然是这道题"><span class="mode-long">只评本题</span><span class="mode-short">本题</span></button>
         </div>
+        <button class="vtool arena-pin" data-a="unpin" hidden></button>
         <span class="vdivider" aria-hidden="true"></span>
         <button class="vtool" data-a="prompt" aria-pressed="false" title="查看提示词">${icon('guide')}<span class="vtool-text">提示词</span></button>
         <div class="seg arena-layout" role="group" aria-label="对比布局">
@@ -250,8 +275,10 @@ function match(root, ctx, first, scope) {
     }
     if (state.result) {
       const { choice, counted, reason } = state.result;
+      const { win, tie, loss } = state.tally;
+      const tally = state.pin && win + tie + loss ? `<span class="arena-tally">${esc(state.pin.name)}：${win + tie + loss} 组 · ${win} 胜 ${tie} 平 ${loss} 负${state.place ? ` · ${state.place}` : ''}</span>` : '';
       bar.innerHTML = `<div class="vote-in is-result">
-        <p class="vote-verdict"><b>${VERDICT[choice]}</b><span>${REASON[counted ? 'counted' : reason] ?? ''}${state.counted ? ` · 本次已计入 ${state.counted} 组` : ''}${!counted && reason === 'anonymous' ? ' <button class="link" data-auth="login">登录</button>' : ''}${!counted && reason === 'unbound' ? ' <button class="link" data-bind-email>绑定邮箱</button>' : ''}</span></p>
+        <p class="vote-verdict"><b>${VERDICT[choice]}</b>${tally}<span>${REASON[counted ? 'counted' : reason] ?? ''}${state.counted ? ` · 本次已计入 ${state.counted} 组` : ''}${!counted && reason === 'anonymous' ? ' <button class="link" data-auth="login">登录</button>' : ''}${!counted && reason === 'unbound' ? ' <button class="link" data-bind-email>绑定邮箱</button>' : ''}</span></p>
         <div class="vote-actions"><a class="btn" href="#/leaderboard/${esc(task.id)}">${icon('rank')}查看榜单</a><button class="btn primary" data-a="next">下一组<kbd>N</kbd></button></div>
       </div>`;
       return;
@@ -415,11 +442,34 @@ function match(root, ctx, first, scope) {
     tag.textContent = `随机 · ${state.scope.length === ctx.DATA.tasks.filter(isOpen).length ? '全部题目' : `${state.scope.length} 道题`}`;
     $('.arena-mode', el).hidden = Boolean(state.error);
     $$('.arena-mode [data-mode]', el).forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.mode === 'random') === state.random)));
+    const chip = $('[data-a="unpin"]', el);
+    chip.hidden = !state.pin;
+    chip.title = '退出固定模型，之后的组照常抽取';
+    chip.innerHTML = state.pin ? `<span class="vtool-text">固定</span><b>${esc(state.pin.name)}</b>${icon('close')}` : '';
+  }
+
+  function unpin() {
+    setPin('');
+    state.pin = null;
+    dropPrefetch();
+    drawMode();
+    drawBar();
+  }
+
+  // The pinned model's place on the overall model board, refreshed after each counted pinned vote.
+  async function place(pin) {
+    try {
+      const board = await api('leaderboard?by=model');
+      const row = board.rows.find((r) => r.key === pin.key);
+      if (state.pin !== pin) return;
+      state.place = row ? `综合第 ${row.rank} 名 · ${row.score} ±${row.interval}${row.provisional ? ' · 暂定' : ''}` : '尚未上榜';
+      if (state.result) drawBar();
+    } catch { /* the tally stands without a place */ }
   }
 
   // The next task of a random round: any task in range the reader has not run out of, not the same one twice.
   function pickTask(previous, cooling) {
-    const live = state.scope.filter((t) => isOpen(t) && !state.done.has(t.id) && !cooling.has(t.id));
+    const live = state.scope.filter((t) => isOpen(t) && inPin(t, state.pin) && !state.done.has(t.id) && !cooling.has(t.id));
     const fresh = live.filter((t) => t !== previous);
     const list = fresh.length ? fresh : live;
     return list[Math.floor(Math.random() * list.length)];
@@ -478,12 +528,12 @@ function match(root, ctx, first, scope) {
         if (!t) throw Object.assign(new Error('这个范围里的组合你都评过了'), { code: 'exhausted' });
       }
       try {
-        return { task: t, match: await api('arena/matches', { method: 'POST', body: { task: t.id, previous: t === from ? previous : undefined, avoidCooling: avoid || undefined } }) };
+        return { task: t, match: await api('arena/matches', { method: 'POST', body: { task: t.id, previous: t === from ? previous : undefined, avoidCooling: avoid || undefined, pin: state.pin?.key } }) };
       } catch (error) {
-        if (!random || !['exhausted', 'insufficient', 'cooling'].includes(error.code)) throw error;
+        if (!random || !['exhausted', 'insufficient', 'cooling', 'pinned-absent'].includes(error.code)) throw error;
         if (error.code === 'cooling') cooling.add(t.id);
         else {
-          if (error.code === 'insufficient') state.unavailable = true;
+          if (error.code !== 'exhausted') state.unavailable = true;
           state.done.add(t.id);
         }
         pick = true;
@@ -551,6 +601,11 @@ function match(root, ctx, first, scope) {
         platform.totals.votes++;
         if (platform.me) platform.me.votes++;
       }
+      const side = state.result.pinned;
+      if (state.pin && side && choice !== 'skip') {
+        state.tally[choice === 'tie' ? 'tie' : choice === side ? 'win' : 'loss']++;
+        if (state.result.counted) place(state.pin);
+      }
     } catch (error) {
       toast(error.message);
       if (error.status === 404) { state.busy = false; return next(); }
@@ -578,6 +633,7 @@ function match(root, ctx, first, scope) {
     else if (kind === 'prompt') togglePrompt();
     else if (kind === 'open-prompt') togglePrompt(true);
     else if (kind === 'mode') setMode(action.dataset.mode === 'random');
+    else if (kind === 'unpin') unpin();
     else if (kind === 'controls') {
       const side = action.dataset.side ?? state.side;
       state.controlsShown[side] = !state.controlsShown[side];

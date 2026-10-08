@@ -400,6 +400,12 @@ table.board { width: 100%; border-collapse: collapse; font-size: 13.5px; font-va
 .arena-heading > span { overflow: hidden; color: var(--muted); font: 11.5px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .arena-scope { margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); font: 500 11px var(--sans); letter-spacing: 0; vertical-align: 2px; }
 .arena-mode { flex-wrap: nowrap; padding: 2px; border-radius: 9px; }
+.arena-pin { gap: 5px; background: var(--accent-soft); color: var(--accent); }
+.arena-pin:hover { color: var(--accent); }
+.arena-pin b { max-width: 9em; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.arena-pin .i { width: 14px; height: 14px; }
+.arena-pin-field { margin-top: 18px; }
+.vote-verdict .arena-tally { color: var(--accent); font: 500 12.5px var(--mono); }
 .arena-mode button { min-height: 30px; padding: 0 11px; font-size: 12.5px; white-space: nowrap; }
 .arena-mode .mode-short { display: none; }
 .arena-switched { position: absolute; top: 56px; left: 50%; z-index: 30; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 24px); padding: 9px 14px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--raised); box-shadow: var(--shadow); font-size: 13px; white-space: nowrap; transform: translateX(-50%); animation: arena-switched .35s var(--ease) both; }
@@ -946,6 +952,9 @@ dialog.sheet.work-manage-sheet { width: min(1040px, calc(100% - 40px)); overflow
   .review-form { padding: 20px 0 0; border-left: 0; border-top: 1px solid var(--line); }
 }
 @media (max-width: 860px) {
+  .arena .arena-pin { width: auto; padding: 0 8px; }
+  .arena .arena-pin .vtool-text { display: inline; }
+  .arena-pin b { display: none; }
   .site-nav { display: none; }
   .menu-nav { display: block; }
   .account-btn:not(.signed-in) .account-name, .account-btn.signed-in .account-name { display: none; }
