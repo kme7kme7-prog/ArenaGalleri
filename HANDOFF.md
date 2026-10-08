@@ -12,7 +12,7 @@
 - 一致副本演练后停服备份，通过现行 library.setMeta 把该作品登记为 claude-haiku-5.5，保留 XHigh/OMP/官方、作品ID、题目、内容及其他字段；历史1侧票按相同内容摘要实时归属，不写原票或 correction，只新增1条meta审计。模型榜2→1行，17+1→18作品、8+1→9比较，6胜/0平/3负，1120±198，第11；有效比较6462、参与者172不变，上榜模型65→64。配置榜仍保留Max/XHigh，6576比较/129配置不变。
 - 6854条原票、912作品及其他表逐行核对，既有审计保留；v40、integrity ok、外键0、服务active/running、NRestarts0。修复后新一致副本重复执行0修改/0审计。
 - Gallery check64/0、test29/29、build176件/68site、严格intake0错/8既有提示；公网check:deployment56题/36社区题/794作品通过。1280桌面与390手机按模型/按配置核对，模型榜与桌面配置榜截图目检，无整页横溢、浏览器错误/警告0。未生产浏览器登录、投稿、新增投票、全交互或真机验证。
-- 备份/root/aob-haiku-merge-20261008/backup/before-merge.db，忽略证据output/haiku-merge-20261008/。其他仓库遗留未提交文件原样保留；本轮Gallery仅交接与归档一条英文提交，不推送。[完成记录](docs/archive/2026-10-08-haiku-merge-wsnxxxs.md)。
+- 备份/root/aob-haiku-merge-20261008/backup/before-merge.db，忽略证据output/haiku-merge-20261008/。其他仓库遗留未提交文件原样保留；合并记录提交2f8faf7。用户后续授权推送main，连同祖先a042de3（榜单刷新调查记录）和本轮推送状态记录正常推送，无远端分叉、无强推；未重新部署。[完成记录](docs/archive/2026-10-08-haiku-merge-wsnxxxs.md)。
 
 ## 本轮 main 同步（2026-10-08，已推送）
 
