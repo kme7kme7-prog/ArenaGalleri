@@ -1,5 +1,11 @@
 # HANDOFF.md · 当前状态
 
+## 榜单刷新离线提示调查（2026-10-08，调查完成，未改功能）
+
+- 用户要求调查刷新榜单容易出现「这里需要平台服务」。线上源码确认初始化只请求一次 bootstrap，8秒超时；HTTP失败/非JSON/网络失败被吞成false，路由按available=false显示静态档案提示。refreshPlatform和焦点会话检查都跳过不可用状态，因此网络恢复也不自动重连；榜单接口自身失败只显示「榜单暂时无法载入」，不是本次整页提示。
+- 匿名线上bootstrap两次200，完整读取约5.737秒/3.763秒、JSON约769KB；榜单200约1.104秒。Chrome首次bootstrap约5.902秒，正常榜单及两次刷新均可显示。仅在独立浏览器拦截bootstrap：首次429及延迟9秒都复现整页提示；429后等待10秒并触发focus仍只请求1次，超时请求为ERR_ABORTED。源码共享目录限流默认30次/分钟（含bootstrap/榜单，nginx还含data.json）；未读取服务器日志或运行配置，不能确认用户那次为429还是超时。
+- check64/0、test29/29；正常/故障桌面截图已目检。仅记录调查，无源码修复、部署、生产写入或推送；未build/intake，因未改源码或数据包。忽略证据output/playwright/leaderboard-refresh-20261008/；其他会话Haiku交接原样保留且不纳入本轮提交。[调查记录](docs/archive/2026-10-08-leaderboard-refresh-investigation-wsnxxxs.md)。
+
 ## 本轮 main 同步（2026-10-08，已推送）
 
 - 用户明确要求推送 main。fetch 后三个相关仓库均无远端分叉，Gallery与后端各1条、私有数据仓2条待推送；均已正常推送并用远端refs/heads/main核对一致，无强推。
