@@ -1,5 +1,12 @@
 # HANDOFF.md · 当前状态
 
+## 后台登记 Ultra 与 Ultracode（2026-10-08，未提交、未推送、未部署）
+
+- 本轮功能位于相邻 arenaofbias-server：EFFORTS 末尾登记 Ultra、Ultracode，后台筛选和编辑/投稿候选补齐；既有 effortOf 按常用列表忽略大小写归一，无需改。后台无其他硬编码档位高低/代表作兜底/导出顺序。前端既有候选补齐和去重保持，档位高低 Ultracode > Ultra > Max > XHigh > High > Medium > Low，前后端可任意顺序上线。
+- 后台 Windows/Linux Node24.16.0 check109/0、test325/325；新增1条真实HTTP临时库用例核对 bootstrap 全列表及 ultracode 提交后响应/SQLite 为 Ultracode。另在隔离管理临时库确认 bootstrap 末尾两档，以及 ultra→Ultra、ULTRACODE→Ultracode；后台候选 DOM 和编辑弹窗目检通过。
+- Gallery 本地 check67/0、test31/31；仅交接/归档，无 Gallery 源码或数据包变化，未重新 build/intake。未做生产、真机或全交互验收。本地后台旧库 v13 只读统计 ultra/ultracode 类值0件，不能代表生产数量；生产未核查。数据库结构、历史作品档位不改。
+- 用户未授权 commit/push/部署，均未执行；后台证据 output/ultra-efforts-20261008/（忽略），仅3个后台功能/测试文件及两仓本轮记录有改动。[本轮归档](docs/archive/2026-10-08-ultra-ultracode-wsnxxxs.md)。
+
 ## 上传表单默认值与候选搜索（2026-10-08，本地提交，未推送、未部署）
 
 - 普通与高级管理员上传新作品时预填服务商官方、生成方式一轮、人工介入「只给了题目提示词」；编辑已有作品与普通用户不变。所有人档位候选增加 Ultra、Ultracode（前端补，后台加入后自动去重），代表作兜底排序 Ultracode > Ultra > Max。
