@@ -95,6 +95,8 @@ select.input:disabled { opacity: 0.6; }
 .field-hint { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
 .field-hint:empty { display: none; }
 .field:has(> .suggest) { position: relative; }
+.model-guess { color: var(--accent); }
+.model-guess .link { color: var(--accent); font-weight: 600; text-decoration-color: currentColor; }
 .suggest {
   position: absolute; left: 0; right: 0; z-index: 30; max-height: min(320px, 50vh); margin: 0; padding: 4px; overflow-y: auto; list-style: none;
   border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--raised); box-shadow: var(--shadow-lg);

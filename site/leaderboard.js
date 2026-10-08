@@ -3,6 +3,7 @@
 import { $, brandMark, esc, icon, pad, store, vendorLine } from './ui.js';
 import { apiRemembered, platform, recall } from './platform.js';
 import { domainsIn, domainList, domainsOf, tracksOf, votedTask } from './categories.js';
+import { textMatches } from './match.js';
 
 const UNITS = { config: '按配置', model: '按模型' };
 // A domain board below either line is shown, but flagged as too thin to rank on.
@@ -102,7 +103,7 @@ export function mountBoard(container, ctx) {
     const rows = [...container.querySelectorAll('[data-board-row]')];
     let shown = 0;
     for (const row of rows) {
-      row.hidden = !row.dataset.boardRow.includes(query);
+      row.hidden = !textMatches(query, row.dataset.boardRow);
       if (!row.hidden) shown++;
     }
     const none = $('[data-board-none]', container);

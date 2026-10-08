@@ -2,6 +2,7 @@
 // Field names follow the API body of POST /api/works and PATCH /api/works/:task/:id.
 import { $, $$, byName, esc, icon } from './ui.js';
 import { isStaff, platform } from './platform.js';
+import { closestEntry } from './match.js';
 import './suggest.js';
 
 const GENERATION_MODES = [
@@ -45,6 +46,13 @@ function modelOptions(ctx, use) {
 
 // A name that matches no registered model is a custom model and carries its own vendor.
 const registeredModel = (form, name) => [...$('datalist[data-models]', form).options].find((o) => o.value === name)?.dataset.modelId;
+// An unregistered name written like a registered model asks whether that model was meant, so
+// one model does not end up as two leaderboard rows.
+const guessHtml = (name, models) => {
+  const guess = name && !models.some((m) => m.value === name) ? closestEntry(name, models) : null;
+  return guess ? `是否指 <button class="link" type="button" data-use-model="${esc(guess.value)}">${esc(guess.value)}</button>？` : '';
+};
+const formModels = (form) => [...$('datalist[data-models]', form).options].map((o) => ({ value: o.value, aliases: (o.dataset.keys ?? '').split(/\s+/).filter(Boolean) }));
 // Its vendor field starts from the vendor its name suggests (see models.js); set by workFieldsHtml.
 let guessVendor = () => '';
 
@@ -91,7 +99,7 @@ export function workFieldsHtml(ctx, task, work = null, { extra = '', expanded = 
     <label class="field"><span class="field-label">作品标题<small>选填</small></span><input class="input" name="title" maxlength="40" placeholder="例如：云山古刹" value="${esc(w.title ?? '')}"${autoTitle ? ` data-auto-title="${esc(w.title)}"` : ''}><span class="field-hint">不填则显示为「模型名称 · 推理档位」。</span></label>
     ${variants.length ? `<label class="field"><span class="field-label">提示词版本<i>*</i></span><select class="input" name="promptVariant" required><option value="">选择生成时用的版本</option>${variants.map((v) => option(v.id, v.label, v.id === w.promptVariant)).join('')}</select><span class="field-hint">展厅会把同一模型的各版本合成一张卡片，可切换对比。</span></label>` : ''}
     <div class="field-row">
-      <label class="field"><span class="field-label">模型名称<i>*</i></span><input class="input" name="modelName" required maxlength="60" ${suggest(modelList)} value="${esc(modelName)}" placeholder="选择或填写模型名称"><datalist id="${modelList}" data-models>${modelOptions(ctx, use)}</datalist><span class="field-hint">输入名称或版本号查找，如 56 即 5.6；列表里没有就直接输入新模型名称。</span></label>
+      <label class="field"><span class="field-label">模型名称<i>*</i></span><input class="input" name="modelName" required maxlength="60" ${suggest(modelList)} value="${esc(modelName)}" placeholder="选择或填写模型名称"><datalist id="${modelList}" data-models>${modelOptions(ctx, use)}</datalist><span class="field-hint">输入名称或版本号查找，如 56 即 5.6；列表里没有就直接输入新模型名称。</span><span class="field-hint model-guess" data-model-guess role="status">${guessHtml(modelName, ctx.DATA.models.map((m) => ({ value: m.name, aliases: m.aliases ?? [] })))}</span></label>
       <label class="field"><span class="field-label">推理档位<i>*</i></span><input class="input" name="effort" required maxlength="20" ${suggest(effortList)} value="${esc(w.effort ?? '')}" placeholder="选择或填写档位"><datalist id="${effortList}">${efforts.map((e) => `<option value="${esc(e)}"${used(use.efforts, e.toLowerCase())}>${e === 'Default' ? '默认（Default）' : esc(e)}</option>`).join('')}</datalist><span class="field-hint">可选常用档位，也可直接手填；使用默认设置请填 Default。</span></label>
     </div>
     <label class="field" data-other-model${custom ? '' : ' hidden'}><span class="field-label">模型厂商</span><input class="input" name="vendor" maxlength="40" placeholder="例如 OpenAI、DeepSeek" value="${esc(custom ? w.vendor || guess : '')}" data-guess="${esc(guess)}"><span class="field-hint">这是未登记的自定义模型，填写厂商便于展厅归类；能从名称判断时已预填，可修改，不清楚可留空。</span></label>
@@ -122,6 +130,7 @@ export function onWorkFieldChange(form, target) {
   if (target.name === 'modelName') {
     const name = target.value.trim();
     $('[data-other-model]', form).hidden = !name || Boolean(registeredModel(form, name));
+    $('[data-model-guess]', form).innerHTML = guessHtml(name, formModels(form));
     // Refill only a vendor the uploader has not typed themselves.
     const vendor = form.elements.vendor;
     if (!vendor.value.trim() || vendor.value === vendor.dataset.guess) vendor.value = vendor.dataset.guess = name ? guessVendor(name) : '';
@@ -171,3 +180,14 @@ export function readWorkFields(form, task, { requireComplete = true } = {}) {
     note: data.note ?? '',
   } };
 }
+
+// Taking the suggested model fills it in as if it had been picked from the list.
+if (typeof document !== 'undefined') document.addEventListener('click', (e) => {
+  const button = e.target.closest?.('[data-use-model]');
+  const input = button?.closest('form')?.elements.modelName;
+  if (!input) return;
+  e.preventDefault();
+  input.value = button.dataset.useModel;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+});

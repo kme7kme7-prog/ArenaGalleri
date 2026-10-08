@@ -19,6 +19,7 @@ import { effortRank, representatives, standard, taskCover } from './featured.js'
 import { groupVariantResults, variantChoices, variantKey, variantsOf } from './prompt-variants.js';
 import { downloadReference, linkReferences, referenceSheet, useReferenceViewer } from './references.js';
 import { aiJudged, aiScoreOf, categoryLabel, categoryOf, domainList, domainsIn, domainsOf, searchMatch, tracksOf } from './categories.js';
+import { textMatches } from './match.js';
 import { modelResolver } from './models.js';
 import { createWorkControls, workFrameUrl } from './work-controls.js';
 import { hasModelPreview, screenshotOf } from './work-preview-media.js';
@@ -333,7 +334,7 @@ function renderLibrary(scopes = [], fresh = true) {
       const mark = m.logo
         ? `<a class="brand-mark" href="${esc(m.brandUrl)}" target="_blank" rel="noopener" aria-label="${esc(m.brandName)} 官网" title="${esc(m.brandName)} 官网"><img src="${esc(versionedMedia(m.logo))}" alt="" loading="lazy" decoding="async"></a>`
         : brandMark(m);
-      return `<li class="dir-model" data-dir-model="${esc([m.name, m.vendorNote ?? '', vendor].join(' ').toLowerCase())}">${mark}
+      return `<li class="dir-model" data-dir-model="${esc([m.name, ...(m.aliases ?? []), m.vendorNote ?? '', vendor].join(' '))}">${mark}
         <div class="dir-model-body">
           <h4>${esc(m.name)}${m.vendorNote ? `<span class="note">${esc(m.vendorNote)}</span>` : ''}</h4>
           ${mine.length ? `<ul class="dir-works">${mine.map(({ t, r }) => `<li><a href="${viewHref(t, r.id)}" title="${esc(t.title)}">${esc(r.title)}${resultBadges(r)}</a></li>`).join('')}</ul>` : '<p class="muted">暂无作品</p>'}
@@ -397,13 +398,13 @@ function renderLibrary(scopes = [], fresh = true) {
     $('[data-task-new]')?.toggleAttribute('hidden', count === 0);
     $('[data-home-model]').value = homeState.model;
     // Model index: the keyword matches a model or its vendor; the vendor select keeps one row.
-    const needle = homeState.modelQuery.trim().toLowerCase();
+    const needle = homeState.modelQuery;
     let models = 0, vendorsShown = 0;
     for (const row of $$('[data-dir-vendor]', root)) {
-      const vendorMatch = row.dataset.dirVendor.toLowerCase().includes(needle);
+      const vendorMatch = textMatches(needle, row.dataset.dirVendor);
       let shown = 0;
       for (const item of $$('[data-dir-model]', row)) {
-        item.hidden = !vendorMatch && !item.dataset.dirModel.includes(needle);
+        item.hidden = !vendorMatch && !textMatches(needle, item.dataset.dirModel);
         if (!item.hidden) shown++;
       }
       row.hidden = !shown || Boolean(homeState.vendor && row.dataset.dirVendor !== homeState.vendor);
@@ -892,7 +893,7 @@ function filterResults(t) {
   const shown = displayed.filter((r) => (!taskState.vendor || vendorOf(r) === taskState.vendor)
     && (!taskState.harness || sourceKey(r, 'harness', 'harnessName') === taskState.harness)
     && (!taskState.provider || providerKey(r) === taskState.provider)
-    && [label(r), r.title, r.summary, vendorOf(r), harnessOf(r)?.name, providerOf(r)?.name].join(' ').toLowerCase().includes(taskState.query.toLowerCase()));
+    && textMatches(taskState.query, [label(r), r.title, r.summary, vendorOf(r), harnessOf(r)?.name, providerOf(r)?.name].join(' ')));
   // A filter or search lists every match; otherwise each model shows its lead work. 同门 lists them all.
   const filtering = Boolean(taskState.vendor || taskState.harness || taskState.provider || taskState.query.trim());
   const unfolded = filtering || familyShown(t);
