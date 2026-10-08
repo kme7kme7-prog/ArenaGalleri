@@ -1,5 +1,11 @@
 # HANDOFF.md · 当前状态
 
+## 本轮 main 同步（2026-10-08，已推送）
+
+- 用户明确要求推送 main。fetch 后三个相关仓库均无远端分叉，Gallery与后端各1条、私有数据仓2条待推送；均已正常推送并用远端refs/heads/main核对一致，无强推。
+- Gallery模型发布记录、后端消费pin、私有模型注册及先前已上线的Gemini High源码已同步。此前交接中「源码main不推送」只描述当时状态，由本节覆盖。数据包和生产站点沿用已完成发布，本轮不重新部署。
+- 后端已有未提交HANDOFF和两份旧归档原样保留，未编辑、暂存或提交。Gallery仅增加本轮交接及归档，按英文简单句提交并推送；检查和测试结果见[推送记录](docs/archive/2026-10-08-model-main-sync-wsnxxxs.md)。
+
 ## Claude Haiku 5.5 与 Seed 2.1 Lite 收录（2026-10-08，已上线）
 
 - 用户要求加入 Claude 新模型并收录现有 Seed 2.1 Lite，提供服务器用于上线。根据 Anthropic 2026-10-07 公告新增 Claude Haiku 5.5；独立私有注册表同时新增 Seed 2.1 Lite / ByteDance Seed，兼容 Doubao 写法，原 ID 保留。模型可选项129→131，未在前端提交私有资源或准确数据包历史。
