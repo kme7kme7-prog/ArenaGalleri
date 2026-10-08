@@ -1,5 +1,14 @@
 # HANDOFF.md · 当前状态
 
+## Claude Haiku 5.5 与 Seed 2.1 Lite 收录（2026-10-08，已上线）
+
+- 用户要求加入 Claude 新模型并收录现有 Seed 2.1 Lite，提供服务器用于上线。根据 Anthropic 2026-10-07 公告新增 Claude Haiku 5.5；独立私有注册表同时新增 Seed 2.1 Lite / ByteDance Seed，兼容 Doubao 写法，原 ID 保留。模型可选项129→131，未在前端提交私有资源或准确数据包历史。
+- 公网3件已核验投稿（小豆包大橘子、Aether65、朱漆退散）通过当前后端 setMeta 正式登记为 seed-2.1-lite，保留 High、来源、作品 ID、文件与其他字段。当前后端按相同内容摘要实时归属旧票，不改原始票或追加旧票 correction；新增3条 meta 审计。模型榜有效比较6356→6356、参与者169→169，6761条原票及其他表逐行保留；重复操作0修改/0审计，v40、integrity ok、外键0、服务active/running、NRestarts0。
+- 新正式包已发布并安装到消费者与服务器。复用已验证作品构建缓存，所有作品及提取页面逐字节不变；随包带入先前已批准且已在线覆盖的 Gemini High 源登记。前端无功能源码修改；26个静态文件更新，其中23个仅换行，其余为公开目录、入口版本及版本标记，完整暂存/上线2351文件SHA与公网26文件SHA通过。生产API配置不变，资产f3a63a96af6508dad4726f16。
+- Gallery check64/0、test29/29、build176件/68site、严格intake0错/8既有提示；数据check33/0、test9/9、严格intake176件/0错/8既有提示、完整build:data通过；后端check109/0、test324/324。副本及停服最新备份演练/正式登记均通过，公网check:deployment55题/35社区题/760作品；注册表两个选项、3件作品、Seed榜单5比较/3作品且无未收录标记通过。
+- 共用实际表单夹具验证两个选项各一次、提交正式modelId、隐藏自填厂商，桌面与390手机截图目检；公网榜单1280/390目检无横溢、浏览器错误/警告0。夹具仅favicon404；未生产登录、投稿保存、新增投票、全部交互或真机验收。
+- 备份/root/aob-model-registration-20261008/backup/before-registration.db、gallery-backup及旧包保留；本轮忽略证据output/model-registration-20261008/与output/playwright/model-registration-20261008/。后端原有未提交HANDOFF和两份归档不动，只保存本轮消费pin及独立记录。各涉及仓本轮一条英文提交，源码main不推送；正式数据包产物已发布。[交付记录](docs/archive/2026-10-08-haiku-seed-lite-release-wsnxxxs.md)。
+
 ## 推理 Gallery 发布（2026-10-08，已上线，源码已推送）
 
 - 用户授权接续部署及提交发布记录。先核对远端main已为7fd682b，复用同一固定提交构建；03:24:26 AEST公网确认资产f2ba61934a98214672db0099。后端add9352及两道题的推理迁移已先行完成，本轮只发布Gallery。
