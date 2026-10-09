@@ -1,5 +1,15 @@
 # HANDOFF.md · 当前状态
 
+## 截图反馈的预览精修（2026-10-09，已上线）
+
+- 用户提供7张截图要求完善适配；本轮定位U9加载遮罩、维港标题页、小岛主体缺失/取景和帆船截图回退，由三名原GPT-6 Luna Max分组复核。
+- 当前公开快照889作品，本轮29投稿（11岛屿、8维港、9帆船、1U9），其中维港新增2件。使用独立忽略output/preview-refine-20261009/，不覆盖上一轮证据或投稿源码/first/mobile。
+- 已完成29件：岛屿8模型/3截图、维港及U9共5模型/4截图、帆船8模型/1截图，共21模型/8截图。修复分帧城市提取、重复海面条纹、房屋屋顶及船首朝向；Grok港湾保留两岸主体12,777,541→1,980,848B（-84.5%），本轮模型均<3MiB。MQ静态海面高度不可信，保留真实截图。
+- 21模型同时提供独立720px/q0.86截图；后台逐项校验可选capture，截图失效不影响有效模型，源变更两者均失效。Gallery所有卡片截图完整contain，29张JPEG合计1,511,705B、最大80,590B；21海报499,336B、模型11,661,916B，生成物不入Git。
+- Gallery check68/0、test33/33、同生产API配置build176件/70site、CI intake0错/8既有提示；后台Windows/Linux check113/0、test331/331。21模型实际Gallery桌面/手机渲染0错误/触边/过小异常；公网52前端文件和71媒体SHA、29 DTO、check:deployment通过（893作品验收快照）。
+- 公网四题390无横溢、U9完整截图与模型hover一致、MQ无模型请求、Grok实时模型ready，console0错误/警告、写请求0。源/原始captures保持，data/config字节不变；后台87运行源码和2353前端文件核验，DB41/integrity ok/外键0，服务active/running/NRestarts0。备份/root/aob-preview-refine-20261009/backup/，切换1.94秒。
+- 证据output/preview-refine-20261009/；两仓本轮各一条英文提交，收工同步后台版本标记，不push。未改私有数据仓、其他前端、作品源码或业务记录。详见[归档](docs/archive/2026-10-09-preview-refinement-wsnxxxs.md)。
+
 
 ## 服务器投稿预览统一适配（2026-10-09，已上线）
 

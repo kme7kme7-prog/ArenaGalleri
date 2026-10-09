@@ -596,7 +596,7 @@ function resultCard(t, r) {
   const eagerScreenshot = lead && !eagerPoster;
   return `<article class="result${screenshotPreview ? ' is-screenshot-preview' : ''}${lead ? ' is-lead' : ''}" data-vendor="${esc(vendorOf(r))}" data-model="${esc(modelKey(r))}" data-id="${esc(r.id)}" data-status="${r.status}">
     <div class="result-media">
-      <a href="${viewHref(t, r.id)}" aria-label="在线预览：${esc(r.title)}，${esc(label(r))}">${screenshotPreview && screenshot ? img(screenshot, r.title, 'result-screenshot-preview', eagerScreenshot) : coverHtml(r, '', eagerScreenshot)}${!screenshotPreview && r.previewPoster ? img(r.previewPoster, '', 'result-model-poster', eagerPoster) : ''}<span class="play">${icon('arrow')}在线预览</span></a>
+      <a href="${viewHref(t, r.id)}" aria-label="在线预览：${esc(r.title)}，${esc(label(r))}">${screenshotPreview && screenshot ? img(screenshot, r.title, 'result-screenshot-preview', eagerScreenshot) : coverHtml(r, 'result-screenshot-preview', eagerScreenshot)}${!screenshotPreview && r.previewPoster ? img(r.previewPoster, '', 'result-model-poster', eagerPoster) : ''}<span class="play">${icon('arrow')}在线预览</span></a>
       ${lead ? '<span class="lead-seal" aria-hidden="true"><span>代</span><span>表</span></span>' : ''}
       ${t.results.length > 1 ? `<button class="pick" data-pick="${esc(r.id)}" aria-pressed="false" aria-label="加入对比：${esc(r.title)}"><span class="pick-box">${icon('plus')}${icon('check')}</span><span class="pick-text">对比</span></button>` : ''}
     </div>
