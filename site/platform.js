@@ -29,6 +29,16 @@ export const platform = {
   review: null,
 };
 
+// A configured platform is authoritative. A transient failure must never turn
+// its catalog into the older build-time archive. Only a standalone 404 opts out.
+export function catalogState() {
+  if (platform.available) return 'ready';
+  if (platform.mismatch) return 'error';
+  const apiBase = globalThis.SAME_PROMPT_CONFIG?.apiBaseUrl;
+  if (platform.connectionError?.kind === 'missing' && (!apiBase || apiBase === 'api/')) return 'static';
+  return platform.connecting || !platform.connectionError ? 'loading' : 'error';
+}
+
 const listeners = new Set();
 export const onPlatformChange = (listener) => { listeners.add(listener); return () => listeners.delete(listener); };
 const emit = (reason) => listeners.forEach((listener) => listener(reason));
@@ -59,7 +69,7 @@ async function readPlatform(buildInfo, request) {
       platform.connectionError = {
         kind: response.status === 404 ? 'missing' : limited ? 'limited' : 'http',
         status: response.status,
-        message: limited ? '访问较频繁，请稍后再试。' : '平台服务暂时不可用，请稍后重试。作品仍可浏览。',
+        message: limited ? '访问较频繁，请稍后再试。' : '平台服务暂时不可用，请稍后重试。',
         retryAt: Date.now() + retryAfter * 1000,
       };
       return false;
@@ -82,7 +92,7 @@ async function readPlatform(buildInfo, request) {
   } catch (error) {
     platform.connectionError = {
       kind: 'network',
-      message: ['TimeoutError', 'AbortError'].includes(error.name) ? '平台连接超时，请重试。作品仍可浏览。' : '平台连接失败，请检查网络后重试。作品仍可浏览。',
+      message: ['TimeoutError', 'AbortError'].includes(error.name) ? '平台连接超时，请重试。' : '平台连接失败，请检查网络后重试。',
       retryAt: Date.now() + 2000,
     };
     return false;
@@ -100,7 +110,7 @@ let recoveryStarted = false;
 // One delayed retry after startup; later retries follow an explicit click or a network/focus event.
 export function startPlatformRecovery() {
   recoveryStarted = true;
-  if (platform.available || platform.mismatch || platform.connectionError?.kind === 'missing') return;
+  if (platform.available || platform.mismatch || catalogState() === 'static') return;
   setTimeout(() => {
     if (!platform.available) void refreshPlatform('reconnect');
   }, Math.max(2000, (platform.connectionError?.retryAt ?? 0) - Date.now()));
@@ -169,8 +179,8 @@ async function checkSession() {
   sessionCheckedAt = Date.now();
   sessionChecking = true;
   try {
-    if (!platform.available) {
-      if (platform.connectionError?.kind !== 'missing') await refreshPlatform('reconnect');
+    if (!platform.available || platform.connectionError) {
+      if (catalogState() !== 'static') await refreshPlatform('reconnect');
       return;
     }
     const { user } = await api('auth/me');
@@ -644,7 +654,11 @@ export function avatarFace(id, name) {
 
 // Signed-in accounts open their personal center; narrow screens keep a separate navigation menu.
 export function accountControl(current = false) {
-  if (!platform.available) return '';
+  if (!platform.available) {
+    if (catalogState() === 'static') return '';
+    const waiting = catalogState() === 'loading';
+    return `<div class="account" data-account><button type="button" class="account-btn" data-platform-reconnect${waiting || platform.mismatch ? ' disabled' : ''} aria-label="${waiting ? '正在连接账户' : '账户连接暂不可用，重新连接'}">${icon('user')}<span class="account-name">${waiting ? '账户连接中…' : '账户连接中断'}</span></button></div>`;
+  }
   const user = platform.user;
   const name = user?.nickname || user?.name;
   if (user) return `<div class="account" data-account${current ? ' data-current' : ''}>

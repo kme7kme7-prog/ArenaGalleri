@@ -12,7 +12,7 @@
 //   #/me · #/review           personal center · review queue (platform)
 //   #/terms · #/privacy       terms of use and disclaimer · privacy policy
 import { $, $$, LOGO, brandMark, byName, esc, ext, formatBytes, formatDate, icon, img, pad, store, syncThemeUi, themeButton, versionedMedia } from './ui.js';
-import { STATUS, accountControl, api, arenaScope, arenaText, avatarFace, byStaff, connectPlatform, isStaff, onPlatformChange, platform, reactionBar, refreshAccountControls, refreshPlatform, requestBootstrap, setFaces, startPlatformRecovery, statusBadge, toast } from './platform.js';
+import { STATUS, accountControl, api, arenaScope, arenaText, avatarFace, byStaff, catalogState, connectPlatform, isStaff, onPlatformChange, platform, reactionBar, refreshAccountControls, refreshPlatform, requestBootstrap, setFaces, startPlatformRecovery, statusBadge, toast } from './platform.js';
 import { mount as renderLanding } from './home.js';
 import { CONTACT, aigcLabel, beianLink, mount as renderLegal } from './legal.js';
 import { effortRank, representatives, standard, taskCover } from './featured.js';
@@ -30,6 +30,7 @@ let MODELS;
 let HARNESSES;
 let PROVIDERS;
 let resolveModel;
+let initialPlatformSettled = false;
 
 // Uploads may name a model that is not in the registry; they carry their own name and vendor.
 const modelOf = (r) => resolveModel({ model: r.model, modelName: r.modelName ?? r.model, vendor: r.vendorName ?? r.vendor });
@@ -118,6 +119,14 @@ const inGallery = (taskId, id) => DATA.tasks.some((t) => t.id === taskId && t.re
 document.addEventListener('load', (e) => { if (e.target.tagName === 'IMG') e.target.classList.add('is-loaded'); }, true);
 document.addEventListener('error', (e) => { if (e.target.tagName === 'IMG') e.target.classList.add('is-loaded', 'is-broken'); }, true);
 document.addEventListener('click', (e) => { if (e.target.closest('[data-reload]')) location.reload(); });
+document.addEventListener('click', async (e) => {
+  const button = e.target.closest('[data-platform-reconnect]');
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  button.textContent = '正在连接…';
+  const connected = await refreshPlatform('reconnect');
+  if (button.isConnected) { button.disabled = false; button.textContent = connected ? '已连接' : '重新连接'; }
+});
 const RELOAD = '<button type="button" class="btn primary" data-reload>刷新页面</button>';
 
 // A tab left open across a release keeps its old import map, so a page it loads later can get new
@@ -158,7 +167,7 @@ const platformNotice = () => `<div class="platform-notice" role="status"><div cl
   <button type="button" class="link" data-reload>刷新页面</button>
 </div></div>`;
 function header(crumbs = [], showPreviewSetting = false, current = '', { notice = true } = {}) {
-  const nav = platform.available
+  const nav = catalogState() !== 'static'
     ? `<nav class="site-nav" aria-label="平台">${SITE_NAV.map(([id, text]) => `<a class="topbar-link" href="#/${id}"${id === current ? ' aria-current="page"' : ''}>${text}</a>`).join('')}</nav>`
     : '';
   return `<header class="topbar"><div class="wrap topbar-in">
@@ -171,7 +180,7 @@ function header(crumbs = [], showPreviewSetting = false, current = '', { notice 
       ${themeButton()}
       ${accountControl(current === 'me')}
     </div>
-  </div></header>${platform.stale && notice ? platformNotice() : ''}`;
+  </div></header>${notice && platform.available && platform.connectionError ? `<div class="platform-notice" role="status"><div class="wrap platform-notice-in"><span class="platform-notice-mark" aria-hidden="true"></span><p><strong>连接暂时中断</strong><span>当前保留上次加载的作品与账户信息，重新连接后更新。</span></p><button type="button" class="link" data-platform-reconnect>重新连接</button></div></div>` : platform.stale && notice ? platformNotice() : ''}`;
 }
 // The two 3D views sit under their task; the mode switch names the current one.
 function galleryStageHeader(t, mode) {
@@ -261,7 +270,7 @@ function renderLibrary(scopes = [], fresh = true) {
   homeState.category = scopes.find((x) => DATA.tasks.some((t) => t.category === x)) ?? '';
   homeState.domain = scopes.find((x) => DATA.tasks.some((t) => domainsOf(t).includes(x))) ?? '';
   const controller = new AbortController();
-  let previews = null, destroyed = false;
+  let previews = null, destroyed = false, activePreviewKey = null;
   const choices = DATA.tasks.map((task) => ({ task, result: taskCover(task, platform.featured?.[task.id]?.cover) }));
   const artworkFor = (t, shown, eager = false) => shown?.previewMode === 'screenshot'
     ? img(screenshotOf(shown), shown.title, 'question-screenshot-preview', eager)
@@ -454,21 +463,37 @@ function renderLibrary(scopes = [], fresh = true) {
   };
   filter();
   document.title = `题库 · ${DATA.title}`;
-  async function loadPreviews() {
-    if (destroyed || !choices.some(({ result }) => result?.previewMode !== 'screenshot' && (result?.previewModel || result?.previewLoader))) return;
+  async function loadPreviews(choice) {
+    const result = choice?.result;
+    if (destroyed || !initialPlatformSettled || homeState.view !== 'tasks' || result?.previewMode === 'screenshot' || !(result?.previewModel || result?.previewLoader)) return;
+    const key = `${choice.task.id}/${result.id}`;
+    if (activePreviewKey === key && previews) return;
+    previews?.destroy(); previews = null;
+    activePreviewKey = key;
     try {
       const { createQuestionPreviews } = await import('./result-previews.js');
-      if (destroyed) return;
-      previews = createQuestionPreviews(root, choices.filter(({ result }) => result?.previewMode !== 'screenshot'));
+      if (destroyed || activePreviewKey !== key) return;
+      previews = createQuestionPreviews(root, [choice]);
       previews.setPaused(homeState.view !== 'tasks');
       settleImages();
     } catch (error) {
+      if (activePreviewKey === key) activePreviewKey = null;
       console.error('Question model previews unavailable:', error);
     }
   }
-  loadPreviews();
+  root.onpointerover = (event) => {
+    if (event.pointerType === 'touch' || homeState.view !== 'tasks') return;
+    const visual = event.target.closest('.question-visual');
+    const card = visual?.closest('[data-task-card]');
+    if (!card || visual.contains(event.relatedTarget) || card.hidden) return;
+    loadPreviews(choices.find(({ task }) => task.id === card.dataset.taskCard));
+  };
+  root.onfocusin = (event) => {
+    const card = event.target.closest('[data-task-card]');
+    if (card && !card.hidden && homeState.view === 'tasks') loadPreviews(choices.find(({ task }) => task.id === card.dataset.taskCard));
+  };
   return {
-    destroy() { destroyed = true; controller.abort(); previews?.destroy(); },
+    destroy() { destroyed = true; controller.abort(); previews?.destroy(); activePreviewKey = null; },
   };
 }
 
@@ -508,19 +533,56 @@ function resultVariantButtons(t, r, pane = null) {
 }
 let resultPreviews = null;
 let previewVersion = 0;
-async function updateResultPreviews(t) {
-  const version = ++previewVersion;
-  resultPreviews?.destroy();
-  resultPreviews = null;
-  if (previewMode !== 'model') return;
+let activeResultPreviewId = null;
+function previewTriggerId(t) {
+  const results = new Map(t.results.map((result) => [result.id, result]));
+  const visible = $$('.result[data-id]', root).filter((card) => !card.hidden && card.getClientRects().length);
+  const available = (card) => {
+    const result = results.get(card.dataset.id);
+    return result && hasModelPreview(result) && (result.previewModel || hosted(result));
+  };
+  return (visible.find((card) => card.classList.contains('is-lead') && available(card)) ?? visible.find(available))?.dataset.id ?? null;
+}
+function prioritizeResultLead() {
+  const cards = $$('.result[data-id]', root);
+  const visible = cards.filter((card) => !card.hidden && card.getClientRects().length);
+  const card = visible.find((item) => item.classList.contains('is-lead')) ?? visible[0];
+  const images = $$('.result-media img', root);
+  const leadImages = card ? $$('.result-media img', card) : [];
+  const selected = previewMode === 'screenshot'
+    ? card?.querySelector('img.result-screenshot-preview') ?? leadImages[0]
+    : card?.querySelector('img.result-model-poster') ?? card?.querySelector('img.result-screenshot-preview') ?? leadImages[0];
+  for (const image of images) {
+    const eager = image === selected;
+    image.loading = eager ? 'eager' : 'lazy';
+    image.fetchPriority = eager ? 'high' : 'auto';
+  }
+}
+async function updateResultPreviews(t, preferredId = null) {
+  if (!initialPlatformSettled || previewMode !== 'model') {
+    ++previewVersion;
+    resultPreviews?.destroy(); resultPreviews = null; activeResultPreviewId = null;
+    return;
+  }
   const results = displayedResults(t).filter((result) => hasModelPreview(result) && (result.previewModel || hosted(result)));
-  if (!results.length) return;
+  const visibleIds = new Set($$('.result[data-id]', root).filter((card) => !card.hidden && card.getClientRects().length).map((card) => card.dataset.id));
+  // Without an explicit card target, keep the poster and transfer no model file.
+  const selected = preferredId
+    ? results.find((result) => result.id === preferredId && visibleIds.has(result.id))
+    : results.find((result) => result.id === activeResultPreviewId && visibleIds.has(result.id));
+  if (preferredId && !selected) return;
+  if (selected?.id === activeResultPreviewId && resultPreviews) return;
+  const version = ++previewVersion;
+  resultPreviews?.destroy(); resultPreviews = null;
+  activeResultPreviewId = selected?.id ?? null;
+  if (!selected) return;
   try {
     const { createResultPreviews } = await import('./result-previews.js');
-    if (version !== previewVersion) return;
-    resultPreviews = createResultPreviews(root, { ...t, results });
+    if (version !== previewVersion || previewMode !== 'model') return;
+    resultPreviews = createResultPreviews(root, { ...t, results: [selected] });
     resultPreviews.setPaused($('#results').hidden);
   } catch (error) {
+    if (version === previewVersion) activeResultPreviewId = null;
     console.error('Model previews unavailable:', error);
   }
 }
@@ -592,9 +654,11 @@ function resultCard(t, r) {
   const screenshot = screenshotOf(r);
   const coverWork = coverLead(t);
   const lead = isLead(coverWork, r);
+  const eagerPoster = lead && !screenshotPreview && Boolean(r.previewPoster) && previewMode === 'model';
+  const eagerScreenshot = lead && !eagerPoster;
   return `<article class="result${screenshotPreview ? ' is-screenshot-preview' : ''}${lead ? ' is-lead' : ''}" data-vendor="${esc(vendorOf(r))}" data-model="${esc(modelKey(r))}" data-id="${esc(r.id)}" data-status="${r.status}">
     <div class="result-media">
-      <a href="${viewHref(t, r.id)}" aria-label="在线预览：${esc(r.title)}，${esc(label(r))}">${screenshotPreview && screenshot ? img(screenshot, r.title, 'result-screenshot-preview') : coverHtml(r)}${!screenshotPreview && r.previewPoster ? img(r.previewPoster, '', 'result-model-poster') : ''}<span class="play">${icon('arrow')}在线预览</span></a>
+      <a href="${viewHref(t, r.id)}" aria-label="在线预览：${esc(r.title)}，${esc(label(r))}">${screenshotPreview && screenshot ? img(screenshot, r.title, 'result-screenshot-preview', eagerScreenshot) : coverHtml(r, 'result-screenshot-preview', eagerScreenshot)}${!screenshotPreview && r.previewPoster ? img(r.previewPoster, '', 'result-model-poster', eagerPoster) : ''}<span class="play">${icon('arrow')}在线预览</span></a>
       ${lead ? '<span class="lead-seal" aria-hidden="true"><span>代</span><span>表</span></span>' : ''}
       ${t.results.length > 1 ? `<button class="pick" data-pick="${esc(r.id)}" aria-pressed="false" aria-label="加入对比：${esc(r.title)}"><span class="pick-box">${icon('plus')}${icon('check')}</span><span class="pick-text">对比</span></button>` : ''}
     </div>
@@ -777,12 +841,13 @@ function renderTask(t) {
     if (!e.target.matches('[data-work-search]')) return;
     taskState.query = e.target.value;
     filterResults(t);
+    updateResultPreviews(t);
   };
 
   root.onchange = (e) => {
-    if (e.target.matches('[data-vendor-filter]')) { taskState.vendor = e.target.value; filterResults(t); }
-    if (e.target.matches('[data-harness-filter]')) { taskState.harness = e.target.value; filterResults(t); }
-    if (e.target.matches('[data-provider-filter]')) { taskState.provider = e.target.value; filterResults(t); }
+    if (e.target.matches('[data-vendor-filter]')) { taskState.vendor = e.target.value; filterResults(t); updateResultPreviews(t); }
+    if (e.target.matches('[data-harness-filter]')) { taskState.harness = e.target.value; filterResults(t); updateResultPreviews(t); }
+    if (e.target.matches('[data-provider-filter]')) { taskState.provider = e.target.value; filterResults(t); updateResultPreviews(t); }
     if (!e.target.matches('[data-result-sort]')) return;
     setResultSort(e.target.value);
     applySort(t);
@@ -818,12 +883,15 @@ function renderTask(t) {
       applySort(t); filterResults(t); syncPicks(t); settleImages(); updateResultPreviews(t);
     }
     const preview = e.target.closest('[data-preview-mode]');
-    if (preview && preview.dataset.previewMode !== previewMode) {
-      previewMode = preview.dataset.previewMode;
-      store.set('preview-mode', previewMode);
-      document.body.dataset.previewMode = previewMode;
-      $$('[data-preview-mode]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.previewMode === previewMode)));
-      updateResultPreviews(t);
+    if (preview) {
+      if (preview.dataset.previewMode !== previewMode) {
+        previewMode = preview.dataset.previewMode;
+        store.set('preview-mode', previewMode);
+        document.body.dataset.previewMode = previewMode;
+        $$('[data-preview-mode]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.previewMode === previewMode)));
+      }
+      prioritizeResultLead();
+      updateResultPreviews(t, previewMode === 'model' ? previewTriggerId(t) : null);
     }
     const go = e.target.closest('[data-go]');
     if (go) {
@@ -861,10 +929,20 @@ function renderTask(t) {
       }, () => { copy.textContent = '复制失败'; });
     }
   };
+  const requestCardPreview = (event) => {
+    if (!initialPlatformSettled || previewMode !== 'model' || $('#results').hidden) return;
+    const media = event.target.closest?.('.result-media');
+    const card = media?.closest('.result[data-id]');
+    if (!card || card.hidden || media.contains(event.relatedTarget)) return;
+    updateResultPreviews(t, card.dataset.id);
+  };
+  root.onpointerover = (event) => {
+    if (event.pointerType !== 'touch') requestCardPreview(event);
+  };
+  root.onfocusin = requestCardPreview;
 }
 
-// The task page as the router sees it: its panel from the address, the card models as its first
-// load, and its board, models and compare tray gone with it.
+// The task page as the router sees it: its panel and selected card preview, plus board and tray cleanup.
 function taskPage(t) {
   renderTask(t);
   activatePanel(location.hash.split('#')[2], false);
@@ -876,6 +954,7 @@ function taskPage(t) {
       ++previewVersion;
       resultPreviews?.destroy();
       resultPreviews = null;
+      activeResultPreviewId = null;
       document.body.classList.remove('has-tray');
     },
   };
@@ -935,6 +1014,7 @@ function filterResults(t) {
   $('#filter-heading').textContent = taskState.vendor || '全部作品';
   $('#filter-count').textContent = variantsOf(t).length ? `${modelCount(shown)} 个模型 · ${shown.length} 组结果 · ${t.results.length} 份作品` : `${modelCount(shown)} 个模型 · ${shown.length} 件作品`;
   $('.filter-empty').hidden = shown.length > 0;
+  prioritizeResultLead();
   resultPreviews?.refresh();
 }
 
@@ -1437,12 +1517,14 @@ const PLATFORM_PAGES = { arena: './arena.js', leaderboard: './leaderboard.js', n
 const PAGE_TITLES = { arena: '盲评', leaderboard: '榜单', new: '发起题目', submit: '上传作品', me: '个人中心', review: '审核' };
 const PAGE_SECTIONS = { arena: 'arena', leaderboard: 'leaderboard', new: 'new', submit: 'questions', me: 'me', review: 'me' };
 function platformOffline(name) {
-  const missing = platform.connectionError?.kind === 'missing';
+  const missing = catalogState() === 'static';
+  const waiting = catalogState() === 'loading';
+  const title = PAGE_TITLES[name] ?? '展览馆';
   // The page itself explains a version mismatch, so the header notice is not repeated.
-  root.innerHTML = `${header([{ text: PAGE_TITLES[name] }], false, PAGE_SECTIONS[name], { notice: false })}<main class="page wrap empty-page">
-    <p class="kicker"><span class="num">${esc(PAGE_TITLES[name])}</span></p>
-    <h1>${platform.mismatch ? `${esc(PAGE_TITLES[name])}暂时不可用` : missing ? '这里需要平台服务' : '平台连接暂时失败'}</h1>
-    <p role="status">${platform.mismatch ? '作品数据与平台服务版本不一致，平台功能已暂停。可能是新版本正在发布，稍后刷新即可恢复；作品可照常浏览。' : missing ? `当前地址没有可用的平台服务。连接后即可使用${esc(PAGE_TITLES[name])}，作品仍可浏览。` : esc(platform.connectionError?.message)}</p>
+  root.innerHTML = `${header([{ text: title }], false, PAGE_SECTIONS[name], { notice: false })}<main class="page wrap empty-page">
+    <p class="kicker"><span class="num">${esc(title)}</span></p>
+    <h1>${platform.mismatch ? `${esc(title)}暂时不可用` : waiting ? '正在连接展览馆' : missing ? '这里需要平台服务' : '平台连接暂时失败'}</h1>
+    <p role="status">${platform.mismatch ? '作品数据与平台服务版本不一致。可能是新版本正在发布，稍后刷新即可恢复。' : waiting ? '正在载入最新题目、作品与账户信息…' : missing ? `当前地址没有可用的平台服务。连接后即可使用${esc(title)}，作品仍可浏览。` : esc(platform.connectionError?.message)}</p>
     <div class="empty-actions">${platform.mismatch ? '<button type="button" class="btn primary" data-reload>刷新页面</button>' : '<button type="button" class="btn primary" data-platform-retry>重新连接</button>'}<a class="btn" href="#/questions">回到题库${icon('right')}</a></div>
   </main>${footer()}`;
   const button = $('[data-platform-retry]', root);
@@ -1590,6 +1672,7 @@ function stable(map, key, fresh) {
   return Object.assign(kept, fresh);
 }
 function mergePlatform() {
+  if (!['ready', 'static'].includes(catalogState())) { DATA.tasks = []; return; }
   const listed = platform.available ? new Map(platform.questions.map((q) => [q.id, q])) : null;
   const ids = [...[...PACK.keys()].filter((id) => !listed || listed.has(id)), ...(listed ? [...listed.keys()].filter((id) => !PACK.has(id)) : [])];
   DATA.tasks = ids.map((id) => {
@@ -1651,7 +1734,7 @@ async function route({ keepScroll = false, from = null } = {}) {
 function teardown() {
   page?.destroy?.();
   page = null;
-  root.onclick = root.onchange = root.oninput = root.onsubmit = root.onkeydown = null;
+  root.onclick = root.onchange = root.oninput = root.onsubmit = root.onkeydown = root.onpointerover = root.onfocusin = null;
   lightbox.close();
 }
 
@@ -1673,7 +1756,8 @@ async function show(version, visit, scrollBack) {
   if (works.length && page?.task === t) page.update(works);
   else {
     teardown();
-    if (!taskId) page = renderLanding(root, context());
+    if (!['ready', 'static'].includes(catalogState()) && !['terms', 'privacy'].includes(taskId)) page = platformOffline(platformPage);
+    else if (!taskId) page = renderLanding(root, context());
     else if (taskId === 'questions') page = renderLibrary(parts.slice(1), Boolean(visit && !visit.returning));
     else if (taskId === 'terms' || taskId === 'privacy') page = renderLegal(root, context(), taskId);
     else if (platformPage) {
@@ -1690,6 +1774,8 @@ async function show(version, visit, scrollBack) {
           root.innerHTML = `${header()}<main class="page wrap empty-page"><h1>${failure.title}</h1><p>${esc(failure.text)}</p><div class="empty-actions">${RELOAD}${failure.updated ? '' : '<a class="btn" href="#/">回到首页</a>'}</div></main>`;
         }
       }
+    } else if (!t && !initialPlatformSettled) {
+      root.innerHTML = `${header([{ text: '题库' }], false, 'questions')}<main class="page wrap empty-page"><p class="muted" role="status">正在载入题目…</p></main>`;
     } else if (!t) notFound(`没有 id 为「${taskId}」的题目。`);
     else if (inExhibition) {
       root.innerHTML = `${galleryStageHeader(t, a)}<main class="page empty-page wrap"><p class="muted">正在打开预览…</p></main>`;
@@ -1743,15 +1829,20 @@ try {
   PACK = new Map(DATA.tasks.map(({ results, ...task }) => [task.id, { task, works: new Map(results.map((r) => [r.id, r])) }]));
   // 媒体缓存钥匙：数据包提交号前 8 位，nginx 长缓存依赖它换包失效。
   globalThis.SAME_PROMPT_CONFIG.assetVersion ??= DATA.buildInfo?.datapack?.slice(0, 8) ?? '';
-  await connectPlatform(DATA.buildInfo, bootstrap);
   MODELS = new Map(DATA.models.map((m) => [m.id, m]));
   resolveModel = modelResolver(DATA.models);
   HARNESSES = new Map((DATA.harnesses ?? []).map((h) => [h.id, h]));
   PROVIDERS = new Map([['official', { id: 'official', name: '官方', listed: true }], ['unofficial', { id: 'unofficial', name: '非官方', listed: true }]]);
-  if (!platform.available && resultSort === 'score') resultSort = 'added';
   mergePlatform();
+  const platformConnection = connectPlatform(DATA.buildInfo, bootstrap);
+  platformConnection.catch(() => {});
   addEventListener('hashchange', (event) => route({ from: event.oldURL }));
   await route({ from: '' });
+  await platformConnection;
+  initialPlatformSettled = true;
+  if (!platform.available && resultSort === 'score') resultSort = 'added';
+  mergePlatform();
+  await route({ keepScroll: true });
   await window.ArenaEntry?.ready(root);
   startPlatformRecovery();
 } catch (err) {
