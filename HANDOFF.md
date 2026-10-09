@@ -1,5 +1,16 @@
 # HANDOFF.md · 当前状态
 
+
+## 服务器投稿预览统一适配（2026-10-09，已上线）
+
+- 用户授权探索、适配与提交。三名 GPT-6 Luna Max 分题审查 324 件 Three.js 投稿，父 agent 完成其他 371 件与生产安装；公开快照 883 作品/706 已验证投稿。本轮新增 267 模型、426 截图预览，共693件，保留原有11件；up-lrfhzyum 与 up-9z4ypk7d 无可信默认画面，未安装新媒体。
+- 制作沿用私有数据工具和当前 Gallery 渲染器：sbox v2 gzip、纹理256、主体长边88；透明 WebP 海报长边720/q0.86；截图完整等比720/JPEG q0.86。665张既有首屏衍生图61.66→21.77 MiB（-64.7%）。未覆盖源码、真实首屏/手机截图；64个成功定向取景配置并入后台，旧11个配置保留。
+- Gallery仅改代表卡可见封面 eager/high，其余 lazy。后台增加截图烘焙、外部适配/场景诊断、多文件入口长度修正，以及POSIX稳定文件SHA缓存；Windows及新写窗口仍实算，源/媒体清单核验保留。
+- Gallery check68/0、test33/33、生产配置构建176件/70site、严格intake0错/8既有提示；后台Windows/Linux check113/0、test330/330。267模型实际Gallery桌面333×185/手机160×128渲染0错误；公网68文件SHA、check:deployment通过，693预览DTO及抽样JPEG/WebP 200，服务active/running、NRestarts0，DB v41/integrity ok/外键0。
+- 公网Playwright最终受保护回合：建筑代表封面仅1 high、139 lazy，模型hover/海报淡出与截图切换正常；四岛截图无68MiB模型请求，建筑/帆船390手机无横溢，控制台0/0，写请求0。重复693项摘要读取旧暖1813ms→新暖41.5ms；完整bootstrap同Origin11.17/2.24/11.37秒仍波动，不能把摘要提速等同整页提速。
+- 生产4个后台工具/运行文件、66个生成前端文件切换，完整已跟踪后台运行源码SHA匹配；data.json/runtime-config.js保持字节不变。备份/root/aob-preview-align-20261009/backup/，安装切换1.36秒。版本标记收工随后台提交同步；两仓本轮各一条英文提交，不推送；私有数据仓与另一前端未改。
+- 忽略证据两仓output/preview-align-20261009/及Gallery/output/playwright/。24个新模型仍>3MiB；帆船原始视角略截桅杆，卡片不进一步裁切；未验全部原作交互/真机。详见[本轮归档](docs/archive/2026-10-09-preview-alignment-wsnxxxs.md)。
+
 ## 模型候选与搜索联合发布（2026-10-08，已推送、已上线）
 
 - 用户授权推送、部署。Gallery dc03ef8 与后台 f492d80 已推送 main；后台正常合并并保留远端已上线目录提速/媒体缓存，HANDOFF 两侧记录均保留，无功能冲突或强推。两仓功能提交公开 CI 成功。

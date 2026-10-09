@@ -96,6 +96,6 @@ export const versionedMedia = (src) => {
 export function img(src, alt, cls = '', eager = false) {
   src = versionedMedia(src);
   return src
-    ? `<img class="${cls}" src="${esc(src)}" alt="${esc(alt)}"${eager ? '' : ' loading="lazy"'} decoding="async" />`
+    ? `<img class="${cls}" src="${esc(src)}" alt="${esc(alt)}" loading="${eager ? 'eager' : 'lazy'}"${eager ? ' fetchpriority="high"' : ''} decoding="async" />`
     : `<div class="${cls} img-empty">暂无截图</div>`;
 }
