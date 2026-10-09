@@ -1,5 +1,12 @@
 # HANDOFF.md · 当前状态
 
+## 连接恢复修复已上线（2026-10-10）
+
+- 用户追加授权立即部署；Gallery3cfdac1与后台7c5ce10已上线。以前端线上完整目录为基础替换app.js/platform.js，再生成index.html/version.json缓存版本与CSP，资产3739f58b8d2614ce04250835。2353文件集合及其他文件SHA不变，data.json/runtime-config.js、作品保留，未部署本地83作品旧包；下节“未部署”由本节覆盖。
+- Linux Gallery check68/0、test33/33，后台check111/0、test330/330。最新一致副本新旧配置榜/模型榜、作品清单一致；生产库v41保持，完整性ok/外键0。公网部署检查60题/40社区题/928作品，通过API/CORS/包兼容及六文件SHA、模块版本、内联CSP校验。
+- 单次loopback bootstrap1.928s、重叠auth/me34ms（空闲2ms），公网auth/me200/206ms；未生产登录、投稿、投票、审核或重新浏览器全交互验收。
+- 备份/root/aob-connectivity-20261010/backup/，旧Gallery/www/wwwroot/gallery.connectivity-before-20261010；服务active/running、NRestarts0。[发布归档](docs/archive/2026-10-10-connectivity-release-kme7kme7-prog.md)。
+
 ## 连接失败与旧题库回退修复（2026-10-10）
 
 - 用户授权修复完成后以 kme7kme7-prog 身份 commit/push，不添加联合署名；本轮未部署。基线 main=origin/main 2187057，已有未跟踪 live-patch/、patch-live.mjs 未触碰。
