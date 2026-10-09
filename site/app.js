@@ -30,6 +30,7 @@ let MODELS;
 let HARNESSES;
 let PROVIDERS;
 let resolveModel;
+let initialPlatformSettled = false;
 
 // Uploads may name a model that is not in the registry; they carry their own name and vendor.
 const modelOf = (r) => resolveModel({ model: r.model, modelName: r.modelName ?? r.model, vendor: r.vendorName ?? r.vendor });
@@ -261,7 +262,7 @@ function renderLibrary(scopes = [], fresh = true) {
   homeState.category = scopes.find((x) => DATA.tasks.some((t) => t.category === x)) ?? '';
   homeState.domain = scopes.find((x) => DATA.tasks.some((t) => domainsOf(t).includes(x))) ?? '';
   const controller = new AbortController();
-  let previews = null, destroyed = false;
+  let previews = null, destroyed = false, activePreviewKey = null;
   const choices = DATA.tasks.map((task) => ({ task, result: taskCover(task, platform.featured?.[task.id]?.cover) }));
   const artworkFor = (t, shown, eager = false) => shown?.previewMode === 'screenshot'
     ? img(screenshotOf(shown), shown.title, 'question-screenshot-preview', eager)
@@ -454,21 +455,37 @@ function renderLibrary(scopes = [], fresh = true) {
   };
   filter();
   document.title = `题库 · ${DATA.title}`;
-  async function loadPreviews() {
-    if (destroyed || !choices.some(({ result }) => result?.previewMode !== 'screenshot' && (result?.previewModel || result?.previewLoader))) return;
+  async function loadPreviews(choice) {
+    const result = choice?.result;
+    if (destroyed || !initialPlatformSettled || homeState.view !== 'tasks' || result?.previewMode === 'screenshot' || !(result?.previewModel || result?.previewLoader)) return;
+    const key = `${choice.task.id}/${result.id}`;
+    if (activePreviewKey === key && previews) return;
+    previews?.destroy(); previews = null;
+    activePreviewKey = key;
     try {
       const { createQuestionPreviews } = await import('./result-previews.js');
-      if (destroyed) return;
-      previews = createQuestionPreviews(root, choices.filter(({ result }) => result?.previewMode !== 'screenshot'));
+      if (destroyed || activePreviewKey !== key) return;
+      previews = createQuestionPreviews(root, [choice]);
       previews.setPaused(homeState.view !== 'tasks');
       settleImages();
     } catch (error) {
+      if (activePreviewKey === key) activePreviewKey = null;
       console.error('Question model previews unavailable:', error);
     }
   }
-  loadPreviews();
+  root.onpointerover = (event) => {
+    if (event.pointerType === 'touch' || homeState.view !== 'tasks') return;
+    const visual = event.target.closest('.question-visual');
+    const card = visual?.closest('[data-task-card]');
+    if (!card || visual.contains(event.relatedTarget) || card.hidden) return;
+    loadPreviews(choices.find(({ task }) => task.id === card.dataset.taskCard));
+  };
+  root.onfocusin = (event) => {
+    const card = event.target.closest('[data-task-card]');
+    if (card && !card.hidden && homeState.view === 'tasks') loadPreviews(choices.find(({ task }) => task.id === card.dataset.taskCard));
+  };
   return {
-    destroy() { destroyed = true; controller.abort(); previews?.destroy(); },
+    destroy() { destroyed = true; controller.abort(); previews?.destroy(); activePreviewKey = null; },
   };
 }
 
@@ -508,19 +525,56 @@ function resultVariantButtons(t, r, pane = null) {
 }
 let resultPreviews = null;
 let previewVersion = 0;
-async function updateResultPreviews(t) {
-  const version = ++previewVersion;
-  resultPreviews?.destroy();
-  resultPreviews = null;
-  if (previewMode !== 'model') return;
+let activeResultPreviewId = null;
+function previewTriggerId(t) {
+  const results = new Map(t.results.map((result) => [result.id, result]));
+  const visible = $$('.result[data-id]', root).filter((card) => !card.hidden && card.getClientRects().length);
+  const available = (card) => {
+    const result = results.get(card.dataset.id);
+    return result && hasModelPreview(result) && (result.previewModel || hosted(result));
+  };
+  return (visible.find((card) => card.classList.contains('is-lead') && available(card)) ?? visible.find(available))?.dataset.id ?? null;
+}
+function prioritizeResultLead() {
+  const cards = $$('.result[data-id]', root);
+  const visible = cards.filter((card) => !card.hidden && card.getClientRects().length);
+  const card = visible.find((item) => item.classList.contains('is-lead')) ?? visible[0];
+  const images = $$('.result-media img', root);
+  const leadImages = card ? $$('.result-media img', card) : [];
+  const selected = previewMode === 'screenshot'
+    ? card?.querySelector('img.result-screenshot-preview') ?? leadImages[0]
+    : card?.querySelector('img.result-model-poster') ?? card?.querySelector('img.result-screenshot-preview') ?? leadImages[0];
+  for (const image of images) {
+    const eager = image === selected;
+    image.loading = eager ? 'eager' : 'lazy';
+    image.fetchPriority = eager ? 'high' : 'auto';
+  }
+}
+async function updateResultPreviews(t, preferredId = null) {
+  if (!initialPlatformSettled || previewMode !== 'model') {
+    ++previewVersion;
+    resultPreviews?.destroy(); resultPreviews = null; activeResultPreviewId = null;
+    return;
+  }
   const results = displayedResults(t).filter((result) => hasModelPreview(result) && (result.previewModel || hosted(result)));
-  if (!results.length) return;
+  const visibleIds = new Set($$('.result[data-id]', root).filter((card) => !card.hidden && card.getClientRects().length).map((card) => card.dataset.id));
+  // Without an explicit card target, keep the poster and transfer no model file.
+  const selected = preferredId
+    ? results.find((result) => result.id === preferredId && visibleIds.has(result.id))
+    : results.find((result) => result.id === activeResultPreviewId && visibleIds.has(result.id));
+  if (preferredId && !selected) return;
+  if (selected?.id === activeResultPreviewId && resultPreviews) return;
+  const version = ++previewVersion;
+  resultPreviews?.destroy(); resultPreviews = null;
+  activeResultPreviewId = selected?.id ?? null;
+  if (!selected) return;
   try {
     const { createResultPreviews } = await import('./result-previews.js');
-    if (version !== previewVersion) return;
-    resultPreviews = createResultPreviews(root, { ...t, results });
+    if (version !== previewVersion || previewMode !== 'model') return;
+    resultPreviews = createResultPreviews(root, { ...t, results: [selected] });
     resultPreviews.setPaused($('#results').hidden);
   } catch (error) {
+    if (version === previewVersion) activeResultPreviewId = null;
     console.error('Model previews unavailable:', error);
   }
 }
@@ -779,12 +833,13 @@ function renderTask(t) {
     if (!e.target.matches('[data-work-search]')) return;
     taskState.query = e.target.value;
     filterResults(t);
+    updateResultPreviews(t);
   };
 
   root.onchange = (e) => {
-    if (e.target.matches('[data-vendor-filter]')) { taskState.vendor = e.target.value; filterResults(t); }
-    if (e.target.matches('[data-harness-filter]')) { taskState.harness = e.target.value; filterResults(t); }
-    if (e.target.matches('[data-provider-filter]')) { taskState.provider = e.target.value; filterResults(t); }
+    if (e.target.matches('[data-vendor-filter]')) { taskState.vendor = e.target.value; filterResults(t); updateResultPreviews(t); }
+    if (e.target.matches('[data-harness-filter]')) { taskState.harness = e.target.value; filterResults(t); updateResultPreviews(t); }
+    if (e.target.matches('[data-provider-filter]')) { taskState.provider = e.target.value; filterResults(t); updateResultPreviews(t); }
     if (!e.target.matches('[data-result-sort]')) return;
     setResultSort(e.target.value);
     applySort(t);
@@ -820,12 +875,15 @@ function renderTask(t) {
       applySort(t); filterResults(t); syncPicks(t); settleImages(); updateResultPreviews(t);
     }
     const preview = e.target.closest('[data-preview-mode]');
-    if (preview && preview.dataset.previewMode !== previewMode) {
-      previewMode = preview.dataset.previewMode;
-      store.set('preview-mode', previewMode);
-      document.body.dataset.previewMode = previewMode;
-      $$('[data-preview-mode]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.previewMode === previewMode)));
-      updateResultPreviews(t);
+    if (preview) {
+      if (preview.dataset.previewMode !== previewMode) {
+        previewMode = preview.dataset.previewMode;
+        store.set('preview-mode', previewMode);
+        document.body.dataset.previewMode = previewMode;
+        $$('[data-preview-mode]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.previewMode === previewMode)));
+      }
+      prioritizeResultLead();
+      updateResultPreviews(t, previewMode === 'model' ? previewTriggerId(t) : null);
     }
     const go = e.target.closest('[data-go]');
     if (go) {
@@ -863,10 +921,20 @@ function renderTask(t) {
       }, () => { copy.textContent = '复制失败'; });
     }
   };
+  const requestCardPreview = (event) => {
+    if (!initialPlatformSettled || previewMode !== 'model' || $('#results').hidden) return;
+    const media = event.target.closest?.('.result-media');
+    const card = media?.closest('.result[data-id]');
+    if (!card || card.hidden || media.contains(event.relatedTarget)) return;
+    updateResultPreviews(t, card.dataset.id);
+  };
+  root.onpointerover = (event) => {
+    if (event.pointerType !== 'touch') requestCardPreview(event);
+  };
+  root.onfocusin = requestCardPreview;
 }
 
-// The task page as the router sees it: its panel from the address, the card models as its first
-// load, and its board, models and compare tray gone with it.
+// The task page as the router sees it: its panel and selected card preview, plus board and tray cleanup.
 function taskPage(t) {
   renderTask(t);
   activatePanel(location.hash.split('#')[2], false);
@@ -878,6 +946,7 @@ function taskPage(t) {
       ++previewVersion;
       resultPreviews?.destroy();
       resultPreviews = null;
+      activeResultPreviewId = null;
       document.body.classList.remove('has-tray');
     },
   };
@@ -937,6 +1006,7 @@ function filterResults(t) {
   $('#filter-heading').textContent = taskState.vendor || '全部作品';
   $('#filter-count').textContent = variantsOf(t).length ? `${modelCount(shown)} 个模型 · ${shown.length} 组结果 · ${t.results.length} 份作品` : `${modelCount(shown)} 个模型 · ${shown.length} 件作品`;
   $('.filter-empty').hidden = shown.length > 0;
+  prioritizeResultLead();
   resultPreviews?.refresh();
 }
 
@@ -1653,7 +1723,7 @@ async function route({ keepScroll = false, from = null } = {}) {
 function teardown() {
   page?.destroy?.();
   page = null;
-  root.onclick = root.onchange = root.oninput = root.onsubmit = root.onkeydown = null;
+  root.onclick = root.onchange = root.oninput = root.onsubmit = root.onkeydown = root.onpointerover = root.onfocusin = null;
   lightbox.close();
 }
 
@@ -1692,6 +1762,8 @@ async function show(version, visit, scrollBack) {
           root.innerHTML = `${header()}<main class="page wrap empty-page"><h1>${failure.title}</h1><p>${esc(failure.text)}</p><div class="empty-actions">${RELOAD}${failure.updated ? '' : '<a class="btn" href="#/">回到首页</a>'}</div></main>`;
         }
       }
+    } else if (!t && !initialPlatformSettled) {
+      root.innerHTML = `${header([{ text: '题库' }], false, 'questions')}<main class="page wrap empty-page"><p class="muted" role="status">正在载入题目…</p></main>`;
     } else if (!t) notFound(`没有 id 为「${taskId}」的题目。`);
     else if (inExhibition) {
       root.innerHTML = `${galleryStageHeader(t, a)}<main class="page empty-page wrap"><p class="muted">正在打开预览…</p></main>`;
@@ -1745,16 +1817,21 @@ try {
   PACK = new Map(DATA.tasks.map(({ results, ...task }) => [task.id, { task, works: new Map(results.map((r) => [r.id, r])) }]));
   // 媒体缓存钥匙：数据包提交号前 8 位，nginx 长缓存依赖它换包失效。
   globalThis.SAME_PROMPT_CONFIG.assetVersion ??= DATA.buildInfo?.datapack?.slice(0, 8) ?? '';
-  await connectPlatform(DATA.buildInfo, bootstrap);
   MODELS = new Map(DATA.models.map((m) => [m.id, m]));
   resolveModel = modelResolver(DATA.models);
   HARNESSES = new Map((DATA.harnesses ?? []).map((h) => [h.id, h]));
   PROVIDERS = new Map([['official', { id: 'official', name: '官方', listed: true }], ['unofficial', { id: 'unofficial', name: '非官方', listed: true }]]);
-  if (!platform.available && resultSort === 'score') resultSort = 'added';
   mergePlatform();
+  const platformConnection = connectPlatform(DATA.buildInfo, bootstrap);
+  platformConnection.catch(() => {});
   addEventListener('hashchange', (event) => route({ from: event.oldURL }));
   await route({ from: '' });
   await window.ArenaEntry?.ready(root);
+  await platformConnection;
+  initialPlatformSettled = true;
+  if (!platform.available && resultSort === 'score') resultSort = 'added';
+  mergePlatform();
+  await route({ keepScroll: true });
   startPlatformRecovery();
 } catch (err) {
   window.ArenaEntry?.fail();
