@@ -32,6 +32,10 @@ assert.match(response.headers.get('cache-control') ?? '', /no-cache/, 'Public ca
 const validation = await fetch(new URL('catalog', actualApi), { headers: { Origin: site.origin, 'If-None-Match': etag } });
 // A concurrent publication may legitimately replace the catalog during this check.
 assert.ok([200, 304].includes(validation.status), `Catalog revalidation: HTTP ${validation.status}`);
+if (validation.status === 200) {
+  assert.notEqual(validation.headers.get('etag')?.replace(/^W\//, ''), etag.replace(/^W\//, ''),
+    'An unchanged catalog must return 304; check whether the proxy forwards If-None-Match');
+}
 assert.equal(validation.headers.get('access-control-allow-origin'), site.origin, 'Revalidation must retain CORS headers');
 const session = await fetch(new URL('session', actualApi), { headers: { Origin: site.origin } });
 assert.ok(session.ok, `Configured session: HTTP ${session.status}`);

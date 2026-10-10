@@ -52,6 +52,8 @@
 
 Gallery 独立主机的生产构建必须设置 `API_BASE_URL=https://api.arenaofbias.icu/api/` 再运行 `npm run build`，不能发布默认相对 `api/` 的本地配置。上线后运行 `npm run check:deployment -- https://gallery.arenaofbias.icu/ https://api.arenaofbias.icu/api/`，校验网站实际配置的 API、CORS、数据包兼容性及公开题目总数；浏览器另核对全部社区题目 ID 均出现在题库中。静态数据包只有20题，显示20题不能作为完整生产题库验收。
 
+部署检查同时核对目录ETag重验证与匿名会话no-store；相同ETag仍返回200视为代理配置故障。API的动态代理须包含后台的 `deploy/nginx/api-proxy.conf`，关闭继承的Nginx proxy_cache，保留应用的公开缓存与条件头；媒体location保持独立策略。
+
 题库只对有解答的题读取代表作品榜单，空题直接显示等待首份答案，避免无用请求触发共享读取限制。同题长短版本保持题目 ID，卡片按模型、推理档位与来源分组；每份作品保留独立 ID，并排预览两栏各自选择已收录版本。
 
 ## 验证与部署

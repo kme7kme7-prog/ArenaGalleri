@@ -1,5 +1,13 @@
 # HANDOFF.md · 当前状态
 
+## 独立加载修复发布（2026-10-11，已上线）
+
+- 用户明确授权提交、推送、部署并追加联调。已发布658a6a4/3629a9e的加载功能，生产Gallery完整2353文件仅app/index/leaderboard/platform-api/platform/studio/version七项变化；目录数据、运行配置、作品媒体保持。后台仅app/library/read-guard及新增catalog-response；运行版本3629a9ed，资产253d5e198065a92544e315c2。
+- 实际65题/1259件生产数据库副本联调通过：匿名/管理员公开字节相同、私有统计/权限独立、旧聚合兼容、撤下及ETag立即失效。原包联调和最终发布候选跨域浏览/刷新通过。Windows前端check69/0、test39/39、build176/70、CI intake0错/8既有提示；后台Linux117/0、337/337。
+- 公网发现Nginx全局proxy_cache继承会清除条件头；API根proxy加入api-proxy.conf关闭该继承并使用gzip6，媒体缓存保留。nginx -t/reload、实际公网/Chromium304、跨域预检204、会话no-store、65题含45社区题部署检查通过。压缩传输236702→208325B，最近200/304样本3366/337ms，后者0正文；非固定速度承诺。
+- 桌面1440/手机390题库及榜单目视无横溢、控制台错误/警告0、无旧bootstrap或业务POST。最终手机首读7533ms、整页刷新3985ms，浏览器网络确认200→304；首次跨境加载仍受网络影响，不称全部首屏毫秒完成。数据库v41/integrity ok/外键0，最终切换306用户/1381作品/60数据库题/9681原始票前后保持；最终成功切换不可用1.727秒，早期两次校验回滚另有短暂重启，合计未计时。
+- 合并保留远端历史，正常推送main。服务active/running/NRestarts0；备份/root/aob-loading-release-20261011/backup保留，本轮1.3GB隔离数据副本已定点移除。忽略证据output/loading-release-20261011/及output/playwright/loading-release-20261011/。后台新出现的上游playground提交仅合入源码历史，本轮未发布其运行文件。[发布归档](docs/archive/2026-10-11-loading-release-wsnxxxs.md)。
+
 ## 公开目录独立加载（2026-10-11，本地完成，未推送、未部署）
 
 - 用户要求完成最佳修复；GPT-6.1 Sol/high 两名代理分别实现前后端并交叉审查。题库独立等待公开 catalog，账号 session、统计 activity 不阻塞；局部骨架/错误/恢复替代整页连接门禁。保留远端首页优化、本地个人署名和模型按需预览。
@@ -1221,3 +1229,66 @@
 - Gallery 构建改为内容哈希版本，公开目录移除 frontendCommit；最终 HTML 的启动脚本和 import map 用 CSP 哈希授权，保留 Blob Worker；盲评 iframe 消息校验当前窗口与源、明确发送目标。独立后端修复验证码请求限流、登录挑战占位、代理配置兼容、半配置 Turnstile、相机消息、后台 CSP、内容 HSTS/错误转义、统计路径及分页参数；游戏只收紧构建 CSP，三仓分别提交。
 - Gallery check60/0、test28/28、build176件/66site、严格intake0错/8既有提示；后端check96/0、test302/302；游戏lint/typecheck/build:check通过。隔离浏览器核对两站首页、题库、恶意内联/onclick阻止、Blob Worker与真实3D后台相机抓取；伪造来源/窗口消息拒绝。未保存取景、生产写入或测全部作品。
 - SSH密码认证/旧版本和SPF/DMARC仅只读核查，待运维处理；SSH模板尚未安装，未部署，不宣称线上已修。用户允许只追加本轮HANDOFF；其他会话的投稿页面及未提交记录保留、不纳入安全提交。[逐项核查与修复记录](docs/archive/2026-10-05-security-review-wsnxxxs.md)。
+
+## 已发布 Hero 先呈现已上线（2026-10-10）
+
+- 用户授权按kme7kme7-prog身份提交、推送、上线，不附联合署名。线上原3个文件与基线d8ad4c1一致；Linux候选源码check68/0、test33/33后，以生产完整目录为基础发布，不使用本地83作品旧包。只更新app.js/home.js/studio.css及生成的index.html/version.json，资产dabecb3eeaf856d30f7ac6ea；2353文件集合不变，其余文件SHA相同，作品、data.json/runtime-config.js保留。下节未上线状态由本节覆盖。
+- 公网7文件SHA、模块/样式版本与内联CSP校验通过；check:deployment通过（采样63题、43社区题、946作品），后台7c5ce10保持，不更改或重启后台、数据库、Nginx。原有本地私有包拉取/海报限制保持，不放宽intake。
+- Tabbit公网复验人为暂挂bootstrap，接口返回前5张真实预览卡片可见且不显示旧总数；释放请求后显示945份解答（UI排除存疑），Hero/标题/图片/当前卡片不替换，前后卡片位置与尺寸完全一致，脚本错误0，入口正常退场，真实桌面截图已目检。15.06秒为含请求暂挂的整段验证耗时，不是入场速度。未生产投稿、审核或投票；手机与故障语义沿用上轮本地验证。
+- 回滚目录/www/wwwroot/gallery.hero-preview-before-20261010，VPS证据/root/aob-hero-preview-20261010/，本地证据为相邻Show1忽略目录.local/gallery-hero-release-20261010/。仅本轮3个功能文件、交接与归档提交；既有live-patch/和patch-live.mjs保留。[发布记录](docs/archive/2026-10-10-hero-preview-release-kme7kme7-prog.md)。
+
+
+## 首页先呈现已发布 Hero（2026-10-10，未提交、未部署）
+
+- 用户要求首页先呈现旧作品卡片，实时目录返回后不跳动。此前等待作品占位的约定只在 Hero 预览区由本轮覆盖；题库、正式盲评、账户与审核仍沿用实时平台门禁，不回退旧 PACK。旧 Hero 来源是发布包里的公开截图/海报，不新增浏览器持久缓存、作品资源副本或业务数据。
+- `site/app.js` 仅向首页提供独立 `heroArchive()`，不将它写入 `DATA.tasks`；目录返回后复用已挂载首页。`site/home.js` 保留当前标题、卡片、图片、暂停状态和轮播进度，只更新实时数量、题目标签与最近收录，新卡片在下次正常轮播或手动切题时加入。作品链接按最新目录检查；加载/失败/409用轻量行内提示与既有重试。`site/studio.css` 预留数量行高度、固定底部标签行高，避免 emoji 引起的细小位移。无公开预览包时仍保留已有占位。
+- 验证：最终 check68/0、test33/33、diff检查通过；缓存包组装83作品/70site成功。标准 build因本地占位私有源配置且缺GitHub CLI无法拉包，严格 intake仍有既有83张preview poster缺失/4警告，未改配置、数据或放宽校验，未以本地旧包部署。
+- Tabbit本地故障服务模拟6.5秒目录响应，1440桌面及390手机更新前后 Hero/卡片/标题为同一DOM，图片与标题不变，最终卡片位置/尺寸完全一致，手机无整页横溢，脚本错误0。503仍显示5张预览且无旧总数/最近收录，题库和盲评门禁保持；手动重连后页面/暂停状态保留，二十四节气可正常切入；409仅保留不可点击的预览与刷新提示；默认相对API404的独立静态模式仍可显示20题176作品。
+- 图片使用本地合成图验证布局/加载，未作生产全图片、投票或审核验收。初轮夹具未覆盖海报优先级导致404，修正后通过；复测发现轮播标签emoji造成0.4px位移，固定行高后桌面及手机通过。证据在相邻Show1忽略目录`.local/gallery-connectivity-20261010/hero-*`。
+- 本轮只改3个Gallery功能文件及本交接；未提交、推送、部署，线上仍为d8ad4c1。后端、作品、数据库、Nginx、Show1功能与既有`live-patch/`、`patch-live.mjs`未动。
+
+
+## 首页内加载作品已上线（2026-10-10）
+
+- 用户授权提交、推送、部署。本轮仅发布Gallery的`app.js/home.js/studio.css`及生成的`index.html/version.json`，资产`c84db99039c48e30f6dc9c0c`。基于线上现有目录生成新缓存版本与CSP，2353文件集合保持，其余文件SHA相同，`data.json/runtime-config.js`与作品原样保留；下节未上线状态由本节覆盖。
+- Linux候选源码check68/0、test33/33；公网7文件SHA、模块版本、样式版本与内联CSP校验通过，check:deployment通过（当时63题/43社区题/945作品）。后台版本7c5ce10不变，未更改或重启后台、数据库和Nginx。
+- Tabbit公网首页入口退场完成，5张真实作品卡片显示，界面944份解答，脚本错误0，桌面截图已目检；未重复生产投票、审核、投稿或全交互测试。此前本地慢加载/重试/手机版验证保留，未以公网8.45秒完整检查耗时作为首页入场耗时。
+- 回滚目录`/www/wwwroot/gallery.home-before-20261010`，发布证据`/root/aob-home-loading-20261010/`及相邻Show1忽略目录`.local/gallery-home-release-20261010/`。来源核对无冲突；现有`live-patch/`与`patch-live.mjs`未触碰。[发布记录](docs/archive/2026-10-10-home-loading-release-kme7kme7-prog.md)。
+
+
+## 首页内加载作品（2026-10-10，未提交、未部署）
+
+- 用户要求先进入展览馆首页，再在页面内转圈加载作品。`site/app.js` 让首页绕过整页连接提示，首页入口遮罩在布局就绪后退场；题库、盲评、审核等深链保留既有加载门禁。`site/home.js` 提供真实首页布局的加载/失败状态，`site/studio.css` 仅补作品区占位与状态样式。
+- 公开目录返回前不显示旧PACK的作品、数量或模型链接；返回后使用原首页卡片与轮播。失败/限流沿用平台冷却和重试；409仍提示刷新，不回退旧题库。账户入口保持独立的连接状态。后台、作品、数据包、审核及盲评规则未改。
+- 验证：check68/0、test33/33、diff检查通过；本地缓存包组装83作品/70site成功。标准`npm run build`因忽略配置为占位私有源且本机缺gh未完成拉包；严格intake仍为既有83张preview poster缺失与4警告，不放宽校验，不将本地旧包部署。
+- Tabbit本地故障服务：6.5秒响应时约1.9秒结束入口遮罩，首页作品区仍加载；390手机无整页横溢；503在作品区提示，自动恢复、手动重连、409不回退、纯静态404及正常题目跳转通过。公开快照928记录中UI排除2件存疑，显示926；图片用本地合成图验证加载，正常卡片静止状态已目检，未检查真实线上全部图片或生产交互。测试脚本的图片夹具和跳转断言修正后通过，另一次重试点击遇到后台恢复提前替换DOM的夹具竞态，未作为产品失败。
+- 三个功能文件与本节记录未提交、未推送、未上线；既有`live-patch/`与`patch-live.mjs`未动。证据在相邻Show1忽略目录`.local/gallery-connectivity-20261010/`。
+
+
+## 连接恢复修复已上线（2026-10-10）
+
+- 用户追加授权立即部署；Gallery3cfdac1与后台7c5ce10已上线。以前端线上完整目录为基础替换app.js/platform.js，再生成index.html/version.json缓存版本与CSP，资产3739f58b8d2614ce04250835。2353文件集合及其他文件SHA不变，data.json/runtime-config.js、作品保留，未部署本地83作品旧包；下节“未部署”由本节覆盖。
+- Linux Gallery check68/0、test33/33，后台check111/0、test330/330。最新一致副本新旧配置榜/模型榜、作品清单一致；生产库v41保持，完整性ok/外键0。公网部署检查60题/40社区题/928作品，通过API/CORS/包兼容及六文件SHA、模块版本、内联CSP校验。
+- 单次loopback bootstrap1.928s、重叠auth/me34ms（空闲2ms），公网auth/me200/206ms；未生产登录、投稿、投票、审核或重新浏览器全交互验收。
+- 备份/root/aob-connectivity-20261010/backup/，旧Gallery/www/wwwroot/gallery.connectivity-before-20261010；服务active/running、NRestarts0。[发布归档](docs/archive/2026-10-10-connectivity-release-kme7kme7-prog.md)。
+
+
+## 连接失败与旧题库回退修复（2026-10-10）
+
+- 用户授权修复完成后以 kme7kme7-prog 身份 commit/push，不添加联合署名；本轮未部署。基线 main=origin/main 2187057，已有未跟踪 live-patch/、patch-live.mjs 未触碰。
+- site/app.js 接回已在线但不在main的按需卡片预览与海报优先级改动；首屏可先绘制连接界面，但独立API未就绪时不呈现旧PACK，入口遮罩等连接结果后才退。慢响应、失败、重连、版本不兼容都有明确状态；账户入口不再凭空消失。当前页面刷新失败保留最近成功数据并显示连接提示，不持久化用户/审核数据。
+- site/platform.js 统一 catalogState：正常平台 / 默认相对API返回404的纯静态 / 加载 / 故障。显式独立API的404、超时、429、503及409不触发旧题库；保留一次自动重试和服务端冷却，联网/回到页面可恢复连接。
+- 验证：check 68/0，test 33/33；本地数据包 build 成功（83作品/70站点文件）。严格 `CI=1 check:intake` 未通过：本地既有83作品缺 preview poster，另4警告，未改数据或放宽校验。私有发布包仍须另行验证，不把本地旧包当部署包。
+- Tabbit 本地故障服务验证6.5s慢响应、15s超时与审核页自动恢复、503后手动重连、显式API404和409不回退、纯静态404正常显示20题176作品。使用先前公开bootstrap快照恢复60题928记录（UI排除2件存疑计为926），账户入口和恢复过程通过；失败截图已目检。未向线上投稿、投票或审核。
+- 后端同轮 check111/0、test330/330；合成960作品/8300票同机对照首屏11.0→2.53s、并发auth/me 10.88s→175ms，非线上性能承诺。当前已看到的数量回退由旧静态兜底解释，未做历史库逐行无损核对。
+- [本轮归档](docs/archive/2026-10-10-platform-recovery-kme7kme7-prog.md)。真实部署前仍核对线上未归档来源，保留已经接回的预览优化。
+
+
+## 连接卡顿与目录数量回退调查（2026-10-10，只读完成）
+
+- 用户要求同步最新代码并调查审核页间歇连接失败、账户入口消失和作品数量锐减；本轮不修功能、不部署、不 commit/push。Gallery main 已从 dc9199b 快进至 2187057；既有 live-patch/、patch-live.mjs 未动，Show1/server/data 对应工作树与各自 origin/main 一致，其他未提交原型保留。
+- 实测公开 bootstrap 为60题/928作品，生产库v41、1051条works；线上 data.json 恰为20题/176作品，与截图一致。现场 app.js 在平台响应前先绘制静态PACK，platform.available=false时使用PACK并隐藏账户入口；超时恢复后才重新合并动态目录，因此「旧版本数量」是静态兜底表现。未做历史数据库逐行无损核对。
+- 用户原有Tabbit审核页资源记录：两次bootstrap约15.96秒中止，auth/me一次约39.57秒；公网匿名bootstrap约12.17秒。VPS loopback bootstrap约2.36秒、Node CPU2.39秒，重叠auth/me等2.14秒、空闲时1ms，确认同步重计算拖住轻请求。只读热点对照8285条投票逐条catalog.task耗时1488ms/8285次SQL，一次读目录再Map查询14ms/21次SQL；局部对照不等于整体修复性能承诺。
+- bootstrap包含全作品/逐题盲池/管理员模型/榜单；countedVotes逐票读取目录且全局榜递归类别榜，投票/审核使缓存失效。当前144配置低于worker阈值200，扫描/拟合可占主线程。服务运行且NRestarts0、采样内存充足；共享目录限额30r/m仍在，但本次未取得对应bootstrap的429证据，不能将超时归为限流。
+- 现场标记c0ad02c与远端main f492d80不同；四个后端关键模块与main一致，Gallery线上app.js含尚不在main的提前静态绘制及按需预览改动。后续修复前先接齐现场源码来源，避免覆盖；本轮不把生产修改导入源码或猜测部署来源。
+- 建议后端批量复用读取、削减初始化榜单成本并避免独占主线程；前端明确加载/离线状态、保留最近成功公开目录和账户状态，不静默显示旧PACK。建议尚未实施；可见性门禁仍必须实时校验。证据与报告在相邻Show1忽略目录 `.local/gallery-connectivity-20261010/`。无功能改动未跑check/test/build，无生产写操作、服务重启、配置修改或作品变更；Tabbit调查会话finish，原审核页保留。
