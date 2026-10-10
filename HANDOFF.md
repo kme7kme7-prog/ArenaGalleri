@@ -1,5 +1,13 @@
 # HANDOFF.md · 当前状态
 
+## 投稿慢网络等待与小字提醒（2026-10-10，已上线）
+
+- 用户要求删除上一轮调查记录、取消60秒断开并加小字提醒。旧调查交接、归档与本轮自建调查输出已删除；仅记录本轮实现与验收。
+- site/submit.js 在文件选择及上传进度下使用现有fine样式提醒保持页面打开、长时间无进展可取消重试。API新增upload-timeout.conf，client_body_timeout=1d；Nginx没有关闭该请求体定时器的0值语义，实际空闲等待为24小时。只调整API配置，文件大小上限不变。
+- 保留线上较新连接修复：部署构建采用origin/main的app.js/platform.js及本地已上线ui.js，完整2353文件仅index.html/submit.js/version.json三项变化，其余2350项与生产一致；data/runtime-config字节保持。后端运行代码与版本7c5ce104不变，仅加Nginx include；备份/root/aob-upload-patience-20261010T063751Z/backup，安装1.907秒。
+- Gallery check68/0、test33/33、build176结果/70site、CI intake0错/8既有提示；后台check115/0、test332/332。nginx -t/reload成功；HTTP1.1及HTTP2暂停70秒后继续发送，均正常得到匿名401及Gallery跨域头；无最终投稿。公网5文件SHA、check:deployment通过，后台active/NRestarts0、Nginx active。
+- 公网上传页桌面目视，提醒12.5px灰色、控制台错误/警告0；未验手机、成功登录上传、原作试加载或最终提交。两仓各一条英文提交，不push；忽略发布证据output/upload-patience-20261010/。详见[实现记录](docs/archive/2026-10-10-upload-patience-wsnxxxs.md)。
+
 ## 预览复查后的修复（2026-10-09，已上线）
 
 - 用户批准修复892件复查清单；69项最终42修复、18未见明显问题、8待原作/环境/语义核实、1原作键帽缺失。保留后9项真实状态，不改原作或canonical first/mobile。

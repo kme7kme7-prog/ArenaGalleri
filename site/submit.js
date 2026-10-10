@@ -162,6 +162,7 @@ export function uploadFlow(root, ctx, options) {
       ${state.notice?.file ? `<div class="notice is-stale" data-sample-notice>${icon('alert')}<p><b>原来的文件不再适用</b>提交格式改为「${esc(TEMPLATE_LABELS[state.template])}」，已移除「${esc(state.notice.file)}」，请重新选择文件。填过的结果信息会保留。</p></div>` : ''}
       ${state.resumable && !state.uploading ? `<div class="notice resume-draft">${icon('clock')}<p>你之前上传过「${esc(state.resumable.sourceName)}」，试加载保留到 ${esc(formatTime(state.resumable.expiresAt))}。</p><button class="btn primary sm" type="button" data-act="resume">继续试加载</button><button class="btn sm" type="button" data-act="drop-draft">丢弃</button></div>` : ''}
       ${pendingFull() ? `<div class="notice">${icon('clock')}<p>你已有 ${platform.me.pending} 件作品在等待核验，核验之后再上传新的作品吧。</p></div>` : picker}
+      ${pendingFull() ? '' : '<p class="fine">网络较慢时，上传可能需要较长时间。请保持页面打开；长时间没有进展，可取消后重试。</p>'}
       ${state.error ? `<p class="form-error" role="alert">${esc(state.error)}</p>` : ''}
       ${pendingFull() ? '' : `<details class="fold"><summary>${icon('right')}${isText() ? '全部原文要求' : '全部文件要求'}</summary><ul class="plain">${rules.map((rule) => `<li>${rule}</li>`).join('')}</ul></details>`}
     </div>`;
