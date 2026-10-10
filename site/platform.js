@@ -234,8 +234,10 @@ export const ROLE_LABELS = { admin: '高级管理员', moderator: '普通管理�
 export const isStaff = (user = platform.user) => user?.role === 'admin' || user?.role === 'moderator';
 export const isSenior = (user = platform.user) => user?.role === 'admin';
 export const canDecide = (w) => isSenior() || (isStaff() && !w.mine);
-// Staff publish under the site's name; packaged items carry no author and count as staff.
+// Staff permissions are separate from public authorship.
 export const byStaff = (item) => (item?.author?.role ?? 'admin') !== 'user';
+// Packaged items have no personal publisher; uploaded works keep their author's name.
+export const bySite = (item) => byStaff(item) && !item?.author?.name;
 // Questions are always reviewed by a person, so a pending one waits for a senior admin.
 export const QUESTION_LABELS = { pending: '等待人工审核', rejected: '未通过' };
 // A reviewer's reason as its author reads it: the 朱批 on a rejected question, with when it was decided.

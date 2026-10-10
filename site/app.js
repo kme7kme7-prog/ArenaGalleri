@@ -12,7 +12,7 @@
 //   #/me · #/review           personal center · review queue (platform)
 //   #/terms · #/privacy       terms of use and disclaimer · privacy policy
 import { $, $$, LOGO, brandMark, byName, esc, ext, formatBytes, formatDate, icon, img, pad, store, syncThemeUi, themeButton, versionedMedia } from './ui.js';
-import { STATUS, accountControl, api, arenaScope, arenaText, avatarFace, byStaff, connectPlatform, isStaff, onPlatformChange, platform, reactionBar, refreshAccountControls, refreshPlatform, requestBootstrap, setFaces, startPlatformRecovery, statusBadge, toast } from './platform.js';
+import { STATUS, accountControl, api, arenaScope, arenaText, avatarFace, bySite, connectPlatform, isStaff, onPlatformChange, platform, reactionBar, refreshAccountControls, refreshPlatform, requestBootstrap, setFaces, startPlatformRecovery, statusBadge, toast } from './platform.js';
 import { mount as renderLanding } from './home.js';
 import { CONTACT, aigcLabel, beianLink, mount as renderLegal } from './legal.js';
 import { effortRank, representatives, standard, taskCover } from './featured.js';
@@ -106,9 +106,9 @@ const sandtableHref = (t, ids = []) => `#/${t.id}/sandtable${ids.length ? `/${id
 // models and injected controls need that. Works on the content origin stay sandboxed.
 const hosted = (r) => Boolean(r.scene) && new URL(r.scene, document.baseURI).origin === location.origin;
 const hostedTask = (t) => ({ ...t, results: t.results.filter(hosted) });
-// Staff publish under the site's name; members under their own.
-const authorName = (item) => (byStaff(item) ? DATA.title : item.author.name ?? '已注销的用户');
-const authorAvatar = (item) => (byStaff(item) ? LOGO : avatarFace(item.author.avatar, item.author.name ?? ''));
+// Account-owned works and questions publish under their author's name.
+const authorName = (item) => (bySite(item) ? DATA.title : item.author.name ?? '已注销的用户');
+const authorAvatar = (item) => (bySite(item) ? LOGO : avatarFace(item.author.avatar, item.author.name ?? ''));
 const workKey = (t, r) => `${t.id}/${r.id}`;
 const interactive = (r) => r.status !== 'questioned';
 // Whether a work has a gallery page: the public catalog holds exactly the works the gallery shows,
@@ -281,7 +281,7 @@ function renderLibrary(scopes = [], fresh = true) {
       </a>
       <div class="task-body">
         <div class="question-byline"><ul class="tag-line">${tagLine(t)}</ul>
-          <span class="avatar question-avatar${byStaff(t) ? ' is-site' : ''}" role="img" aria-label="发布者：${esc(authorName(t))}" title="发布者：${esc(authorName(t))}">${authorAvatar(t)}</span>
+          <span class="avatar question-avatar${bySite(t) ? ' is-site' : ''}" role="img" aria-label="发布者：${esc(authorName(t))}" title="发布者：${esc(authorName(t))}">${authorAvatar(t)}</span>
         </div>
         <h3><a href="${taskHref(t)}">${esc(t.title)}</a></h3>
         <p class="summary">${esc(t.summary)}</p>
