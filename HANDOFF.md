@@ -1,5 +1,13 @@
 # HANDOFF.md · 当前状态
 
+## Gemini 4.x（灰度） - exp-a 可选模型（2026-10-11，已上线）
+
+- 新增独立选项Gemini 4.x（灰度） - exp-a，正式ID gemini-4.x-exp-a，复用Google图标；兼容Gemini 4.x exp-a和gemini-4-x-exp-a，保留原gemini-4.x。生产只读查询未见同名自填作品，本轮无业务数据库写入。
+- 私有注册表由数据仓维护，Gallery消费已验证新包。2288包文件SHA/Git blob通过，2287作品资源与旧生产包字节一致；完整2353个Gallery文件仅data.json变化，运行代码、配置、媒体及版本保持，服务active/running/NRestarts0，无停服。
+- 数据check33/0、test9/9、严格intake176件/0错/8既有提示；Gallery check68/0、test33/33、生产配置build176件/70site、严格intake0错/8既有提示；后台check115/0、test332/332。仅注册表变化，复用已验证作品构建缓存，未重复完整build:data或Linux全套单测。
+- 公网目录与本次构建字节一致、旧新模型同时存在，后台正式名称及两个别名解析正确；check:deployment包兼容/CORS通过。实际共用作品表单唯一匹配→正式ID、厂商隐藏，桌面/390手机目视无横溢、控制台0错误/警告。未生产登录、保存投稿或投票。
+- 三个涉及仓各一条英文提交，源码main不push；私有数据包沿用既有发布工具发布。忽略证据output/gemini-exp-a-20261011/及output/playwright/gemini-exp-a-*；生产旧pin/包路径/目录备份/root/aob-gemini-exp-a-20261011/backup/保留。[完成记录](docs/archive/2026-10-11-gemini-exp-a-wsnxxxs.md)。
+
 ## Codex 文本批量收录与个人署名（2026-10-11，已上线）
 
 - 13个ZIP共288份原文，12题各24件、6模型/24档位；查重0，7件同配置为不同原文。上传人按截图和服务端核实johhny（先前误读johnny，导入前纠正），保持moderator；用户确认官方Codex、单轮、无人工改文，全部verified并进入正式盲评。
