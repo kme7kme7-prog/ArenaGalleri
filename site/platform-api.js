@@ -32,7 +32,7 @@ export function fetchApi(path, options = {}) {
   const headers = new Headers(options.headers);
   const write = !['GET', 'HEAD'].includes((options.method ?? 'GET').toUpperCase());
   if (datapackVersion && write) headers.set('X-Datapack-Version', datapackVersion);
-  return fetch(apiUrl(path), { ...options, headers, credentials: 'include' });
+  return fetch(apiUrl(path), { credentials: 'include', ...options, headers });
 }
 
 export function createUploadRequest(path) {
@@ -68,8 +68,8 @@ const question = (item) => !item?.references ? item : {
 // Only the API's known DTOs contain server media. Packaged assets remain on the frontend.
 export function resolveApiMedia(data, endpoint) {
   if (!data || typeof data !== 'object') return data;
-  if (['bootstrap', 'me', 'review', 'questions'].includes(endpoint) && Array.isArray(data.questions)) data = { ...data, questions: data.questions.map(question) };
-  if (endpoint === 'bootstrap' || endpoint === 'me' || endpoint === 'review') return Array.isArray(data.works) ? { ...data, works: works(data.works) } : data;
+  if (['bootstrap', 'catalog', 'me', 'review', 'questions'].includes(endpoint) && Array.isArray(data.questions)) data = { ...data, questions: data.questions.map(question) };
+  if (['bootstrap', 'catalog', 'me', 'review'].includes(endpoint)) return Array.isArray(data.works) ? { ...data, works: works(data.works) } : data;
   if (endpoint === 'work') return { ...data, work: work(data.work) };
   if (endpoint === 'draft') return { ...data, preview: data.preview ? new URL(data.preview, new URL('../', apiBaseUrl())).href : data.preview };
   if (endpoint === 'match') return { ...data, a: mediaUrl(data.a), b: mediaUrl(data.b) };

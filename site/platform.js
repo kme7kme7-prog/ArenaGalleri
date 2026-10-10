@@ -27,83 +27,253 @@ export const platform = {
   totals: { votes: 0, voters: 0, entries: 0 },
   me: null,
   review: null,
+  sessionReady: false,
+  sessionConnecting: false,
+  sessionError: null,
+  activityReady: false,
+  activityConnecting: false,
+  activityError: null,
 };
+
+// Only a standalone host's missing API opts back into the packaged archive.
+export function catalogState() {
+  if (platform.mismatch) return 'error';
+  if (platform.available) return 'ready';
+  const base = globalThis.SAME_PROMPT_CONFIG?.apiBaseUrl;
+  if (platform.connectionError?.kind === 'missing' && (!base || base === 'api/')) return 'static';
+  return platform.connecting || !platform.connectionError ? 'loading' : 'error';
+}
 
 const listeners = new Set();
 export const onPlatformChange = (listener) => { listeners.add(listener); return () => listeners.delete(listener); };
 const emit = (reason) => listeners.forEach((listener) => listener(reason));
 
-// Bootstrap includes the public catalog; allow a slow response before offering recovery.
+// Older backends still expose a combined bootstrap; keep that fallback in memory only.
 export const requestBootstrap = () => fetchApi('bootstrap', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+export function requestPlatform() {
+  const catalog = fetchApi('catalog', { credentials: 'omit', cache: 'no-cache', signal: AbortSignal.timeout(15000) });
+  const session = sessionConnection ? null : fetchApi('session', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+  catalog.catch(() => {});
+  session?.catch(() => {});
+  return { catalog, session };
+}
 let frontendBuildInfo = null;
 let connection = null;
+let sessionConnection = null;
+let activityConnection = null;
+let legacy = false;
+let accountGeneration = 0;
+let activityGeneration = 0;
+let activityNeedsRefresh = true;
+let publicWorks = [];
+let workAccess = [];
+const cooling = (error) => Date.now() < (error?.retryAt ?? 0);
+function clearPrivate() {
+  accountGeneration++;
+  invalidateActivity();
+  platform.me = platform.review = null;
+  platform.reactions = { counts: {}, mine: {} };
+  platform.arenaModels = [];
+  workAccess = [];
+  platform.activityReady = false;
+  remembered.clear();
+  overlayWorks();
+}
+function invalidateActivity() {
+  activityGeneration++;
+  activityNeedsRefresh = true;
+  activityConnection = null;
+  platform.activityConnecting = false;
+  platform.activityError = null;
+}
+function overlayWorks() {
+  const access = new Map(workAccess.map((w) => [`${w.task}/${w.id}`, w]));
+  platform.works = publicWorks.map((w) => {
+    const own = access.get(`${w.task}/${w.id}`);
+    return own ? { ...w, mine: own.mine, ...(own.arena ? { arena: own.arena } : {}) } : { ...w };
+  });
+}
+function acceptUser(user) {
+  if ((user?.id ?? null) !== (platform.user?.id ?? null) || user?.role !== platform.user?.role) clearPrivate();
+  platform.user = user ?? null;
+}
+function connectionFailure(error) {
+  return { kind: 'network', message: ['TimeoutError', 'AbortError'].includes(error.name)
+    ? '连接超时，请重试。' : '连接失败，请检查网络后重试。', retryAt: Date.now() + 2000 };
+}
+async function responseData(response) {
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    const limited = response.status === 429;
+    throw { kind: response.status === 404 ? 'missing' : limited ? 'limited' : 'http', status: response.status,
+      message: limited ? '访问较频繁，请稍后再试。' : '服务暂时不可用，请稍后重试。',
+      retryAt: Date.now() + (limited ? Number(data.retryAfter ?? response.headers.get('Retry-After')) || 30 : 2) * 1000 };
+  }
+  if (!(response.headers.get('content-type') ?? '').includes('application/json')) throw new Error('Invalid platform response');
+  return response.json();
+}
+function acceptCatalog(data, buildInfo) {
+  platform.serverVersion = data.serverVersion ?? null;
+  platform.serverDatapack = data.datapack ?? null;
+  if (!compatibleBuild(buildInfo, data) || !Array.isArray(data.questions) || !Array.isArray(data.works)) {
+    platform.available = false;
+    platform.mismatch = true;
+    return false;
+  }
+  const catalog = resolveApiMedia(data, 'catalog');
+  for (const name of ['site', 'providers', 'domains', 'domainGroups', 'questions']) if (Object.hasOwn(catalog, name)) platform[name] = catalog[name];
+  publicWorks = catalog.works.map(({ mine, arena, ...w }) => w);
+  overlayWorks();
+  Object.assign(platform, { available: true, mismatch: false, stale: staleBuild(buildInfo, data), connectionError: null });
+  return true;
+}
+function acceptActivity(data) {
+  const graded = new Set(platform.questions.filter(aiJudged).map((q) => q.id));
+  platform.arena = Object.fromEntries(Object.entries(data.arena ?? {}).filter(([id]) => !graded.has(id)));
+  platform.arenaModels = data.arenaModels ?? [];
+  platform.featured = data.featured ?? {};
+  platform.totals = data.totals ?? { votes: 0, voters: 0, entries: 0 };
+  platform.reactions = data.reactions ?? { counts: {}, mine: {} };
+  if (Object.hasOwn(data, 'review')) platform.review = data.review;
+  workAccess = data.workAccess ?? data.works?.map(({ task, id, mine, arena }) => ({ task, id, mine, arena })) ?? [];
+  overlayWorks();
+  platform.activityReady = true;
+  activityNeedsRefresh = false;
+  platform.activityError = null;
+}
+function loadActivity() {
+  if (activityConnection || cooling(platform.activityError)) return activityConnection ?? Promise.resolve(false);
+  const generation = accountGeneration;
+  const readGeneration = activityGeneration;
+  const current = () => generation === accountGeneration && readGeneration === activityGeneration;
+  platform.activityConnecting = true;
+  const task = (async () => {
+    try {
+      const data = await responseData(await fetchApi('activity', { cache: 'no-store', signal: AbortSignal.timeout(15000) }));
+      if (!current()) return false;
+      if (!compatibleBuild(frontendBuildInfo, data)) throw new Error('Invalid platform response');
+      acceptActivity(data);
+      return true;
+    } catch (error) {
+      if (current()) {
+        platform.activityError = error.kind ? error : connectionFailure(error);
+        if (recoveryStarted) startPlatformRecovery();
+      }
+      return false;
+    } finally {
+      if (activityConnection === task) { activityConnection = null; platform.activityConnecting = false; }
+      if (current()) emit('activity');
+    }
+  })();
+  activityConnection = task;
+  return task;
+}
+function loadSession(request, catalogConnection, refreshActivity = false) {
+  if (sessionConnection) return sessionConnection;
+  platform.sessionConnecting = true;
+  const generation = accountGeneration;
+  const task = (async () => {
+    try {
+      const response = await request;
+      if (response.status === 404) {
+        await catalogConnection;
+        if (legacy && platform.sessionReady) return true;
+      }
+      const data = await responseData(response);
+      if (generation !== accountGeneration) return false;
+      if (!compatibleBuild(frontendBuildInfo, data) || !Object.hasOwn(data, 'user')
+        || (data.user !== null && !data.user?.id)) throw new Error('Invalid platform response');
+      const identityChanged = (data.user?.id ?? null) !== (platform.user?.id ?? null) || data.user?.role !== platform.user?.role;
+      acceptUser(data.user);
+      platform.me = data.me ?? null;
+      if (Object.hasOwn(data, 'review')) platform.review = data.review;
+      platform.sessionReady = true;
+      platform.sessionError = null;
+      const resolvedGeneration = accountGeneration;
+      emit(identityChanged ? 'identity' : 'session');
+      await catalogConnection;
+      if (platform.available && !legacy && resolvedGeneration === accountGeneration && (!platform.activityReady || activityNeedsRefresh || refreshActivity)) void loadActivity();
+      return true;
+    } catch (error) {
+      if (generation === accountGeneration) platform.sessionError = error.kind ? error : connectionFailure(error);
+      if (recoveryStarted) startPlatformRecovery();
+      return false;
+    } finally {
+      if (sessionConnection === task) { sessionConnection = null; platform.sessionConnecting = false; }
+      emit('session-ready');
+    }
+  })();
+  sessionConnection = task;
+  return task;
+}
 export function connectPlatform(buildInfo = frontendBuildInfo, request) {
   if (connection) return connection;
   frontendBuildInfo = buildInfo;
   setDatapackVersion(buildInfo?.datapack);
   platform.connecting = true;
-  connection = readPlatform(buildInfo, request ?? requestBootstrap()).finally(() => {
+  const requests = request ?? (legacy ? requestBootstrap() : requestPlatform());
+  connection = readPlatform(buildInfo, requests.catalog ?? requests, !requests.catalog).finally(() => {
     platform.connecting = false;
     connection = null;
   });
+  if (requests.session) void loadSession(requests.session, connection, true);
   return connection;
 }
-async function readPlatform(buildInfo, request) {
+async function readPlatform(buildInfo, request, bootstrap = false) {
+  const generation = accountGeneration;
   try {
-    const response = await request;
+    let response = await request;
+    if (!bootstrap && response.status === 404) { legacy = true; bootstrap = true; response = await requestBootstrap(); }
     if (response.status === 409) { platform.available = false; platform.mismatch = true; return false; }
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      const limited = response.status === 429;
-      const retryAfter = limited ? Number(data.retryAfter ?? response.headers.get('Retry-After')) || 30 : 2;
-      platform.connectionError = {
-        kind: response.status === 404 ? 'missing' : limited ? 'limited' : 'http',
-        status: response.status,
-        message: limited ? '访问较频繁，请稍后再试。' : '平台服务暂时不可用，请稍后重试。作品仍可浏览。',
-        retryAt: Date.now() + retryAfter * 1000,
-      };
-      return false;
+    const data = await responseData(response);
+    if (!acceptCatalog(data, buildInfo)) return false;
+    if (bootstrap && generation === accountGeneration) {
+      const identityChanged = (data.user?.id ?? null) !== (platform.user?.id ?? null) || data.user?.role !== platform.user?.role;
+      acceptUser(data.user);
+      platform.me = data.me ?? null;
+      platform.review = data.review ?? null;
+      platform.sessionReady = true;
+      platform.sessionError = null;
+      acceptActivity(data);
+      if (identityChanged) emit('identity');
     }
-    if (!(response.headers.get('content-type') ?? '').includes('application/json')) throw new Error('Invalid platform response');
-    const bootstrap = await response.json();
-    // Keep diagnostics even when business data must not be merged.
-    platform.serverVersion = bootstrap.serverVersion ?? null;
-    platform.serverDatapack = bootstrap.datapack ?? null;
-    if (!compatibleBuild(buildInfo, bootstrap)) {
-      platform.available = false;
-      platform.mismatch = true;
-      return false;
-    }
-    // AI-graded questions have no blind pool, whatever the server still reports for them.
-    const graded = new Set((bootstrap.questions ?? []).filter(aiJudged).map((q) => q.id));
-    bootstrap.arena = Object.fromEntries(Object.entries(bootstrap.arena ?? {}).filter(([id]) => !graded.has(id)));
-    Object.assign(platform, { arenaModels: [] }, resolveApiMedia(bootstrap, 'bootstrap'), { available: true, mismatch: false, stale: staleBuild(buildInfo, bootstrap), connectionError: null });
     return true;
   } catch (error) {
-    platform.connectionError = {
-      kind: 'network',
-      message: ['TimeoutError', 'AbortError'].includes(error.name) ? '平台连接超时，请重试。作品仍可浏览。' : '平台连接失败，请检查网络后重试。作品仍可浏览。',
-      retryAt: Date.now() + 2000,
-    };
+    platform.connectionError = error.kind ? error : connectionFailure(error);
     return false;
   }
 }
 
 export async function refreshPlatform(reason = 'refresh') {
-  if (!frontendBuildInfo || platform.mismatch || Date.now() < (platform.connectionError?.retryAt ?? 0)) return false;
+  if (!frontendBuildInfo || platform.mismatch) return false;
+  if (platform.available && !platform.connectionError && !legacy && reason === 'reconnect') {
+    if (!cooling(platform.sessionError)) await (sessionConnection ?? loadSession(fetchApi('session', { cache: 'no-store', signal: AbortSignal.timeout(15000) }), Promise.resolve(true)));
+    if (platform.sessionReady && (!platform.activityReady || activityNeedsRefresh || platform.activityError) && !cooling(platform.activityError)) void loadActivity();
+    emit(reason);
+    return true;
+  }
+  if (reason !== 'reconnect') invalidateActivity();
+  if (cooling(platform.connectionError)) return false;
+  // A mutation may finish while an older catalog read is still in flight.
+  // Follow that read with a new one so its pre-write snapshot cannot win.
+  if (reason !== 'reconnect' && connection) await connection;
   const connected = await connectPlatform();
   emit(reason);
   return connected;
 }
 
 let recoveryStarted = false;
+let recoveryRetryUsed = false;
 // One delayed retry after startup; later retries follow an explicit click or a network/focus event.
 export function startPlatformRecovery() {
   recoveryStarted = true;
-  if (platform.available || platform.mismatch || platform.connectionError?.kind === 'missing') return;
+  if (platform.mismatch || catalogState() === 'static') return;
+  if (platform.available && !platform.connectionError && !platform.sessionError && !platform.activityError) return;
+  if (recoveryRetryUsed) return;
+  recoveryRetryUsed = true;
   setTimeout(() => {
-    if (!platform.available) void refreshPlatform('reconnect');
-  }, Math.max(2000, (platform.connectionError?.retryAt ?? 0) - Date.now()));
+    if (!platform.available || platform.connectionError || platform.sessionError || platform.activityError) void refreshPlatform('reconnect');
+  }, Math.max(2000, (platform.connectionError?.retryAt ?? platform.sessionError?.retryAt ?? platform.activityError?.retryAt ?? 0) - Date.now()));
 }
 
 export class ApiError extends Error {
@@ -135,11 +305,26 @@ export async function api(path, { method = 'GET', body, signal } = {}) {
   }
   if (!response.ok) {
     if (response.status === 401 && platform.user) {
-      platform.user = null;
-      emit('session');
+      acceptUser(null);
+      sessionConnection = null;
+      platform.sessionConnecting = false;
+      platform.sessionReady = true;
+      platform.sessionError = null;
+      emit('identity');
+      if (legacy) void refreshPlatform('session').then(() => startPlatformRecovery());
+      else void loadActivity();
     }
     throw new ApiError(response.status, data.error ?? `请求失败（${response.status}）`, data.code,
       Number(data.retryAfter ?? response.headers.get('Retry-After')) || 0);
+  }
+  if (['auth/login', 'auth/register', 'auth/logout'].includes(path)) {
+    clearPrivate();
+    platform.user = data.user ?? null;
+    platform.sessionReady = false;
+    platform.sessionError = null;
+    sessionConnection = null;
+    platform.sessionConnecting = false;
+    emit('identity');
   }
   const endpoint = path === 'me' || path === 'review' ? path
     : path === 'admin/questions' ? 'questions'
@@ -156,8 +341,9 @@ const memoryKey = (path) => `${platform.user?.id ?? ''} ${path}`;
 export const recall = (path) => remembered.get(memoryKey(path));
 export async function apiRemembered(path, options) {
   const key = memoryKey(path);
+  const generation = accountGeneration;
   const data = await api(path, options);
-  remembered.set(key, data);
+  if (generation === accountGeneration) remembered.set(key, data);
   return data;
 }
 
@@ -169,12 +355,15 @@ async function checkSession() {
   sessionCheckedAt = Date.now();
   sessionChecking = true;
   try {
-    if (!platform.available) {
-      if (platform.connectionError?.kind !== 'missing') await refreshPlatform('reconnect');
+    if (!platform.available || platform.connectionError || platform.sessionError || platform.activityError) {
+      if (catalogState() !== 'static') await refreshPlatform('reconnect');
       return;
     }
-    const { user } = await api('auth/me');
-    if ((user?.id ?? null) !== (platform.user?.id ?? null)) await refreshPlatform('session');
+    if (!legacy) await (sessionConnection ?? loadSession(fetchApi('session', { cache: 'no-store', signal: AbortSignal.timeout(15000) }), Promise.resolve(true)));
+    else {
+      const { user } = await api('auth/me');
+      if ((user?.id ?? null) !== (platform.user?.id ?? null)) await refreshPlatform('session');
+    }
   } catch { /* A network failure does not prove the session changed. */ }
   finally { sessionChecking = false; }
 }
@@ -233,7 +422,7 @@ export const injected = (moderation) => Boolean(moderation?.categories?.includes
 export const ROLE_LABELS = { admin: '高级管理员', moderator: '普通管理员', user: '成员' };
 export const isStaff = (user = platform.user) => user?.role === 'admin' || user?.role === 'moderator';
 export const isSenior = (user = platform.user) => user?.role === 'admin';
-export const canDecide = (w) => isSenior() || (isStaff() && !w.mine);
+export const canDecide = (w) => platform.sessionReady && (isSenior() || (isStaff() && w.mine === false));
 // Staff permissions are separate from public authorship.
 export const byStaff = (item) => (item?.author?.role ?? 'admin') !== 'user';
 // Packaged items have no personal publisher; uploaded works keep their author's name.
@@ -627,15 +816,21 @@ export function openAuth({ mode = 'login', reason = '' } = {}) {
 
 // Uploading, publishing, voting and reactions need an account with a bound email.
 export async function requireUser(reason) {
+  if (!platform.sessionReady) {
+    await sessionConnection;
+    if (!platform.sessionReady) { toast('账户暂未连上，请重新连接后再试。'); return null; }
+  }
   const user = platform.user ?? await openAuth({ reason });
   if (!user || !needsEmail()) return user;
   return (await openBindEmail({ reason: '账号需要先绑定邮箱，才能上传、发起题目和投票。' })) ? platform.user : null;
 }
 
 async function logout() {
-  await api('auth/logout', { method: 'POST' }).catch(() => {});
-  await refreshPlatform('session');
-  toast('已退出登录');
+  try {
+    await api('auth/logout', { method: 'POST' });
+    await refreshPlatform('session');
+    toast('已退出登录');
+  } catch (error) { toast(error.message); }
 }
 
 // A library avatar when the server names one it lists; otherwise the name's first letter.
@@ -646,7 +841,11 @@ export function avatarFace(id, name) {
 
 // Signed-in accounts open their personal center; narrow screens keep a separate navigation menu.
 export function accountControl(current = false) {
-  if (!platform.available) return '';
+  if (!platform.sessionReady) {
+    if (catalogState() === 'static') return '';
+    const waiting = platform.sessionConnecting || !platform.sessionError;
+    return `<div class="account" data-account><button type="button" class="account-btn" data-platform-reconnect${waiting || platform.mismatch ? ' disabled' : ''} aria-label="${waiting ? '正在连接账户' : '账户连接暂不可用，重新连接'}">${icon('user')}<span class="account-name">${waiting ? '账户连接中…' : '账户连接中断'}</span></button></div>`;
+  }
   const user = platform.user;
   const name = user?.nickname || user?.name;
   if (user) return `<div class="account" data-account${current ? ' data-current' : ''}>
@@ -695,6 +894,7 @@ export function refreshAccountControls() {
 // ---- reactions ----------------------------------------------------------------------------
 export function reactionBar(key, { locked = false } = {}) {
   if (!platform.available) return '';
+  if (!platform.activityReady) return `<p class="fine" role="status">${platform.activityError ? '表情暂未载入 <button class="link" type="button" data-platform-reconnect>重新连接</button>' : '表情加载中…'}</p>`;
   const counts = platform.reactions.counts[key] ?? {};
   const mine = new Set(platform.reactions.mine[key] ?? []);
   const pills = platform.site.emojis.filter((emoji) => counts[emoji]).map((emoji) => {

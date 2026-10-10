@@ -12,7 +12,7 @@
 //   #/me · #/review           personal center · review queue (platform)
 //   #/terms · #/privacy       terms of use and disclaimer · privacy policy
 import { $, $$, LOGO, brandMark, byName, esc, ext, formatBytes, formatDate, icon, img, pad, store, syncThemeUi, themeButton, versionedMedia } from './ui.js';
-import { STATUS, accountControl, api, arenaScope, arenaText, avatarFace, bySite, connectPlatform, isStaff, onPlatformChange, platform, reactionBar, refreshAccountControls, refreshPlatform, requestBootstrap, setFaces, startPlatformRecovery, statusBadge, toast } from './platform.js';
+import { STATUS, accountControl, api, arenaScope, arenaText, avatarFace, bySite, catalogState, connectPlatform, isStaff, onPlatformChange, platform, reactionBar, refreshAccountControls, refreshPlatform, requestPlatform, setFaces, startPlatformRecovery, statusBadge, toast } from './platform.js';
 import { mount as renderLanding } from './home.js';
 import { CONTACT, aigcLabel, beianLink, mount as renderLegal } from './legal.js';
 import { effortRank, representatives, standard, taskCover } from './featured.js';
@@ -106,7 +106,7 @@ const sandtableHref = (t, ids = []) => `#/${t.id}/sandtable${ids.length ? `/${id
 // models and injected controls need that. Works on the content origin stay sandboxed.
 const hosted = (r) => Boolean(r.scene) && new URL(r.scene, document.baseURI).origin === location.origin;
 const hostedTask = (t) => ({ ...t, results: t.results.filter(hosted) });
-// Account-owned works and questions publish under their author's name.
+// Account-owned works and questions keep their author's name.
 const authorName = (item) => (bySite(item) ? DATA.title : item.author.name ?? '已注销的用户');
 const authorAvatar = (item) => (bySite(item) ? LOGO : avatarFace(item.author.avatar, item.author.name ?? ''));
 const workKey = (t, r) => `${t.id}/${r.id}`;
@@ -119,6 +119,14 @@ const inGallery = (taskId, id) => DATA.tasks.some((t) => t.id === taskId && t.re
 document.addEventListener('load', (e) => { if (e.target.tagName === 'IMG') e.target.classList.add('is-loaded'); }, true);
 document.addEventListener('error', (e) => { if (e.target.tagName === 'IMG') e.target.classList.add('is-loaded', 'is-broken'); }, true);
 document.addEventListener('click', (e) => { if (e.target.closest('[data-reload]')) location.reload(); });
+document.addEventListener('click', async (e) => {
+  const button = e.target.closest('[data-platform-reconnect]');
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  button.textContent = '正在连接…';
+  const connected = await refreshPlatform('reconnect');
+  if (button.isConnected) { button.disabled = false; button.textContent = connected ? '已连接' : '重新连接'; }
+});
 const RELOAD = '<button type="button" class="btn primary" data-reload>刷新页面</button>';
 
 // A tab left open across a release keeps its old import map, so a page it loads later can get new
@@ -159,7 +167,7 @@ const platformNotice = () => `<div class="platform-notice" role="status"><div cl
   <button type="button" class="link" data-reload>刷新页面</button>
 </div></div>`;
 function header(crumbs = [], showPreviewSetting = false, current = '', { notice = true } = {}) {
-  const nav = platform.available
+  const nav = catalogState() !== 'static'
     ? `<nav class="site-nav" aria-label="平台">${SITE_NAV.map(([id, text]) => `<a class="topbar-link" href="#/${id}"${id === current ? ' aria-current="page"' : ''}>${text}</a>`).join('')}</nav>`
     : '';
   return `<header class="topbar"><div class="wrap topbar-in">
@@ -172,7 +180,7 @@ function header(crumbs = [], showPreviewSetting = false, current = '', { notice 
       ${themeButton()}
       ${accountControl(current === 'me')}
     </div>
-  </div></header>${platform.stale && notice ? platformNotice() : ''}`;
+  </div></header>${notice && platform.available && platform.connectionError ? `<div class="platform-notice" role="status"><div class="wrap platform-notice-in"><span class="platform-notice-mark" aria-hidden="true"></span><p><strong>连接暂时中断</strong><span>当前保留上次加载的作品与账户信息，重新连接后更新。</span></p><button type="button" class="link" data-platform-reconnect>重新连接</button></div></div>` : platform.stale && notice ? platformNotice() : ''}`;
 }
 // The two 3D views sit under their task; the mode switch names the current one.
 function galleryStageHeader(t, mode) {
@@ -219,15 +227,15 @@ function libraryStart(crumbs) {
   const domains = domainsIn(DATA.tasks, domainList(platform));
   return `${header(crumbs, false, 'questions')}<div class="app-layout home-layout">
     <aside class="app-sidebar">
-      <h1>题库</h1><p class="side-intro">${DATA.tasks.length} 道题目 · ${works} 件作品</p>
+      <h1>题库</h1><p class="side-intro">${['ready', 'static'].includes(catalogState()) ? `${DATA.tasks.length} 道题目 · ${works} 件作品` : '最新题目与作品正在加载'}</p>
       <nav class="side-nav section-nav" aria-label="题库导航">
-        ${control('side-link', 'data-home-view="tasks"', true, `${icon('grid')}全部题目<span class="nav-count">${DATA.tasks.length}</span>`)}
+        ${control('side-link', 'data-home-view="tasks"', true, `${icon('grid')}全部题目${['ready', 'static'].includes(catalogState()) ? `<span class="nav-count">${DATA.tasks.length}</span>` : ''}`)}
         ${tracksOf(DATA.tasks).map((x) => control('side-link', `data-home-category="${esc(x.name)}"`, false, `${icon(x.glyph)}${esc(x.label)}<span class="nav-count">${x.tasks.length}</span>`)).join('')}
         <span class="side-divider" aria-hidden="true"></span>
-        ${control('side-link', 'data-home-view="models"', false, `${icon('code')}模型索引<span class="nav-count">${models.length}</span>`)}
+        ${control('side-link', 'data-home-view="models"', false, `${icon('code')}模型索引${['ready', 'static'].includes(catalogState()) ? `<span class="nav-count">${models.length}</span>` : ''}`)}
       </nav>
       ${domains.length ? `<section class="side-section" aria-label="按领域筛选"><h2>领域</h2><div class="chips">${domains.map((d) => control('chip', `data-home-domain="${esc(d.name)}"`, false, `${esc(d.name)}<span class="nav-count">${d.tasks.length}</span>`)).join('')}</div></section>` : ''}
-      <div class="side-bottom"><p>${vendorCount} 家厂商 · ${models.length} 个模型<br>同一份提示词，不同的表达。</p></div>
+      <div class="side-bottom"><p>${['ready', 'static'].includes(catalogState()) ? `${vendorCount} 家厂商 · ${models.length} 个模型<br>` : ''}同一份提示词，不同的表达。</p></div>
     </aside>
     <main class="workspace page">`;
 }
@@ -386,7 +394,8 @@ function renderLibrary(scopes = [], fresh = true) {
     // Random pairs come from the questions in view, as far as they can be judged.
     const blind = $('[data-home-blind]', root);
     if (blind) {
-      blind.innerHTML = blindScope.length
+      blind.innerHTML = !platform.activityReady
+        ? act('judge', '', AB, '参与盲评', platform.activityError ? '统计暂未载入 <button class="link" type="button" data-platform-reconnect>重新连接</button>' : '统计加载中…') : blindScope.length
         ? act('judge', `#/arena/random`, AB, '参与盲评', `可盲评 ${blindScope.reduce((sum, t) => sum + platform.arena[t.id].works, 0)} 件`)
         : act('judge', '', AB, '参与盲评', '暂无可评的题', '当前范围内没有两个模型配置以上的盲评池');
     }
@@ -763,6 +772,7 @@ function renderTask(t) {
   const pool = platform.arena[t.id];
   const actions = platform.available ? `<div class="task-acts">
     ${aiJudged(t) ? act('judge', '', icon('reason'), 'AI 评分', '暂未开放', '推理题由 AI 评分，不参与盲评和排行榜')
+      : !platform.activityReady ? act('judge', '', AB, '参与盲评', platform.activityError ? '统计暂未载入 <button class="link" type="button" data-platform-reconnect>重新连接</button>' : '统计加载中…')
       : (pool?.entries ?? 0) >= 2 ? act('judge', `#/arena/${esc(t.id)}`, AB, '参与盲评', `可盲评 ${pool.works} 件`) : act('judge', '', AB, '参与盲评', '作品不足', '至少需要两个模型配置的作品进入盲评池')}
     ${t.acceptsUploads ? act('upload', `#/submit/${esc(t.id)}`, icon('upload'), '上传作品', '交一份你的答案') : act('upload', '', icon('upload'), '暂不接受投稿', t.promptPending ? '提示词原文尚未公开' : '这道题暂时关闭了投稿')}
   </div>` : '';
@@ -782,7 +792,7 @@ function renderTask(t) {
         <a class="side-link" href="#/${t.id}/exhibition">${icon('grid')}原作展厅<span class="nav-ext">${icon('arrow')}</span></a>` : ''}
       </nav>
       <div class="side-facts"><p>${new Set(works.map((r) => r.model)).size} 个模型 · ${new Set(works.map(vendorOf)).size} 家厂商</p>
-        ${isStaff() ? adminPoolLine(t, pool) : ''}</div>
+        ${isStaff() && platform.activityReady ? adminPoolLine(t, pool) : ''}</div>
       <section class="side-prompt" aria-labelledby="side-prompt-title">
         <div class="side-prompt-head"><h2 id="side-prompt-title">题面</h2>
           ${variantsOf(t).length ? `<div class="seg" role="group" aria-label="提示词版本">${variantsOf(t).map((variant) => `<button data-prompt-variant="${esc(variant.id)}" aria-pressed="${variant.id === taskState.promptVariant}">${esc(variant.label)}</button>`).join('')}</div>` : ''}
@@ -1191,7 +1201,7 @@ const VIEWER_FACES = { 'arena-on': ['开启盲评', { show_arena: true }, '已�
 // A work's review state, who published it and how it was made.
 function workFacts(r) {
   const info = STATUS[r.status];
-  const admin = isStaff() && r.status === 'verified';
+  const admin = isStaff() && platform.activityReady && r.status === 'verified';
   const switches = admin ? [r.arena?.state === 'in_pool' ? 'arena-off' : r.arena?.state === 'off' ? 'arena-on' : '', 'hide'].filter(Boolean) : [];
   return `<div class="guide-block guide-status" data-status="${r.status}">
     <h3>核验状态</h3>
@@ -1509,20 +1519,25 @@ const PLATFORM_PAGES = { arena: './arena.js', leaderboard: './leaderboard.js', n
 const PAGE_TITLES = { arena: '盲评', leaderboard: '榜单', new: '发起题目', submit: '上传作品', me: '个人中心', review: '审核' };
 const PAGE_SECTIONS = { arena: 'arena', leaderboard: 'leaderboard', new: 'new', submit: 'questions', me: 'me', review: 'me' };
 function platformOffline(name) {
-  const missing = platform.connectionError?.kind === 'missing';
+  const missing = catalogState() === 'static';
+  const needsActivity = name === 'arena';
+  const error = !platform.available ? platform.connectionError : !platform.sessionReady ? platform.sessionError : needsActivity ? platform.activityError : null;
+  const connecting = platform.connecting || platform.sessionConnecting || (needsActivity && platform.activityConnecting);
+  const waiting = !missing && !platform.mismatch && (!error || connecting);
+  const title = PAGE_TITLES[name] ?? '展览馆';
   // The page itself explains a version mismatch, so the header notice is not repeated.
-  root.innerHTML = `${header([{ text: PAGE_TITLES[name] }], false, PAGE_SECTIONS[name], { notice: false })}<main class="page wrap empty-page">
-    <p class="kicker"><span class="num">${esc(PAGE_TITLES[name])}</span></p>
-    <h1>${platform.mismatch ? `${esc(PAGE_TITLES[name])}暂时不可用` : missing ? '这里需要平台服务' : '平台连接暂时失败'}</h1>
-    <p role="status">${platform.mismatch ? '作品数据与平台服务版本不一致，平台功能已暂停。可能是新版本正在发布，稍后刷新即可恢复；作品可照常浏览。' : missing ? `当前地址没有可用的平台服务。连接后即可使用${esc(PAGE_TITLES[name])}，作品仍可浏览。` : esc(platform.connectionError?.message)}</p>
+  root.innerHTML = `${pageStart({ title, section: PAGE_SECTIONS[name], description: '同一份提示词，看见不同的答案。' })}<section class="block wrap catalog-status" aria-busy="${waiting}">
+    <h3>${platform.mismatch ? `${esc(title)}暂时不可用` : waiting ? `正在载入${esc(title)}…` : missing ? '这里需要平台服务' : `${esc(title)}暂时未能载入`}</h3>
+    <p role="status">${platform.mismatch ? '作品数据与平台服务版本不一致。可能是新版本正在发布，稍后刷新即可恢复。' : waiting ? needsActivity ? '盲评与榜单统计正在加载，题库可先浏览。' : '账户信息正在加载，题库可先浏览。' : missing ? `当前地址没有可用的平台服务。连接后即可使用${esc(title)}，作品仍可浏览。` : esc(error?.message)}</p>
     <div class="empty-actions">${platform.mismatch ? '<button type="button" class="btn primary" data-reload>刷新页面</button>' : '<button type="button" class="btn primary" data-platform-retry>重新连接</button>'}<a class="btn" href="#/questions">回到题库${icon('right')}</a></div>
-  </main>${footer()}`;
+  </section>${pageEnd()}`;
   const button = $('[data-platform-retry]', root);
   if (!button) return {};
   const update = () => {
-    const seconds = Math.max(0, Math.ceil(((platform.connectionError?.retryAt ?? 0) - Date.now()) / 1000));
-    button.disabled = platform.connecting || seconds > 0;
-    button.textContent = platform.connecting ? '正在连接…' : seconds ? `${seconds} 秒后可重试` : '重新连接';
+    const seconds = Math.max(0, Math.ceil(((error?.retryAt ?? 0) - Date.now()) / 1000));
+    const busy = platform.connecting || platform.sessionConnecting || (needsActivity && platform.activityConnecting);
+    button.disabled = busy || seconds > 0 || waiting;
+    button.textContent = busy || waiting ? '正在连接…' : seconds ? `${seconds} 秒后可重试` : '重新连接';
   };
   update();
   const timer = setInterval(update, 1000);
@@ -1531,7 +1546,26 @@ function platformOffline(name) {
     void refreshPlatform('reconnect');
     update();
   };
-  return { destroy: () => clearInterval(timer) };
+  return { awaitingSession: !platform.sessionReady, awaitingActivity: needsActivity && !platform.activityReady, destroy: () => clearInterval(timer) };
+}
+
+function catalogPending() {
+  const state = catalogState(), failed = state === 'error';
+  root.innerHTML = `${libraryStart([LIBRARY])}<div class="collection-heading"><h2>全部题目</h2></div><section class="block wrap catalog-status" data-catalog-state="${state}" aria-busy="${!failed}">
+    <p role="status">${failed ? esc(platform.mismatch ? '页面版本已更新，请刷新后继续。' : platform.connectionError?.message) : '最新题目与作品正在加载…'}</p>
+    ${failed ? platform.mismatch ? RELOAD : '<button class="btn" type="button" data-platform-reconnect>重新连接</button>' : ''}
+    ${failed ? '' : `<div class="task-list catalog-skeleton" aria-hidden="true">${Array.from({ length: 6 }, () => '<div class="task-card"><div class="question-visual"></div><div class="task-body"><i></i><i></i><i></i></div></div>').join('')}</div>`}
+  </section>${footer()}</main></div>`;
+  const retry = $('[data-platform-reconnect]', root);
+  const update = () => {
+    if (!retry) return;
+    const seconds = Math.max(0, Math.ceil(((platform.connectionError?.retryAt ?? 0) - Date.now()) / 1000));
+    retry.disabled = platform.connecting || seconds > 0;
+    retry.textContent = platform.connecting ? '正在连接…' : seconds ? `${seconds} 秒后可重试` : '重新连接';
+  };
+  update();
+  const timer = retry ? setInterval(update, 1000) : null;
+  return { destroy() { if (timer) clearInterval(timer); } };
 }
 
 // ---- the way back ---------------------------------------------------------------------
@@ -1607,12 +1641,15 @@ function backLink(cls) {
 }
 
 // Everything a platform page needs from the gallery.
-const context = () => ({ DATA, backLink, MODELS, HARNESSES, PROVIDERS, header, footer, pageStart, sideNav, LIBRARY, pageEnd, label, modelOf, vendorOf, harnessOf, providerOf, sourceLine, cover, coverHtml, resultBadges, exhibitedModels, entryKey, taskHref, viewHref, workKey, interactive, inGallery, settleImages, packagedWork });
+const context = () => ({ DATA, heroArchive, backLink, MODELS, HARNESSES, PROVIDERS, header, footer, pageStart, sideNav, LIBRARY, pageEnd, label, modelOf, vendorOf, harnessOf, providerOf, sourceLine, cover, coverHtml, resultBadges, exhibitedModels, entryKey, taskHref, viewHref, workKey, interactive, inGallery, settleImages, packagedWork });
 
 // The data pack holds its questions' assets: screenshots, scenes, models and capture conditions.
 // The API decides which questions and works are public and holds their current fields; without
 // it the pack is shown as an archive. Task and work objects stay the same across merges.
 let PACK = new Map();
+// The published package is an illustration source for the home hero only. It
+// never populates the live catalog or the blind pool while the API is loading.
+const heroArchive = () => [...PACK.values()].map(({ task, works }) => ({ ...task, results: [...works.values()] }));
 const tasksById = new Map(), resultsByKey = new Map();
 const packagedWork = (task, id) => PACK.get(task)?.works.get(id) ?? null;
 // Fields a work keeps when the pack has none for it.
@@ -1662,6 +1699,7 @@ function stable(map, key, fresh) {
   return Object.assign(kept, fresh);
 }
 function mergePlatform() {
+  if (!['ready', 'static'].includes(catalogState())) { DATA.tasks = []; return; }
   const listed = platform.available ? new Map(platform.questions.map((q) => [q.id, q])) : null;
   const ids = [...[...PACK.keys()].filter((id) => !listed || listed.has(id)), ...(listed ? [...listed.keys()].filter((id) => !PACK.has(id)) : [])];
   DATA.tasks = ids.map((id) => {
@@ -1742,14 +1780,18 @@ async function show(version, visit, scrollBack) {
 
   // The viewer stays up while the address moves between works of its task, so switching one pane
   // does not reload the other.
-  if (works.length && page?.task === t) page.update(works);
+  if (!taskId && page?.home) {
+    refreshAccountControls();
+    page.onPlatformChange();
+  } else if (works.length && page?.task === t) page.update(works);
   else {
     teardown();
     if (!taskId) page = renderLanding(root, context());
+    else if (!['ready', 'static'].includes(catalogState()) && !['terms', 'privacy'].includes(taskId)) page = platformPage ? platformOffline(platformPage) : catalogPending();
     else if (taskId === 'questions') page = renderLibrary(parts.slice(1), Boolean(visit && !visit.returning));
     else if (taskId === 'terms' || taskId === 'privacy') page = renderLegal(root, context(), taskId);
     else if (platformPage) {
-      if (!platform.available) page = platformOffline(platformPage);
+      if (!platform.available || (platformPage !== 'leaderboard' && !platform.sessionReady) || (platformPage === 'arena' && !platform.activityReady)) page = platformOffline(platformPage);
       else {
         root.innerHTML = `${header([{ text: PAGE_TITLES[platformPage] }], false, PAGE_SECTIONS[platformPage])}<main class="page wrap empty-page"><p class="muted">正在打开…</p></main>`;
         try {
@@ -1797,15 +1839,19 @@ async function show(version, visit, scrollBack) {
 
 // Signing in or out, a review or an upload: merge the new state and redraw what shows it.
 onPlatformChange((reason) => {
+  if (!DATA) return;
   mergePlatform();
   refreshAccountControls();
+  const activeRoute = location.hash.replace(/^#\/?/, '').split('/')[0];
+  if (reason === 'identity' && ['new', 'submit', 'me', 'review'].includes(activeRoute)) { void route({ keepScroll: true }); return; }
+  if (['session', 'session-ready'].includes(reason) && !page?.awaitingSession && !page?.home && !page?.fullscreen) return;
+  if (reason === 'activity' && ['new', 'submit'].includes(location.hash.replace(/^#\/?/, '').split('/')[0]) && !page?.awaitingActivity) return;
   if (page?.onPlatformChange) return page.onPlatformChange(reason);
   route({ keepScroll: true });
 });
 
 try {
-  const bootstrap = requestBootstrap();
-  bootstrap.catch(() => {});
+  const requests = requestPlatform();
   const res = await fetch('data.json', { cache: 'no-cache' });
   if (res.status === 429) {
     const error = new Error('请稍后刷新页面。');
@@ -1822,16 +1868,18 @@ try {
   HARNESSES = new Map((DATA.harnesses ?? []).map((h) => [h.id, h]));
   PROVIDERS = new Map([['official', { id: 'official', name: '官方', listed: true }], ['unofficial', { id: 'unofficial', name: '非官方', listed: true }]]);
   mergePlatform();
-  const platformConnection = connectPlatform(DATA.buildInfo, bootstrap);
+  const platformConnection = connectPlatform(DATA.buildInfo, requests);
   platformConnection.catch(() => {});
   addEventListener('hashchange', (event) => route({ from: event.oldURL }));
   await route({ from: '' });
-  await window.ArenaEntry?.ready(root);
+  // Enter the page frame while each work area loads its own data.
+  const homeArrival = window.ArenaEntry?.ready(root);
   await platformConnection;
   initialPlatformSettled = true;
   if (!platform.available && resultSort === 'score') resultSort = 'added';
   mergePlatform();
   await route({ keepScroll: true });
+  await (homeArrival ?? window.ArenaEntry?.ready(root));
   startPlatformRecovery();
 } catch (err) {
   window.ArenaEntry?.fail();

@@ -31,11 +31,15 @@ test('configured API uses the backend for fetch and raw uploads with credentials
   const originalXhr = globalThis.XMLHttpRequest;
   try {
     globalThis.fetch = async (url, options) => ({ url, options });
-    const request = await fetchApi('auth/login', { method: 'POST', credentials: 'omit' });
+    const request = await fetchApi('auth/login', { method: 'POST' });
     assert.equal(request.url, 'https://server.example/api/auth/login');
     assert.equal(request.options.credentials, 'include');
     assert.equal(request.options.headers.get('X-Datapack-Version'), 'a'.repeat(40));
     assert.equal((await fetchApi('bootstrap')).options.headers.get('X-Datapack-Version'), null);
+    const catalog = await fetchApi('catalog', { credentials: 'omit', cache: 'no-cache' });
+    assert.equal(catalog.options.credentials, 'omit');
+    assert.equal(catalog.options.cache, 'no-cache');
+    assert.equal(catalog.options.headers.get('X-Datapack-Version'), null);
     globalThis.XMLHttpRequest = class { open(method, url) { this.method = method; this.url = url; } setRequestHeader(name, value) { this.headers ??= {}; this.headers[name] = value; } };
     const upload = createUploadRequest('drafts?task=keyboard&name=work.zip');
     assert.equal(upload.url, 'https://server.example/api/drafts?task=keyboard&name=work.zip');

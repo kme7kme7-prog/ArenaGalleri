@@ -82,6 +82,22 @@ try {
   // One question list: every packaged question is public before anyone asks a new one.
   assert.equal(resolveApiMedia(boot.data, 'bootstrap').questions.length, data.tasks.length);
 
+  // The public catalog is independently readable and conditionally revalidated.
+  const catalogResponse = await fetch(`${base}/api/catalog`);
+  assert.equal(catalogResponse.status, 200);
+  const publicCatalog = await catalogResponse.json();
+  const catalogTag = catalogResponse.headers.get('etag');
+  assert.ok(catalogTag, 'public catalog supplies a validator');
+  assert.equal(compatibleBuild({ datapack: packageCommit, catalogDigest }, publicCatalog), true);
+  assert.deepEqual(publicCatalog.questions, boot.data.questions.map(({ mine, ...question }) => question));
+  assert.deepEqual(publicCatalog.works.map(({ task, id }) => `${task}/${id}`), boot.data.works.map(({ task, id }) => `${task}/${id}`));
+  for (const field of ['user', 'me', 'review', 'reactions', 'arenaModels']) assert.equal(Object.hasOwn(publicCatalog, field), false);
+  assert.equal((await fetch(`${base}/api/catalog`, { headers: { 'If-None-Match': catalogTag } })).status, 304);
+  const guestSession = await call('session');
+  assert.equal(guestSession.status, 200);
+  assert.equal(guestSession.data.user, null);
+  assert.equal(Object.hasOwn(guestSession.data, 'works'), false);
+
   // Registration binds an email: the code is sent first, then spent on the new account.
   const register = async (name) => {
     const email = `${name}@example.test`;
@@ -103,6 +119,13 @@ try {
   assert.equal(login.status, 200);
   const cookie = login.headers.get('set-cookie')?.split(';')[0];
   assert.ok(cookie, 'session cookie missing');
+  const activeSession = await call('session', { cookie });
+  assert.equal(activeSession.status, 200);
+  assert.equal(activeSession.data.user.id, login.data.user.id);
+  assert.equal(activeSession.data.user.emailBound, true);
+  assert.equal(activeSession.headers.get('cache-control'), 'no-store');
+  const signedCatalog = await call('catalog', { cookie });
+  assert.deepEqual(signedCatalog.data, publicCatalog, 'login cannot personalize the cacheable catalog');
   const me = await call('me', { cookie });
   assert.equal(me.status, 200);
   assert.deepEqual(resolveApiMedia(me.data, 'me').works, []);
@@ -146,6 +169,17 @@ try {
   assert.equal((await fetch(resolvedWork.cover)).status, 200, 'verified Gallery upload is public');
   const freshBoot = await call('bootstrap');
   assert.equal(resolveApiMedia(freshBoot.data, 'bootstrap').works.find((w) => w.id === submitted.data.work.id).cover, resolvedWork.cover);
+  const changedCatalogResponse = await fetch(`${base}/api/catalog`, { headers: { 'If-None-Match': catalogTag } });
+  assert.equal(changedCatalogResponse.status, 200, 'publishing invalidates the previous public catalog');
+  const changedCatalog = await changedCatalogResponse.json();
+  const publicWork = changedCatalog.works.find((work) => work.id === submitted.data.work.id);
+  assert.ok(publicWork, 'newly published work is available without bootstrap');
+  assert.equal(Object.hasOwn(publicWork, 'mine'), false);
+  assert.equal(Object.hasOwn(publicWork, 'moderation'), false);
+  const activity = await call('activity', { cookie });
+  assert.equal(activity.status, 200);
+  assert.equal(activity.headers.get('cache-control'), 'no-store');
+  assert.equal(activity.data.workAccess.find((work) => work.id === submitted.data.work.id)?.mine, true);
 
   // The pinned server predates work_overrides until the coordinated pin update.
   const hasOverrides = Boolean(platform.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='work_overrides'").get());

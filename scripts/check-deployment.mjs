@@ -19,12 +19,26 @@ if (configuredApi.pathname === '/') configuredApi.pathname = '/api/';
 if (!configuredApi.pathname.endsWith('/')) configuredApi.pathname += '/';
 const actualApi = configuredApi.href;
 assert.equal(actualApi, expectedApi, 'Published Gallery API differs from the expected production API');
-const response = await fetch(new URL('bootstrap', actualApi), { cache: 'no-store', headers: { Origin: site.origin } });
-assert.ok(response.ok, `Configured bootstrap: HTTP ${response.status}`);
+const response = await fetch(new URL('catalog', actualApi), { cache: 'no-cache', headers: { Origin: site.origin } });
+assert.ok(response.ok, `Configured public catalog: HTTP ${response.status}`);
 assert.equal(response.headers.get('access-control-allow-origin'), site.origin, 'Gallery origin must be allowed by the API');
 const bootstrap = await response.json();
+for (const key of ['user', 'me', 'review', 'reactions', 'workAccess']) {
+  assert.equal(Object.hasOwn(bootstrap, key), false, `Public catalog must not contain ${key}`);
+}
+const etag = response.headers.get('etag');
+assert.ok(etag, 'Public catalog must have a validator');
+assert.match(response.headers.get('cache-control') ?? '', /no-cache/, 'Public catalog must be revalidated');
+const validation = await fetch(new URL('catalog', actualApi), { headers: { Origin: site.origin, 'If-None-Match': etag } });
+// A concurrent publication may legitimately replace the catalog during this check.
+assert.ok([200, 304].includes(validation.status), `Catalog revalidation: HTTP ${validation.status}`);
+assert.equal(validation.headers.get('access-control-allow-origin'), site.origin, 'Revalidation must retain CORS headers');
+const session = await fetch(new URL('session', actualApi), { headers: { Origin: site.origin } });
+assert.ok(session.ok, `Configured session: HTTP ${session.status}`);
+assert.equal(session.headers.get('cache-control'), 'no-store', 'Session must not be cached');
+assert.equal((await session.json()).user, null, 'Credential-free deployment check must remain anonymous');
 const catalog = await (await read('data.json')).json();
 assert.ok(compatibleBuild(catalog.buildInfo, bootstrap), 'Published Gallery and configured API must be compatible');
 assert.ok(!staleBuild(catalog.buildInfo, bootstrap), 'Published Gallery and configured API must use the same datapack');
 assert.ok(bootstrap.questions.length >= catalog.tasks.length, 'Configured API must include the packaged questions');
-console.log(JSON.stringify({ api: actualApi, questions: bootstrap.questions.length, communityQuestions: bootstrap.questions.filter((q) => !catalog.tasks.some((t) => t.id === q.id)).length, works: bootstrap.works.length, server: bootstrap.serverVersion }));
+console.log(JSON.stringify({ api: actualApi, questions: bootstrap.questions.length, communityQuestions: bootstrap.questions.filter((q) => !catalog.tasks.some((t) => t.id === q.id)).length, works: bootstrap.works.length, server: bootstrap.serverVersion, revalidation: validation.status, session: session.status }));

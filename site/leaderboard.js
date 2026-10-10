@@ -8,6 +8,13 @@ import { textMatches } from './match.js';
 const UNITS = { config: '按配置', model: '按模型' };
 // A domain board below either line is shown, but flagged as too thin to rank on.
 const THIN = { tasks: 2, votes: 50 };
+export function boardTaskOptions(tasks, selected, activityReady, arena) {
+  return `<option value="">全部题目（${tasks.length}）</option>${tasks.map((t) => {
+    const ready = (arena[t.id]?.entries ?? 0) >= 2;
+    const note = !activityReady ? '（统计加载中）' : ready ? `（${arena[t.id].works}）` : '（作品不足）';
+    return `<option value="${esc(t.id)}"${t.id === selected ? ' selected' : ''}${!activityReady || ready || t.id === selected ? '' : ' disabled'}>${esc(t.title)}${note}</option>`;
+  }).join('')}`;
+}
 export const boardNotes = (open = false) => `<details class="board-notes"${open ? ' open' : ''}>
   <summary>计分方法${icon('next')}</summary>
   <dl>
@@ -57,7 +64,7 @@ export function mountBoard(container, ctx) {
     const search = `<label class="collection-search">${icon('search')}<input type="search" data-board-search aria-label="搜索模型" placeholder="搜索模型" value="${esc(text)}"></label>`;
     const unitControl = `<div class="seg" role="group" aria-label="计分单位">${Object.entries(UNITS).map(([value, text]) => `<button data-board-unit="${value}" aria-pressed="${value === unit}">${text}</button>`).join('')}</div>`;
     const head = (filterable
-      ? `<div class="collection-toolbar">${search}<div class="toolbar-actions">${ctx.toolbar ?? ''}${filterSelect('harness', 'Harness', ctx.HARNESSES)}${filterSelect('provider', '服务商', ctx.PROVIDERS)}${unitControl}</div></div>${data.filters ? '<p class="muted">仅统计两件作品来源都符合筛选的比较。</p>' : ''}`
+      ? `<div class="collection-toolbar">${search}<div class="toolbar-actions">${typeof ctx.toolbar === 'function' ? ctx.toolbar() : ctx.toolbar ?? ''}${filterSelect('harness', 'Harness', ctx.HARNESSES)}${filterSelect('provider', '服务商', ctx.PROVIDERS)}${unitControl}</div></div>${data.filters ? '<p class="muted">仅统计两件作品来源都符合筛选的比较。</p>' : ''}`
       : `<div class="board-head"><p class="board-meta">${meta}</p>${unitControl}</div>`)
       + (unsupported ? '<p class="muted">后端暂不支持这项筛选，下面是未筛选的榜单。</p>' : '')
       + (thin ? `<p class="muted">样本不足：「${esc(ctx.domain)}」目前只有 ${totals.tasks ?? 0} 道题、${totals.votes} 次有效比较参与计分，名次可能随新票大幅变动，仅供参考。</p>` : '');
@@ -197,13 +204,9 @@ export function mount(root, ctx) {
   if (track) crumbs.push(task || domain ? { text: track.label, href: base } : { text: track.label });
   if (domain) crumbs.push({ text: domain });
   if (task) crumbs.push({ text: task.title });
-  const ready = (t) => (platform.arena[t.id]?.entries ?? 0) >= 2;
   // Tasks of the current category (and domain), in the task page's select idiom: the option text carries the count.
   const listed = track ? track.tasks.filter((t) => !domain || domainsOf(t).includes(domain)) : [];
-  const taskSelect = track ? `<label class="result-sort">题目<select data-board-task aria-label="按题目查看">
-      <option value="">全部题目（${listed.length}）</option>
-      ${listed.map((t) => `<option value="${esc(t.id)}"${t === task ? ' selected' : ''}${ready(t) || t === task ? '' : ' disabled'}>${esc(t.title)}${ready(t) ? `（${platform.arena[t.id].works}）` : '（作品不足）'}</option>`).join('')}
-    </select></label>` : '';
+  const taskSelect = () => track ? `<label class="result-sort">题目<select data-board-task aria-label="按题目查看">${boardTaskOptions(listed, task?.id, platform.activityReady, platform.arena)}</select></label>` : '';
   const domains = task ? [] : domainsIn(track?.tasks ?? tasks, domainList(platform));
   const domainSelect = domains.length ? `<label class="result-sort">领域<select data-board-domain aria-label="按领域查看">
       <option value="">全部领域</option>
@@ -213,8 +216,8 @@ export function mount(root, ctx) {
   root.innerHTML = `${ctx.pageStart({ title: '排行榜', section: 'leaderboard', heading: scopeTitle, crumbs,
     description: '由真实盲评投票计算。分数反映作品在同题比较中被偏好的程度，区间越窄，结论越可靠。',
     meta: `<dl class="side-stats" data-stats>
-          <div><dt>有效比较</dt><dd>${pad(platform.totals.votes)}</dd></div>
-          <div><dt>参与者</dt><dd>${pad(platform.totals.voters)}</dd></div>
+          <div><dt>有效比较</dt><dd>${platform.activityReady ? pad(platform.totals.votes) : '—'}</dd></div>
+          <div><dt>参与者</dt><dd>${platform.activityReady ? pad(platform.totals.voters) : '—'}</dd></div>
         </dl>`,
     nav: ctx.sideNav('榜单范围', [['#/leaderboard', 'rank', '综合', !track && !task && !domain, tasks.length],
       ...tracks.map((x) => [`#/leaderboard/${encodeURIComponent(x.slug)}`, x.glyph, x.label, x === track, x.tasks.length])]) })}
@@ -229,7 +232,7 @@ export function mount(root, ctx) {
     category: task ? null : track?.name ?? null,
     domain,
     tracks: task || track || domain ? null : tracks,
-    toolbar: domainSelect + taskSelect,
+    toolbar: () => domainSelect + taskSelect(),
     emptyTitle: domain ? `${domain}榜单还在等第一批盲评` : track && !task ? `${track.label}榜单还在等第一批盲评` : undefined,
     onData: (data) => {
       const stats = $('[data-stats]', root);
@@ -248,7 +251,14 @@ export function mount(root, ctx) {
   document.title = `榜单 · ${scopeTitle} · ${ctx.DATA.title}`;
   return {
     ready: board.ready,
-    onPlatformChange: () => board.reload(),
+    onPlatformChange: (reason) => {
+      if (reason === 'activity' || reason === 'identity') {
+        const select = $('[data-board-task]', root);
+        if (select) select.innerHTML = boardTaskOptions(listed, select.value, platform.activityReady, platform.arena);
+        return;
+      }
+      if (!['session', 'session-ready'].includes(reason)) return board.reload();
+    },
     destroy: () => {
       board.destroy();
       root.removeEventListener('change', onChange);

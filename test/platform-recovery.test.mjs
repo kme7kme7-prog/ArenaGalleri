@@ -14,10 +14,11 @@ test('platform recovery waits out rate limits, shares retries and keeps version 
   let scheduled;
   globalThis.setTimeout = (fn, delay) => { scheduled = { fn, delay }; return 1; };
   const build = { datapack: 'a'.repeat(40) };
-  const success = () => new Response(JSON.stringify({ apiVersion: 2, datapack: build.datapack, questions: [], works: [], arena: {} }),
+  const success = () => new Response(JSON.stringify({ apiVersion: 2, datapack: build.datapack, user: null, questions: [], works: [], arena: {} }),
     { headers: { 'Content-Type': 'application/json' } });
   let calls = 0;
-  globalThis.fetch = async () => {
+  globalThis.fetch = async (url) => {
+    if (!url.endsWith('/catalog')) return success();
     calls++;
     return new Response(JSON.stringify({ error: 'Too many reads', retryAfter: 12 }),
       { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '30' } });
@@ -36,9 +37,9 @@ test('platform recovery waits out rate limits, shares retries and keeps version 
 
     now += 12000;
     let release;
-    globalThis.fetch = () => { calls++; return new Promise((resolve) => { release = resolve; }); };
+    globalThis.fetch = (url) => { if (!url.endsWith('/catalog')) return Promise.resolve(success()); calls++; return new Promise((resolve) => { release = resolve; }); };
     let changes = 0;
-    const unsubscribe = onPlatformChange(() => changes++);
+    const unsubscribe = onPlatformChange((reason) => { if (reason === 'reconnect') changes++; });
     scheduled.fn();
     const retry = connectPlatform();
     assert.equal(calls, 2, 'the automatic retry and another reconnect share one request');
