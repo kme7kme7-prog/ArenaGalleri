@@ -1,5 +1,16 @@
 # HANDOFF.md · 当前状态
 
+## GLM 5.3 Flash X 可选模型与投稿登记（2026-10-11，已上线）
+
+- 用户要求加入 GLM 5.3 Flash X，并统一已有类似名称。私有注册表新增正式 ID glm-5.3-flash-x，兼容 FlashX/去点写法，复用 Z.ai 标识；不猜测其他规格，旧 GLM 5.3/Flash 保持独立。
+- 通过现行 library.setMeta 登记3件：小红帽/up-imkun6wp、社区题/up-l1uqw5tv、二十四节气/up-oj8lodzg。保留 Max、全部其他元数据和核验状态（2 verified、1 unverified）；3条meta审计，重跑0修改/0新增。榜单正式Flash X保留10比较/2已验证作品，旧自填键消失。
+- 最终数据包2288文件逐SHA及Git blob核验；2287资源文件与旧生产包字节一致，作品入口摘要保持。Gallery完整2353文件仅data.json变化，其余源码、媒体、配置和版本文件保持。后台运行版本仍7c5ce104，无功能源码/schema变化。
+- 数据check33/0、test9/9、完整build:data176件/20题、严格intake0错/8既有提示；Gallery check68/0、test33/33、最终生产配置build176件/70site、严格intake0错/8既有提示；后台check115/0、test332/332。
+- 最新停服备份演练和正式结果一致：9569原票、1080作品；模型榜9079有效比较/242参与者前后保持；非目标业务行全部保持，v41/integrity ok/外键0。公网包兼容/CORS、目录SHA、2公开DTO、榜单及所有最终包SHA通过。服务active/running/NRestarts0。
+- 实际共用表单唯一选项与别名搜索→正式modelId、厂商隐藏；桌面/390手机目视无横溢，夹具仅favicon404，早期旧夹具缺harnessOf已修正。公网榜单两宽目视，Flash X有Z.ai图标且无未收录提示，console0错误/警告；未生产登录、保存投稿、投票或全交互/真机。
+- 首个候选包的Windows换行差异被全量门禁拒绝，未激活；最终逐文件保留生产资源后另出干净固定源码包。发布脚本环境变量名被替换，复验发现包链接未切换，随后已纠正并重新通过check:deployment及最终全量SHA；不把初次脚本成功日志当作最终发布证据。
+- 各涉及仓本轮一条英文提交；源码main不push，私有数据包由既有发布工具发布。备份/root/aob-glm-flash-x-20261011/backup/before-registration.db及旧包保留；忽略证据output/glm-flash-x-20261011/、output/playwright/glm-flash-x-*。[完成记录](docs/archive/2026-10-11-glm-flash-x-wsnxxxs.md)。
+
 ## 投稿慢网络等待与小字提醒（2026-10-10，已上线）
 
 - 用户要求删除上一轮调查记录、取消60秒断开并加小字提醒。旧调查交接、归档与本轮自建调查输出已删除；仅记录本轮实现与验收。
