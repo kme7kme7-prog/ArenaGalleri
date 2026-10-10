@@ -1,5 +1,12 @@
 # HANDOFF.md · 当前状态
 
+## 题库连接页调查（2026-10-11，仅分析）
+
+- 用户截图已定位到远端3cfdac1的权威目录门禁；最新首页优化仍保留题库整页等待。生产源码确认，正常首次bootstrap未返回也会出现，不等同网络失败；本地main与origin/main及生产均有差异。
+- 两名GPT-6.1 Sol/high并行只读审查。匿名curl两次200完整9.413/4.747秒，JSON约1.25MB；真实Chromium第4.598秒连接页、第9.176秒题库，data.json541ms、bootstrap5076ms，pageerror0。未读服务端计时/日志，不能把全部耗时归某一后端函数。
+- 建议分离公开目录、会话和统计，题库局部骨架；后端纯公开目录进程缓存、变更失效及ETag，私有响应no-store。有限陈旧快照仅在可见性政策允许时使用，不回退旧PACK、不缓存整个bootstrap。方案未实施。
+- 本轮只更新交接与[调查归档](docs/archive/2026-10-11-loading-gate-analysis-wsnxxxs.md)，不改运行代码、不push或部署；未跑check/test/build/intake（仅记录）。忽略证据output/loading-analysis-20261011/与output/playwright/loading-analysis-20261011-*。
+
 ## Gemini exp-a 可选模型撤回（2026-10-11，已完成）
 
 - 用户要求删除刚新增的Gemini 4.x（灰度） - exp-a；移除gemini-4.x-exp-a及两个别名，保留原gemini-4.x。私有源码和README恢复新增前注册状态（132模型）；本轮生产只读复核无作品引用该ID，无业务数据库写入。
