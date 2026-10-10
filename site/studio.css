@@ -78,7 +78,11 @@ a { text-decoration: none; }
 :root[data-theme="light"] .btn.home-enter:hover { background: #33312d; border-color: #33312d; }
 .home-link { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 13px; text-decoration: none; }
 .home-link:hover { color: var(--ink); }
-.home-proof { display: flex; align-items: center; gap: 12px; margin: 40px 0 0; color: var(--muted); font-size: 12px; }
+.home-proof { display: flex; align-items: center; gap: 12px; min-height: 31px; margin: 40px 0 0; color: var(--muted); font-size: 12px; }
+.home-connection { display: inline-flex; align-items: center; gap: 8px; }
+.home-connection:empty, .home-proof-counts:empty { display: none; }
+.home-connection .spinner { width: 14px; height: 14px; border-width: 1px; }
+.home-connection .link { white-space: nowrap; font-size: inherit; }
 .home-proof-marks { display: flex; flex: none; }
 .home-proof-mark { display: grid; place-items: center; width: 24px; height: 24px; border: 2px solid var(--bg); border-radius: 50%; background: var(--mark-bg); overflow: hidden; }
 .home-proof-mark + .home-proof-mark { margin-left: -6px; }
@@ -125,7 +129,7 @@ a { text-decoration: none; }
 
 .home-foot { position: relative; grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 28px; padding: 18px 0 22px; border-top: 1px solid var(--line); }
 .home-tabs { display: flex; gap: 28px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-.home-tab { position: relative; flex: none; padding: 4px 0 9px; border: 0; background: none; color: var(--muted); font: 13px var(--sans); white-space: nowrap; cursor: pointer; }
+.home-tab { position: relative; flex: none; padding: 4px 0 9px; border: 0; background: none; color: var(--muted); font: 13px/1.5 var(--sans); white-space: nowrap; cursor: pointer; }
 .home-tab small { margin-right: 7px; font: 10px var(--mono); opacity: .7; }
 .home-tab-count { margin-left: 7px; font: 11px var(--mono); color: var(--muted); opacity: .8; }
 .home-tab:hover, .home-tab[aria-selected="true"] { color: var(--ink); }

@@ -121,7 +121,7 @@ function mountWaiting(root, ctx) {
 }
 
 export function mount(root, ctx) {
-  if (!['ready', 'static'].includes(catalogState())) return mountWaiting(root, ctx);
+  const catalogReady = () => ['ready', 'static'].includes(catalogState());
   // The home page shows each answer's rendered model where there is one, not a screenshot of its interface.
   const shotOf = (r) => r.previewMode === 'screenshot'
     ? screenshotOf(r)
@@ -129,22 +129,33 @@ export function mount(root, ctx) {
   const answersOf = (t) => t.results.filter((r) => ctx.interactive(r) && shotOf(r))
     .sort((a, b) => (a.status === 'verified' ? 0 : 1) - (b.status === 'verified' ? 0 : 1) || time(b) - time(a));
   // Each couplet sets a handful of old variants against the answers, so only questions with more than four lead.
-  const decks = ctx.DATA.tasks.filter((t) => answersOf(t).length > 4).sort((a, b) => answersOf(b).length - answersOf(a).length);
-  const recent = ctx.DATA.tasks.flatMap((task) => answersOf(task).map((work) => ({ task, work })))
+  const decksOf = (tasks) => tasks.filter((t) => answersOf(t).length > 4).sort((a, b) => answersOf(b).length - answersOf(a).length);
+  let decks = decksOf(catalogReady() ? ctx.DATA.tasks : ctx.heroArchive());
+  if (!catalogReady() && !decks.length) return mountWaiting(root, ctx);
+  const recentOf = () => ctx.DATA.tasks.flatMap((task) => answersOf(task).map((work) => ({ task, work })))
     .sort((a, b) => time(b.work) - time(a.work)).slice(0, 12);
-  const totalWorks = ctx.DATA.tasks.reduce((n, t) => n + t.results.filter(ctx.interactive).length, 0);
-  const vendors = new Map();
-  ctx.DATA.tasks.forEach((t) => t.results.filter(ctx.interactive).forEach((r) => {
-    const m = ctx.modelOf(r);
-    if (m.vendor && m.logo) vendors.set(m.vendor, { m, n: (vendors.get(m.vendor)?.n ?? 0) + 1 });
-  }));
-  const vendorMarks = [...vendors.values()].sort((a, b) => b.n - a.n).slice(0, 7);
-  const exhibited = ctx.exhibitedModels();
-  const vendorCount = new Set(exhibited.map((m) => m.vendor)).size;
+  const connectionMarkup = () => {
+    if (platform.mismatch) return '页面已更新 <button type="button" class="link" data-reload>刷新页面</button>';
+    if (platform.connectionError && !platform.connecting && catalogState() !== 'static') return '最新题库暂未连上 <button type="button" class="link" data-platform-reconnect>重新连接</button>';
+    if (!catalogReady()) return '<span class="spinner" aria-hidden="true"></span>首页作品预览 · 正在更新题库';
+    return '';
+  };
+  const proofMarkup = () => {
+    if (!catalogReady()) return '<span class="home-proof-counts"></span>';
+    const vendors = new Map();
+    ctx.DATA.tasks.forEach((t) => t.results.filter(ctx.interactive).forEach((r) => {
+      const m = ctx.modelOf(r);
+      if (m.vendor && m.logo) vendors.set(m.vendor, { m, n: (vendors.get(m.vendor)?.n ?? 0) + 1 });
+    }));
+    const marks = [...vendors.values()].sort((a, b) => b.n - a.n).slice(0, 7);
+    const exhibited = ctx.exhibitedModels(), vendorCount = new Set(exhibited.map((m) => m.vendor)).size;
+    const totalWorks = ctx.DATA.tasks.reduce((n, t) => n + t.results.filter(ctx.interactive).length, 0);
+    return `<span class="home-proof-marks" aria-hidden="true">${marks.map(({ m }) => brandMark(m, 'home-proof-mark')).join('')}</span><span class="home-proof-counts">${vendorCount} 家厂商 · ${exhibited.length} 个模型 · ${totalWorks} 份解答</span>`;
+  };
   const first = decks[0], firstCount = first ? answersOf(first).length : 0;
 
   // Every answer is a small browser window: the model in the title bar, its first screen below.
-  const windowCard = (task, work, attrs = '', eager = false) => `<a class="home-window" href="${ctx.viewHref(task, work.id)}" aria-label="在线预览：${esc(work.title)}，${esc(ctx.label(work))}"${attrs}>
+  const windowCard = (task, work, attrs = '', eager = false) => `<a class="home-window" data-home-task="${esc(task.id)}" data-home-work="${esc(work.id)}"${catalogReady() && ctx.inGallery(task.id, work.id) ? ` href="${ctx.viewHref(task, work.id)}"` : ' aria-disabled="true"'} aria-label="在线预览：${esc(work.title)}，${esc(ctx.label(work))}"${attrs}>
       <span class="home-window-bar"><span class="home-window-dots" aria-hidden="true"><i></i><i></i><i></i></span>${brandMark(ctx.modelOf(work), 'home-window-mark')}<b>${esc(ctx.label(work))}</b></span>
       <span class="home-window-shot">${work.previewMode !== 'screenshot' && work.previewPoster ? img(shotOf(work), '', 'is-poster', eager).replace('<img ', '<img crossorigin="anonymous" ') : img(shotOf(work), '', '', eager)}</span>
     </a>`;
@@ -182,8 +193,9 @@ export function mount(root, ctx) {
     if (image.complete) fit();
   });
   // Two matching copies make the strip loop without a jump. Only the first is keyboard-focusable.
-  const strip = [false, true].map((copy) => `<div class="home-stream-group"${copy ? ' aria-hidden="true"' : ''}>${recent.map(({ task, work }) =>
+  const stripMarkup = () => [false, true].map((copy) => `<div class="home-stream-group"${copy ? ' aria-hidden="true"' : ''}>${recentOf().map(({ task, work }) =>
     `<div class="home-stream-item">${windowCard(task, work, copy ? ' tabindex="-1"' : '')}<span class="home-stream-task">${esc(shortTitle(task))}</span></div>`).join('')}</div>`).join('');
+  const tabsMarkup = (selected = 0) => decks.map((t, i) => `<button class="home-tab" role="tab" aria-selected="${i === selected}" data-home-tab="${i}"><small>${String(i + 1).padStart(2, '0')}</small>${esc(shortTitle(t))}<span class="home-tab-count">${answersOf(t).length}</span></button>`).join('');
 
   root.innerHTML = `${ctx.header()}<main class="landing page">
     <section class="home-hero" aria-labelledby="home-title">
@@ -197,7 +209,7 @@ export function mount(root, ctx) {
           ${first ? `<a class="btn home-enter" data-home-cta href="${ctx.taskHref(first)}"><span>看看这<span data-home-n>${hanzi(firstCount)}</span>种</span>${icon('right')}</a>` : ''}
           <a class="home-link" href="#/questions">浏览全部题目${icon('right')}</a>
         </div>
-        <p class="home-proof"><span class="home-proof-marks" aria-hidden="true">${vendorMarks.map(({ m }) => brandMark(m, 'home-proof-mark')).join('')}</span><span>${vendorCount} 家厂商 · ${exhibited.length} 个模型 · ${totalWorks} 份解答</span></p>
+        <div class="home-proof">${proofMarkup()}<span class="home-connection" role="status">${connectionMarkup()}</span></div>
       </div>
       <div class="home-stage">
         <div class="home-deck-frame">
@@ -207,19 +219,19 @@ export function mount(root, ctx) {
       </div>
       <div class="home-foot">
         <a class="home-scroll" href="#" data-scroll-next aria-label="向下查看最近收录"><span class="home-scroll-track" aria-hidden="true"><i></i></span></a>
-        <div class="home-tabs" role="tablist" aria-label="选择题目">${decks.map((t, i) => `<button class="home-tab" role="tab" aria-selected="${i === 0}" data-home-tab="${i}"><small>${String(i + 1).padStart(2, '0')}</small>${esc(shortTitle(t))}<span class="home-tab-count">${answersOf(t).length}</span></button>`).join('')}</div>
+        <div class="home-tabs" role="tablist" aria-label="选择题目">${tabsMarkup()}</div>
         <button class="home-motion" type="button" data-autoplay aria-pressed="false">暂停轮播 <span aria-hidden="true">Ⅱ</span></button>
       </div>
     </section>
     <section class="home-recent" aria-label="最近收录">
       <div class="home-recent-head"><h2>最近收录</h2><button class="home-motion" type="button" data-motion aria-pressed="false">暂停流动 <span aria-hidden="true">Ⅱ</span></button></div>
-      <div class="home-stream"><div class="home-stream-track">${strip}</div></div>
+      <div class="home-stream"><div class="home-stream-track">${catalogReady() ? stripMarkup() : ''}</div></div>
     </section>
-    ${platform.available ? `<section class="home-blind" aria-labelledby="home-blind-title">
+    <section class="home-blind" aria-labelledby="home-blind-title"${platform.available ? '' : ' hidden'}>
       <p class="home-blind-ab" aria-hidden="true"><i>A</i><span>vs</span><i>B</i></p>
       <div><h2 id="home-blind-title">先别看名字，只看作品。</h2><p>同一道题的两份解答匿名并排，选出更好的那一个，投票后揭晓模型并汇入排行榜。</p></div>
       <a class="btn" href="#/arena">开始盲评${icon('right')}</a>
-    </section>` : ''}
+    </section>
   </main>${ctx.footer()}`;
 
   fitPosters(root);
@@ -229,6 +241,44 @@ export function mount(root, ctx) {
   let current = 0, cards = [], elapsed = 0, sinceShuffle = 0, playing = !reducedMotion(), autoQuestion = playing, hovering = false;
   let turning = 0, dealt = 0;
   const sung = [];
+  const refreshLinks = () => {
+    $$('[data-home-work]', root).forEach((card) => {
+      const task = ctx.DATA.tasks.find((t) => t.id === card.dataset.homeTask);
+      const allowed = catalogReady() && task?.results.some((r) => r.id === card.dataset.homeWork && ctx.interactive(r));
+      if (allowed) { card.href = ctx.viewHref(task, card.dataset.homeWork); card.removeAttribute('aria-disabled'); }
+      else { card.removeAttribute('href'); card.setAttribute('aria-disabled', 'true'); }
+    });
+  };
+  // Updating the catalog never replaces the visible hero, its current cards,
+  // headline, or motion state. New answers join the next ordinary rotation.
+  const updateCatalog = () => {
+    const proof = root.querySelector('.home-proof');
+    proof.innerHTML = `${proofMarkup()}<span class="home-connection" role="status">${connectionMarkup()}</span>`;
+    if (catalogReady()) {
+      const next = decksOf(ctx.DATA.tasks), selectedId = decks[current]?.id;
+      if (next.length) {
+        decks = next;
+        current = Math.max(0, decks.findIndex((t) => t.id === selectedId));
+        const left = tabList.scrollLeft;
+        tabList.innerHTML = tabsMarkup(current);
+        tabList.scrollLeft = left;
+        tabList.children[current]?.style.setProperty('--progress', autoQuestion ? String(Math.min(elapsed / QUESTION, 1)) : '1');
+      }
+      recentSection.querySelector('.home-stream-track').innerHTML = stripMarkup();
+      fitPosters(recentSection);
+      $$('img[loading="lazy"]', recentSection).forEach((image) => { image.loading = 'eager'; });
+    }
+    root.querySelector('.home-blind').hidden = !platform.available;
+    refreshLinks();
+    ctx.settleImages();
+  };
+  const retryTimer = setInterval(() => {
+    const button = root.querySelector('.home-connection [data-platform-reconnect]');
+    if (!button) return;
+    const seconds = Math.max(0, Math.ceil(((platform.connectionError?.retryAt ?? 0) - Date.now()) / 1000));
+    button.disabled = platform.connecting || seconds > 0;
+    button.textContent = platform.connecting ? '正在连接…' : seconds ? `${seconds} 秒后可重试` : '重新连接';
+  }, 1000);
 
   // A random couplet, not one of the last eight, set in its own typeface.
   // --len is the longer line in characters, which sizes the type.
@@ -413,8 +463,11 @@ export function mount(root, ctx) {
   else hero.classList.add('is-empty');
   document.title = `${ctx.DATA.title} · ${ctx.DATA.subtitle}`;
   return {
+    home: true,
+    onPlatformChange: updateCatalog,
     destroy() {
       clearInterval(timer);
+      clearInterval(retryTimer);
       removeEventListener('scroll', onScroll);
       near.disconnect();
     },

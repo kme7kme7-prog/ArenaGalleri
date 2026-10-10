@@ -1617,12 +1617,15 @@ function backLink(cls) {
 }
 
 // Everything a platform page needs from the gallery.
-const context = () => ({ DATA, backLink, MODELS, HARNESSES, PROVIDERS, header, footer, pageStart, sideNav, LIBRARY, pageEnd, label, modelOf, vendorOf, harnessOf, providerOf, sourceLine, cover, coverHtml, resultBadges, exhibitedModels, entryKey, taskHref, viewHref, workKey, interactive, inGallery, settleImages, packagedWork });
+const context = () => ({ DATA, heroArchive, backLink, MODELS, HARNESSES, PROVIDERS, header, footer, pageStart, sideNav, LIBRARY, pageEnd, label, modelOf, vendorOf, harnessOf, providerOf, sourceLine, cover, coverHtml, resultBadges, exhibitedModels, entryKey, taskHref, viewHref, workKey, interactive, inGallery, settleImages, packagedWork });
 
 // The data pack holds its questions' assets: screenshots, scenes, models and capture conditions.
 // The API decides which questions and works are public and holds their current fields; without
 // it the pack is shown as an archive. Task and work objects stay the same across merges.
 let PACK = new Map();
+// The published package is an illustration source for the home hero only. It
+// never populates the live catalog or the blind pool while the API is loading.
+const heroArchive = () => [...PACK.values()].map(({ task, works }) => ({ ...task, results: [...works.values()] }));
 const tasksById = new Map(), resultsByKey = new Map();
 const packagedWork = (task, id) => PACK.get(task)?.works.get(id) ?? null;
 // Fields a work keeps when the pack has none for it.
@@ -1753,7 +1756,10 @@ async function show(version, visit, scrollBack) {
 
   // The viewer stays up while the address moves between works of its task, so switching one pane
   // does not reload the other.
-  if (works.length && page?.task === t) page.update(works);
+  if (!taskId && page?.home) {
+    refreshAccountControls();
+    page.onPlatformChange();
+  } else if (works.length && page?.task === t) page.update(works);
   else {
     teardown();
     if (!taskId) page = renderLanding(root, context());
