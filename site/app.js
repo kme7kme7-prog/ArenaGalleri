@@ -1756,8 +1756,8 @@ async function show(version, visit, scrollBack) {
   if (works.length && page?.task === t) page.update(works);
   else {
     teardown();
-    if (!['ready', 'static'].includes(catalogState()) && !['terms', 'privacy'].includes(taskId)) page = platformOffline(platformPage);
-    else if (!taskId) page = renderLanding(root, context());
+    if (!taskId) page = renderLanding(root, context());
+    else if (!['ready', 'static'].includes(catalogState()) && !['terms', 'privacy'].includes(taskId)) page = platformOffline(platformPage);
     else if (taskId === 'questions') page = renderLibrary(parts.slice(1), Boolean(visit && !visit.returning));
     else if (taskId === 'terms' || taskId === 'privacy') page = renderLegal(root, context(), taskId);
     else if (platformPage) {
@@ -1838,12 +1838,15 @@ try {
   platformConnection.catch(() => {});
   addEventListener('hashchange', (event) => route({ from: event.oldURL }));
   await route({ from: '' });
+  // The home shell can be entered while its work area is still loading.
+  // Deep links keep their existing gate until the requested page is ready.
+  const homeArrival = !location.hash.replace(/^#\/?/, '') ? window.ArenaEntry?.ready(root) : null;
   await platformConnection;
   initialPlatformSettled = true;
   if (!platform.available && resultSort === 'score') resultSort = 'added';
   mergePlatform();
   await route({ keepScroll: true });
-  await window.ArenaEntry?.ready(root);
+  await (homeArrival ?? window.ArenaEntry?.ready(root));
   startPlatformRecovery();
 } catch (err) {
   window.ArenaEntry?.fail();

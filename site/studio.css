@@ -90,6 +90,17 @@ a { text-decoration: none; }
 .home-deck .home-window { position: absolute; left: 10%; top: 14%; width: 80%; transform-origin: 50% 85%; transition: filter .3s; box-shadow: 0 28px 60px -28px rgb(0 0 0 / 55%); }
 .home-deck .home-window:not([data-front]) { cursor: pointer; }
 .home-deck .home-window:not([data-front]):hover { filter: none !important; }
+.home-pending-deck { isolation: isolate; }
+.home-pending-deck .home-placeholder { pointer-events: none; box-shadow: none; }
+.home-placeholder .home-window-shot { background: var(--surface); }
+.home-pending-status { position: absolute; inset: 14% 10% auto; aspect-ratio: 16 / 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 28px; text-align: center; }
+.home-pending-status .spinner { border-color: var(--line); border-top-color: var(--accent); }
+.home-pending-status strong { font-size: 14px; font-weight: 500; }
+.home-pending-status p { margin: 0; color: var(--muted); font-size: 12px; }
+.home-pending-slip > span:not(.home-slip-kicker) { width: 65%; height: 12px; background: var(--line); border-radius: 2px; }
+.home-pending-slip > span:last-child { grid-column: 1 / -1; width: 90%; margin-top: 4px; }
+.home-pending .home-foot { min-height: 65px; }
+.home-pending-caption { color: var(--muted); font-size: 12px; }
 :root[data-theme="light"] .home-deck .home-window { box-shadow: 0 24px 50px -28px rgb(28 27 25 / 35%); }
 /* The shared prompt, pinned to the stack like a paper slip. */
 /* The prompt sits under the deck like a label beside an exhibit, lined up with the front card. */

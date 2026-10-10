@@ -1,5 +1,5 @@
 import { $$, esc, icon, img, brandMark, reducedMotion } from './ui.js';
-import { platform } from './platform.js';
+import { catalogState, platform } from './platform.js';
 import { screenshotOf } from './work-preview-media.js';
 
 const time = (r) => Date.parse(r.addedAt) || 0;
@@ -72,7 +72,56 @@ const pick = (list, recent = []) => {
   return pool[Math.floor(Math.random() * pool.length)];
 };
 
+// Open the home layout before the authoritative catalog arrives. Counts and
+// work links stay out of this shell until the platform has supplied them.
+function mountWaiting(root, ctx) {
+  const failed = catalogState() === 'error';
+  root.innerHTML = `${ctx.header([], false, '', { notice: false })}<main class="landing page home-pending">
+    <section class="home-hero" aria-labelledby="home-title">
+      <div class="home-copy">
+        <div class="home-verse" style="--len:10">
+          <h1 id="home-title"><span class="home-verse-a">同一份提示词，</span><span class="home-verse-b">各有自己的答案<span class="home-stop">。</span></span></h1>
+          <p class="home-cite">亿模亿样 · 模型效果对比</p>
+        </div>
+        <p class="home-lede">同一份提示词交给不同的 AI 模型，并排打开，<span>差距一眼可见。</span></p>
+        <div class="home-actions"><a class="btn home-enter" href="#/questions"><span>浏览全部题目</span>${icon('right')}</a><a class="home-link" href="#/arena">进入盲评${icon('right')}</a></div>
+        <p class="home-proof">${failed ? '连接恢复后，最新作品会显示在这里。' : '先看看这里，最新作品马上呈上。'}</p>
+      </div>
+      <div class="home-stage">
+        <div class="home-deck-frame">
+          <div class="home-deck home-pending-deck" aria-busy="${!failed}" aria-label="作品展示区">
+            <div class="home-window home-placeholder" aria-hidden="true"><span class="home-window-bar"><span class="home-window-dots"><i></i><i></i><i></i></span></span><span class="home-window-shot"></span></div>
+            <div class="home-pending-status" role="status">
+              <span class="spinner" aria-hidden="true"${failed ? ' hidden' : ''}></span>
+              <strong>${failed ? '作品暂时未能载入' : '正在摆好作品…'}</strong>
+              <p>${failed ? esc(platform.mismatch ? '页面版本已更新，请刷新后继续。' : platform.connectionError?.message) : '最新题目与作品正在加载'}</p>
+              ${failed ? platform.mismatch ? '<button type="button" class="btn sm" data-reload>刷新页面</button>' : '<button type="button" class="btn sm" data-platform-reconnect>重新连接</button>' : ''}
+            </div>
+          </div>
+          <div class="home-slip home-pending-slip" aria-hidden="true"><span class="home-slip-kicker">提示词</span><span></span><span></span></div>
+        </div>
+      </div>
+      <div class="home-foot"><span class="home-pending-caption">同一道题，多种表达。</span></div>
+    </section>
+    <section class="home-recent" aria-label="最近收录"><div class="home-recent-head"><h2>最近收录</h2></div><p class="muted">${failed ? '等待重新连接' : '作品加载后将在这里更新'}</p></section>
+  </main>${ctx.footer()}`;
+  const retry = root.querySelector('[data-platform-reconnect]');
+  const update = () => {
+    if (!retry) return;
+    const seconds = Math.max(0, Math.ceil(((platform.connectionError?.retryAt ?? 0) - Date.now()) / 1000));
+    retry.disabled = platform.connecting || seconds > 0;
+    retry.textContent = platform.connecting ? '正在连接…' : seconds ? `${seconds} 秒后可重试` : '重新连接';
+    root.querySelector('.home-pending-deck').setAttribute('aria-busy', String(platform.connecting));
+    root.querySelector('.spinner').hidden = !platform.connecting;
+  };
+  update();
+  const timer = retry ? setInterval(update, 1000) : null;
+  document.title = `${ctx.DATA.title} · ${ctx.DATA.subtitle}`;
+  return { destroy() { if (timer) clearInterval(timer); } };
+}
+
 export function mount(root, ctx) {
+  if (!['ready', 'static'].includes(catalogState())) return mountWaiting(root, ctx);
   // The home page shows each answer's rendered model where there is one, not a screenshot of its interface.
   const shotOf = (r) => r.previewMode === 'screenshot'
     ? screenshotOf(r)
