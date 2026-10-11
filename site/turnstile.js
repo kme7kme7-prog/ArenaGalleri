@@ -1,4 +1,6 @@
 // Turnstile is loaded only when the API enables it for authentication.
+import { locale } from './i18n.js';
+
 let scriptTask;
 
 export function loadTurnstile() {
@@ -23,27 +25,53 @@ export function mountTurnstile(container, siteKey, onState) {
   const turnstile = globalThis.turnstile;
   let token = '';
   let removed = false;
-  const widgetId = turnstile.render(container, {
-    sitekey: siteKey,
-    size: 'flexible',
-    callback(value) { if (!removed) { token = value; onState(''); } },
-    'expired-callback'() {
-      if (removed) return;
-      token = '';
-      onState('人机验证已过期，正在重新获取。');
-      queueMicrotask(() => { if (!removed) turnstile.reset(widgetId); });
-    },
-    'error-callback'() {
-      if (removed) return true;
-      token = '';
-      onState('人机验证暂时失败，请稍候重试。');
-      return false; // Turnstile retries transient errors automatically.
-    },
-  });
-  if (!widgetId) throw new Error('人机验证无法显示，请刷新页面后重试。');
+  let widgetId;
+  let language;
+  let generation = 0;
+  function render() {
+    const activeGeneration = ++generation;
+    token = '';
+    if (widgetId) turnstile.remove(widgetId);
+    widgetId = undefined;
+    language = locale() === 'en' ? 'en' : 'zh-CN';
+    const active = () => !removed && activeGeneration === generation;
+    widgetId = turnstile.render(container, {
+      sitekey: siteKey,
+      size: 'flexible',
+      language,
+      callback(value) { if (active()) { token = value; onState(''); } },
+      'expired-callback'() {
+        if (!active()) return;
+        token = '';
+        onState('人机验证已过期，正在重新获取。');
+        queueMicrotask(() => { if (active()) turnstile.reset(widgetId); });
+      },
+      'error-callback'() {
+        if (!active()) return true;
+        token = '';
+        onState('人机验证暂时失败，请稍候重试。');
+        return false; // Turnstile retries transient errors automatically.
+      },
+    });
+    if (!widgetId) throw new Error('人机验证无法显示，请刷新页面后重试。');
+  }
+  function changeLanguage() {
+    if (removed || language === locale()) return;
+    onState('');
+    try { render(); } catch (error) { onState(error.message); }
+  }
+  render();
+  globalThis.window?.addEventListener('localechange', changeLanguage);
   return {
     get token() { return token; },
     reset() { if (!removed) { token = ''; turnstile.reset(widgetId); } },
-    remove() { if (!removed) { removed = true; token = ''; turnstile.remove(widgetId); } },
+    remove() {
+      if (removed) return;
+      removed = true;
+      generation++;
+      token = '';
+      globalThis.window?.removeEventListener('localechange', changeLanguage);
+      if (widgetId) turnstile.remove(widgetId);
+    },
   };
 }

@@ -54,7 +54,7 @@ export function mountBoard(container, ctx) {
   </select></label>`;
   const standingsOf = (data, row) => (ctx.tracks ?? [])
     .filter((track) => data.standings?.[track.name]?.[row.key])
-    .map((track) => `${track.label}第 ${data.standings[track.name][row.key]}`);
+    .map((track) => `<span data-board-standing>${esc(`${track.label}第 ${data.standings[track.name][row.key]}`)}</span>`);
 
   function table(data) {
     const { rows, unranked, totals } = data;
