@@ -1,5 +1,13 @@
 # HANDOFF.md · 当前状态
 
+## 审核加载与刷新发布（2026-10-12，已上线）
+
+- 用户授权推送、部署；fetch确认远端无新增提交后，cc5ba44及前轮调查记录正常推送main。新版资产88af274f057f263733b231a1已上线；现场完整2358文件SHA通过，仅account/app/platform/work-fields/work-management/i18n-platform/platform.css/index/version九项变化，其余2349文件及data/runtime-config逐字节保持。
+- 发布以当前生产目录为基线，核对无关源码无漂移，再应用已提交的七项源文件并生成版本、importmap及CSP；未重建、覆盖作品数据包或媒体。传输包SHA一致后安装，静态逐文件替换约0.0015秒，不等同全部请求无中断。原版备份/root/gallery-review-release-20261012/backup保留，安装失败分支可恢复。
+- 公网11项摘要（九项发布文件及data/runtime-config）、无查询首页摘要、importmap/CSP通过；check:deployment通过API配置、Origin CORS、包兼容、目录ETag304和匿名session200/no-store，采样69题/49社区题/1339公开DTO，数量随业务变化。
+- 公网浏览器全刷新确认新版account模块；匿名审核页权限入口正确，中英文可切，390手机目视；题库1440/390均69卡、无横溢，页面异常/请求失败/业务写请求0，控制台0错误/警告。未生产登录或审核写入，不将匿名入口与本轮安装校验称为全部真实审核交互通过；慢网、分页、批量、重试沿用上一轮合成接口验收。
+- 后台55个运行文件及版本260ae05c+base.3629a9ed逐摘要保持；MainPID886410、active/running/NRestarts0、Nginx active，未重启服务、修改后台、数据库或Nginx。本轮无业务源码修改，未重复check/test/build/intake；实施轮最终75/0、47/47、build176/75site、严格intake0错/8既有提示。忽略证据output/review-release-20261012/；[发布归档](docs/archive/2026-10-12-review-loading-release-wsnxxxs.md)。
+
 ## 审核加载与刷新修复（2026-10-12，本地完成，未推送、未部署）
 
 - 用户在调查后要求修复；继续由 GPT-6.1 Sol/medium 三个代理拆分 UI、平台缓存与只读复核，主代理集成及浏览器验收。起始 Gallery 814d200 工作区干净；仅修改本仓审核消费链路，没有修改独立后端、其他前端、数据仓或真实配置。
