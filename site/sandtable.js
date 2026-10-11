@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { batchArchitecture } from './sandtable-batching.js';
 import { createArchitectureLod } from './sandtable-lod.js';
 import { disposeObject } from './scene-resources.js';
+import { setPageTitle } from './i18n.js';
 export { disposeObject } from './scene-resources.js';
 
 const $ = (selector, root) => root.querySelector(selector);
@@ -238,7 +239,7 @@ function createLandscape(scene) {
 
 export function createSandtable(root, task, { label, vendorOf, cover, header, initial = [] }) {
   document.body.classList.add('is-viewer');
-  document.title = `三维沙盘 · ${task.title}`;
+  setPageTitle(['三维沙盘', { text: task.title, original: true }]);
   root.innerHTML = `<main class="sandtable">
     ${header}
     <div class="sandbody">
@@ -247,7 +248,7 @@ export function createSandtable(root, task, { label, vendorOf, cover, header, in
         <label class="sand-search"><span aria-hidden="true">⌕</span><input type="search" placeholder="搜索模型或作品" aria-label="搜索模型或作品"></label>
         <div class="sand-filters"><select aria-label="筛选模型厂商"><option value="">全部厂商</option>${[...new Set(task.results.map(vendorOf))].sort().map((v) => `<option>${escape(v)}</option>`).join('')}</select><button data-action="clear">清空已选</button></div>
         <div class="sand-catalog">${task.results.map((r) => `<article class="sand-item" data-id="${r.id}">
-          <label class="sand-pick"><img src="${escape(cover(r))}" alt="" loading="lazy"><span><b>${escape(label(r))}</b><small>${escape(r.title)}</small></span><input type="checkbox" value="${r.id}" aria-label="加入沙盘：${escape(label(r))}"></label>
+          <label class="sand-pick"><img src="${escape(cover(r))}" alt="" loading="lazy"><span data-i18n-ignore><b>${escape(label(r))}</b><small>${escape(r.title)}</small></span><input type="checkbox" value="${r.id}" aria-label="加入沙盘：${escape(label(r))}"></label>
           <div class="sand-item-detail" hidden><span class="sand-status" role="status"></span><button data-focus="${r.id}" hidden>聚焦 ↗</button><button data-retry="${r.id}" hidden>重试</button></div>
         </article>`).join('')}<p class="sand-no-results" hidden>没有匹配的作品，试试其他关键词。</p></div>
         <p class="sand-library-note">布局对照 · 统一光照与尺度<br>已简化天空、特效与动画；完整效果请切换「原作展厅」。</p>
@@ -257,7 +258,7 @@ export function createSandtable(root, task, { label, vendorOf, cover, header, in
         <div class="sand-canvas"></div><div class="sand-labels"></div>
         <div class="sand-empty"><span class="sand-empty-mark" aria-hidden="true">＋</span><h2>从一座建筑群开始</h2><p>选择模型，把它的作品放上沙盘。<br>再添一座，在同一个视角里看见差异。</p><button class="btn primary" data-action="choose">选择第一件作品 ↗</button></div>
         <div class="sand-error" role="alert" hidden></div>
-        <div class="sand-focus" hidden><span class="kicker">正在近看</span><strong></strong><a class="btn sm" data-original>进入原作 ↗</a></div>
+        <div class="sand-focus" hidden><span class="kicker">正在近看</span><strong data-i18n-ignore></strong><a class="btn sm" data-original>进入原作 ↗</a></div>
         <div class="sand-toolbar" role="group" aria-label="沙盘视角">
           <button data-action="overview" title="总览（Home）">⌂ <span>总览</span></button><i></i>
           <button data-action="perspective" aria-pressed="true">斜视</button><button data-action="top" aria-pressed="false">俯视</button><i></i>
@@ -371,7 +372,16 @@ export function createSandtable(root, task, { label, vendorOf, cover, header, in
     $('[data-focus]', row).hidden = state !== 'ready';
     $('[data-retry]', row).hidden = state !== 'error';
     entry.tag.classList.toggle('is-loading', state === 'loading' || state === 'queued');
-    entry.tag.textContent = `${label(entry.result)}${state === 'ready' ? ' ↗' : ` · ${text}`}`;
+    entry.tag.replaceChildren();
+    const name = document.createElement('span');
+    name.dataset.i18nIgnore = '';
+    name.textContent = label(entry.result);
+    entry.tag.append(name, state === 'ready' ? ' ↗' : ' · ');
+    if (state !== 'ready') {
+      const status = document.createElement('span');
+      status.textContent = text;
+      entry.tag.append(status);
+    }
   }
   function stopLoader() {
     if (!loading) return;

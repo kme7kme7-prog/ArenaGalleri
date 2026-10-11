@@ -1,3 +1,4 @@
+import { setPageTitle } from './i18n.js';
 // Leaderboard: the full page (#/leaderboard[/<category>|/<task>][/<domain>], or #/leaderboard/<domain>)
 // and the panel on each task page.
 import { $, brandMark, esc, icon, pad, store, vendorLine } from './ui.js';
@@ -12,7 +13,7 @@ export function boardTaskOptions(tasks, selected, activityReady, arena) {
   return `<option value="">全部题目（${tasks.length}）</option>${tasks.map((t) => {
     const ready = (arena[t.id]?.entries ?? 0) >= 2;
     const note = !activityReady ? '（统计加载中）' : ready ? `（${arena[t.id].works}）` : '（作品不足）';
-    return `<option value="${esc(t.id)}"${t.id === selected ? ' selected' : ''}${!activityReady || ready || t.id === selected ? '' : ' disabled'}>${esc(t.title)}${note}</option>`;
+    return `<option data-i18n-ignore data-i18n-option-original="${esc(t.title)}" data-i18n-option-suffix="${esc(note)}" value="${esc(t.id)}"${t.id === selected ? ' selected' : ''}${!activityReady || ready || t.id === selected ? '' : ' disabled'}>${esc(t.title)}${note}</option>`;
   }).join('')}`;
 }
 export const boardNotes = (open = false) => `<details class="board-notes"${open ? ' open' : ''}>
@@ -49,7 +50,7 @@ export function mountBoard(container, ctx) {
   const filterSelect = (field, label, registry) => `<label class="result-sort">${label}<select data-board-filter="${field}" aria-label="按${label}筛选榜单">
     <option value="">全部${/^[A-Za-z]/.test(label) ? ' ' : ''}${label}</option><option value="unset"${filters[field] === 'unset' ? ' selected' : ''}>未注明</option>
     ${[...(registry?.values() ?? [])].filter((entry) => entry.listed || entry.id === filters[field])
-      .map((entry) => `<option value="${esc(entry.id)}"${entry.id === filters[field] ? ' selected' : ''}>${esc(entry.name)}</option>`).join('')}
+      .map((entry) => `<option${field === 'provider' ? '' : ' data-i18n-ignore'} value="${esc(entry.id)}"${entry.id === filters[field] ? ' selected' : ''}>${esc(entry.name)}</option>`).join('')}
   </select></label>`;
   const standingsOf = (data, row) => (ctx.tracks ?? [])
     .filter((track) => data.standings?.[track.name]?.[row.key])
@@ -89,13 +90,13 @@ export function mountBoard(container, ctx) {
       const m = modelOf(row);
       return `<tr${row.provisional ? ' class="is-provisional"' : ''} data-board-row="${esc([row.modelName, row.effort, m.vendor].join(' ').toLowerCase())}">
       <td class="c-rank${row.rank <= 3 ? ' is-top' : ''}">${pad(row.rank)}</td>
-      <td class="c-model"><span class="board-model">${brandMark(m, 'brand-mark sm')}<span class="board-name"><b>${esc(row.modelName)}</b>${row.effort ? `<span class="badge">${esc(row.effort)}</span>` : ''}${row.provisional ? `<span class="badge provisional" title="比较少于 ${data.provisionalGames} 次">暂定</span>` : ''}<small>${[vendorLine(m), ...standingsOf(data, row)].join(' · ')}</small></span></span></td>
-      <td class="c-score"><b>${row.score}</b><small>±${row.interval}</small></td>
+      <td class="c-model"><span class="board-model">${brandMark(m, 'brand-mark sm')}<span class="board-name"><b data-i18n-ignore>${esc(row.modelName)}</b>${row.effort ? `<span class="badge" data-i18n-ignore>${esc(row.effort)}</span>` : ''}${row.provisional ? `<span class="badge provisional" title="比较少于 ${data.provisionalGames} 次">暂定</span>` : ''}<small>${[vendorLine(m), ...standingsOf(data, row)].join(' · ')}</small></span></span></td>
+      <td class="c-score"><b><span data-i18n-number="${row.score}">${row.score}</span></b><small>±<span data-i18n-number="${row.interval}">${row.interval}</span></small></td>
       <td class="c-range" aria-hidden="true"><span class="range"><s style="left:${at(1000)}%"></s><i style="left:${from}%;width:${(to - from).toFixed(2)}%;background:linear-gradient(90deg, ${tone(from)}, ${tone(to)})"></i><em style="left:${at(row.score)}%"></em></span></td>
-      <td class="c-games">${row.games}</td>
-      <td class="c-record">${row.wins}<span>·</span>${row.draws}<span>·</span>${row.losses}</td>
+      <td class="c-games"><span data-i18n-number="${row.games}">${row.games}</span></td>
+      <td class="c-record"><span data-i18n-number="${row.wins}">${row.wins}</span><span>·</span><span data-i18n-number="${row.draws}">${row.draws}</span><span>·</span><span data-i18n-number="${row.losses}">${row.losses}</span></td>
       <td class="c-rate">${Math.round(row.winRate * 100)}%</td>
-      <td class="c-works">${row.works}</td>
+      <td class="c-works"><span data-i18n-number="${row.works}">${row.works}</span></td>
     </tr>`;
     }).join('');
     return `${head}<div class="board-wrap"><table class="board">
@@ -103,7 +104,7 @@ export function mountBoard(container, ctx) {
       <tbody>${body}</tbody>
     </table></div>
     <p class="muted filter-empty" data-board-none hidden>没有匹配的模型，请换个关键词。</p>
-    ${unranked.length ? `<details class="board-unranked"><summary>还没有比较数据的${unit === 'model' ? '模型' : '配置'} · ${unranked.length}${icon('next')}</summary><p>${unranked.map((row) => `${esc(row.modelName)}${row.effort ? ` · ${esc(row.effort)}` : ''}`).join('、')}</p></details>` : ''}`;
+    ${unranked.length ? `<details class="board-unranked"><summary>还没有比较数据的${unit === 'model' ? '模型' : '配置'} · ${unranked.length}${icon('next')}</summary><p data-i18n-ignore>${unranked.map((row) => `${esc(row.modelName)}${row.effort ? ` · ${esc(row.effort)}` : ''}`).join('、')}</p></details>` : ''}`;
   }
 
   function applyQuery() {
@@ -203,7 +204,7 @@ export function mount(root, ctx) {
   const crumbs = [{ text: '排行榜', ...(task || track || domain ? { href: '#/leaderboard' } : {}) }];
   if (track) crumbs.push(task || domain ? { text: track.label, href: base } : { text: track.label });
   if (domain) crumbs.push({ text: domain });
-  if (task) crumbs.push({ text: task.title });
+  if (task) crumbs.push({ text: task.title, original: true });
   // Tasks of the current category (and domain), in the task page's select idiom: the option text carries the count.
   const listed = track ? track.tasks.filter((t) => !domain || domainsOf(t).includes(domain)) : [];
   const taskSelect = () => track ? `<label class="result-sort">题目<select data-board-task aria-label="按题目查看">${boardTaskOptions(listed, task?.id, platform.activityReady, platform.arena)}</select></label>` : '';
@@ -213,7 +214,7 @@ export function mount(root, ctx) {
       ${domains.map((d) => `<option value="${esc(d.name)}"${d.name === domain ? ' selected' : ''}>${esc(d.name)}（${d.tasks.length} 题）</option>`).join('')}
     </select></label>` : '';
 
-  root.innerHTML = `${ctx.pageStart({ title: '排行榜', section: 'leaderboard', heading: scopeTitle, crumbs,
+  root.innerHTML = `${ctx.pageStart({ title: '排行榜', section: 'leaderboard', heading: scopeTitle, headingOriginal: Boolean(task), crumbs,
     description: '由真实盲评投票计算。分数反映作品在同题比较中被偏好的程度，区间越窄，结论越可靠。',
     meta: `<dl class="side-stats" data-stats>
           <div><dt>有效比较</dt><dd>${platform.activityReady ? pad(platform.totals.votes) : '—'}</dd></div>
@@ -248,7 +249,7 @@ export function mount(root, ctx) {
   const onInput = (e) => { if (e.target.matches('[data-board-search]')) board.search(e.target.value); };
   root.addEventListener('change', onChange);
   root.addEventListener('input', onInput);
-  document.title = `榜单 · ${scopeTitle} · ${ctx.DATA.title}`;
+  setPageTitle(['榜单', { text: scopeTitle, original: Boolean(task) }, ctx.DATA.title]);
   return {
     ready: board.ready,
     onPlatformChange: (reason) => {

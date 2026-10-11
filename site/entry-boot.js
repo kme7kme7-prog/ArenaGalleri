@@ -1,4 +1,4 @@
-// Shared arrival gate. Keep the Gallery copy identical; this runs before app modules.
+// Arrival gate. It runs before app modules, so failure copy also selects its language here.
 (() => {
   if (new URLSearchParams(location.search).get('entry') !== 'portal') return;
   const html = document.documentElement;
@@ -6,6 +6,12 @@
   let phase = 'loading';
   let cover;
   let appRoot;
+  const english = () => {
+    let saved;
+    try { saved = localStorage.getItem('gallery-locale'); } catch { /* storage unavailable */ }
+    if (saved === 'en' || saved === 'zh-CN') return saved === 'en';
+    return !/^zh\b/i.test(navigator.languages?.[0] ?? navigator.language ?? 'zh-CN');
+  };
   const style = document.createElement('style');
   style.textContent = `
     #site-entry-cover { position:fixed; inset:0; z-index:2147483647; background:${gallery ? '#121211' : '#d9ddda'}; color:${gallery ? '#ecebe6' : '#1d2423'}; display:grid; place-items:center; font:16px/1.7 system-ui,sans-serif; }
@@ -22,7 +28,9 @@
     if (cover) return;
     cover = document.createElement('div');
     cover.id = 'site-entry-cover';
-    cover.innerHTML = '<section class="entry-message" role="alert"><h1>加载失败</h1><p>页面未能加载完成，请重试或返回入口。</p><nav><button type="button">重新加载</button><a href="https://arenaofbias.icu/">返回入口</a></nav></section>';
+    cover.innerHTML = english()
+      ? '<section class="entry-message" role="alert"><h1>Unable to load</h1><p>The page could not finish loading. Try again or return to the portal.</p><nav><button type="button">Reload</button><a href="https://arenaofbias.icu/">Back to portal</a></nav></section>'
+      : '<section class="entry-message" role="alert"><h1>加载失败</h1><p>页面未能加载完成，请重试或返回入口。</p><nav><button type="button">重新加载</button><a href="https://arenaofbias.icu/">返回入口</a></nav></section>';
     cover.querySelector('button').onclick = () => location.reload();
     document.body.append(cover);
     appRoot = document.querySelector('#root, #app');

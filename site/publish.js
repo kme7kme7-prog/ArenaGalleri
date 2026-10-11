@@ -5,6 +5,7 @@
 // attached result, which is checked again when the prompt or the format changed.
 // #/new/<id> reopens the author's rejected question in the same form to resubmit it.
 import { $, $$, esc, formatDate, icon, pad } from './ui.js';
+import { setPageTitle } from './i18n.js';
 import { api, confirmDialog, moderationBadge, openDialog, platform, refreshPlatform, requireUser, reviewVerdict, toast } from './platform.js';
 import { contentStage, moderated, stageTrack, uploadFlow } from './submit.js';
 import { TEMPLATE_LABELS, categoryLabel, categoryOf } from './categories.js';
@@ -101,7 +102,7 @@ export function mount(root, ctx) {
     const round = original?.moderation?.round ?? 1;
     return { title: '重新提交', section: 'me', heading: '按审核意见修改', description: '修改后重新提交，管理员会对照上次意见审核。',
       crumbs: [{ text: '个人中心', href: '#/me' }, { text: '我的题目', href: '#/me/questions' }, { text: '修改后重新提交' }],
-      meta: original ? `<ol class="side-steps"><li><span>${pad(round)}</span>${esc(formatDate(original.moderation.at))} 未通过</li><li aria-current="step"><span>${pad(round + 1)}</span>本次修改</li></ol>` : '' };
+      meta: original ? `<ol class="side-steps"><li><span>${pad(round)}</span><span data-i18n-date="${esc(original.moderation.at)}">${esc(formatDate(original.moderation.at))}</span> <span>未通过</span></li><li aria-current="step"><span>${pad(round + 1)}</span>本次修改</li></ol>` : '' };
   }
   function showResubmitNote(title, text, login = false) {
     root.innerHTML = `${ctx.pageStart(resubmitPage())}<section class="account-empty">${icon('text')}<h2>${esc(title)}</h2><p>${esc(text)}</p>
@@ -133,7 +134,7 @@ export function mount(root, ctx) {
   function sampleField() {
     if (!samples.length) return '';
     return `<div class="field publish-samples" data-samples><span class="field-label">示例结果</span>
-      <ul class="question-samples">${samples.map((work) => `<li${removeSamples ? ' class="is-removed"' : ''}>${esc(work.modelName)}${work.effort ? ` · ${esc(work.effort)}` : ''} · ${esc(work.title)}${moderationBadge(work.moderation)}${work.scene && !removeSamples ? `<a class="text-link" href="${esc(work.scene)}" target="_blank" rel="noopener">预览结果${icon('arrow')}</a>` : ''}</li>`).join('')}</ul>
+      <ul class="question-samples">${samples.map((work) => `<li${removeSamples ? ' class="is-removed"' : ''}><span data-i18n-ignore>${esc(work.modelName)}${work.effort ? ` · ${esc(work.effort)}` : ''} · ${esc(work.title)}</span>${moderationBadge(work.moderation)}${work.scene && !removeSamples ? `<a class="text-link" href="${esc(work.scene)}" target="_blank" rel="noopener">预览结果${icon('arrow')}</a>` : ''}</li>`).join('')}</ul>
       <p class="fine">${removeSamples ? '重新提交后，示例结果会被删除。' : '示例结果保留不变，题目通过后作为第一份作品展示。如果它和修改后的提示词不再对应，可以先移除。'}</p>
       <div><button class="btn sm" type="button" data-act="toggle-samples">${removeSamples ? '保留示例结果' : '移除示例结果'}</button></div></div>`;
   }
@@ -164,7 +165,7 @@ export function mount(root, ctx) {
         ${original ? '<aside class="publish-note"><h3>重新提交会怎样</h3><p>题目回到「等待人工审核」，管理员会看到上次意见和你改了哪些地方。</p><p>不再检查发起资格；重新进入待审，计入待审数量。</p><p>通过前只有你能看到。也可以回到「我的题目」删除这道题。</p></aside>'
           : '<aside class="publish-note"><h3>一道可比较的题目</h3><p>简述说明测试目标。<br>类型决定提交格式，领域方便读者找到它。<br>提示词作为所有作品的共同依据。</p><p>可以选择附上一份用这份提示词生成的模型结果，让管理员和大家更快看到它能做出什么。</p><p>题目由管理员人工审核，示例结果另做内容审核；通过前只有你能看到。测试文字、灌水或广告不会通过。</p></aside>'}
       </section>${ctx.pageEnd()}`;
-    document.title = `${original ? '修改后重新提交' : '发起题目'} · ${ctx.DATA.title}`;
+    setPageTitle([original ? '修改后重新提交' : '发起题目', ctx.DATA.title]);
     const form = $('.publish-form', root);
     const error = $('.form-error', form);
     syncKept();
@@ -261,10 +262,10 @@ export function mount(root, ctx) {
     const form = $('.publish-form', root);
     if (!form) return;
     const kept = flow?.kept();
-    $('[data-sample-kept]', form).innerHTML = kept ? `<div class="notice sample-kept">${icon('file')}<p><b>示例结果已保留</b>${[esc(kept.file), kept.confirmed ? '试加载已确认' : '试加载待确认', ...(kept.filled ? ['结果信息已填写'] : [])].join(' · ')}。改完题目后回到示例继续；改了提示词需要重新确认试加载。</p><button class="btn sm" type="button" data-act="to-sample">回到示例结果${icon('right')}</button></div>` : '';
+    $('[data-sample-kept]', form).innerHTML = kept ? `<div class="notice sample-kept">${icon('file')}<p><b>示例结果已保留</b>${['<span data-i18n-ignore>' + esc(kept.file) + '</span>', kept.confirmed ? '<span>试加载已确认</span>' : '<span>试加载待确认</span>', ...(kept.filled ? ['<span>结果信息已填写</span>'] : [])].join(' · ')}。改完题目后回到示例继续；改了提示词需要重新确认试加载。</p><button class="btn sm" type="button" data-act="to-sample">回到示例结果${icon('right')}</button></div>` : '';
     $('[data-form-actions]', form).innerHTML = `${kept
       ? `<button class="btn primary" type="submit" value="sample">回到示例结果${icon('right')}</button><button class="btn" type="submit" value="plain">单独提交题目</button>`
-      : `<button class="btn primary" type="submit" value="plain">单独提交题目</button><button class="btn" type="submit" value="sample">附上示例结果${icon('right')}</button>`}<a class="btn" href="#/questions">取消</a><span class="fine">发起即表示你同意<a href="#/terms" target="_blank" rel="noopener">《使用条款》</a>与<a href="#/privacy" target="_blank" rel="noopener">《隐私政策》</a>。</span>`;
+      : `<button class="btn primary" type="submit" value="plain">单独提交题目</button><button class="btn" type="submit" value="sample">附上示例结果${icon('right')}</button>`}<a class="btn" href="#/questions">取消</a><span class="fine">发起即表示你同意 <a href="#/terms" target="_blank" rel="noopener">《使用条款》</a> 与 <a href="#/privacy" target="_blank" rel="noopener">《隐私政策》</a>。</span>`;
     $('.side-steps', root).outerHTML = sideSteps(0, kept);
   }
 
@@ -327,8 +328,8 @@ export function mount(root, ctx) {
     return `<section class="step is-done" data-step="0">
       <header class="step-head"><span class="num">01</span><h2>题目信息</h2><button class="btn sm step-action" type="button" data-act="edit-question">${icon('prev')}修改题目</button><p>管理员会对照这些内容人工审核</p></header>
       <div class="step-body question-brief">
-        <h3>${esc(question.title)}</h3>
-        <p>${esc(question.summary)}</p>
+        <h3 data-i18n-ignore>${esc(question.title)}</h3>
+        <p data-i18n-ignore>${esc(question.summary)}</p>
         <p class="work-meta">${[esc(categoryLabel(question.category)), ...question.domains.map(esc), question.templates.map((t) => TEMPLATE_LABELS[t]).join(' / ')].join(' · ')}</p>
         ${refs ? referenceSheet(refs.previews(), { key: 'new-question', download: false }) : ''}
         <details class="prompt-peek"><summary>${icon('guide')}完整提示词 · 示例结果需按它生成</summary><pre>${esc(question.prompt)}</pre></details>
@@ -354,7 +355,7 @@ export function mount(root, ctx) {
       : !passed ? ['等待人工审核', `「${saved.title}」已提交审核`, work ? '管理员审核题目的同时，示例结果做内容审核。通过前只有你能看到，这一页会自动更新。' : '管理员审核通过后，题目进入题库并开放投稿。']
       : sampleWaiting ? ['题目已通过', `「${saved.title}」已进入题库`, '示例结果还在内容审核，通过后作为第一份作品展示。']
       : ['已公开', `「${saved.title}」已进入题库`, '其他人现在可以上传各自模型的结果。'];
-    const reason = q === 'rejected' && saved.moderation?.reason ? `<p class="result-reason">${icon('alert')}<span>原因：${esc(saved.moderation.reason)}</span></p>` : '';
+    const reason = q === 'rejected' && saved.moderation?.reason ? `<p class="result-reason">${icon('alert')}<span><span>原因：</span><span data-i18n-ignore>${esc(saved.moderation.reason)}</span></span></p>` : '';
     const stages = questionStages(work);
     return `<section class="submit-done">
       <p class="kicker"><span class="num">已提交</span><span>${view[0]}</span></p>

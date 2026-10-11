@@ -17,15 +17,15 @@ function auditDetail(row) {
   try {
     const faces = JSON.parse(row.detail);
     return [['show_gallery', '展览馆'], ['show_arena', '盲评']]
-      .filter(([key]) => Object.hasOwn(faces, key)).map(([key, label]) => `${label}${faces[key] ? '开启' : '关闭'}`).join(' · ');
-  } catch { return row.detail ?? ''; }
+      .filter(([key]) => Object.hasOwn(faces, key)).map(([key, label]) => `<span>${esc(`${label}${faces[key] ? '开启' : '关闭'}`)}</span>`).join(' · ');
+  } catch { return `<span data-i18n-ignore>${esc(row.detail ?? '')}</span>`; }
 }
 
 export function openWorkManagement(ctx, w, { questions = [], audit = [], createEditor, onReview, onContent } = {}) {
   const listed = ctx.DATA.tasks.find((t) => t.id === w.task);
   const task = listed ?? questions.find((q) => q.id === w.task);
   const packaged = Boolean(ctx.packagedWork(w.task, w.id));
-  const publisher = byStaff(w) ? `${w.author?.name ?? ctx.DATA.title} · ${ROLE_LABELS[w.author?.role ?? 'admin']}` : w.author?.name ?? '已注销的用户';
+  const publisher = `<span data-i18n-ignore>${esc(w.author?.name ?? (byStaff(w) ? ctx.DATA.title : ''))}</span>${!w.author?.name && !byStaff(w) ? '<span>已注销的用户</span>' : ''}${byStaff(w) ? ` · <span>${esc(ROLE_LABELS[w.author?.role ?? 'admin'])}</span>` : ''}`;
   const screenshot = Object.values(w.captures ?? {})[0] ?? w.cover;
   const model = ctx.modelOf(w);
   const records = audit.filter((row) => row.task === w.task && row.work === w.id);
@@ -51,14 +51,14 @@ export function openWorkManagement(ctx, w, { questions = [], audit = [], createE
       <div class="work-manage-body"><div class="work-manage-grid">
         <aside class="work-manage-facts">
           ${img(screenshot, `${w.title}预览`, 'work-manage-preview', true)}
-          <div class="work-manage-heading"><p class="result-model">${brandMark(model)}<span>${esc(model.name)}</span>${w.effort ? `<span class="badge">${esc(w.effort)}</span>` : ''}</p>
-            <h3>${esc(w.title)}</h3><p class="muted">${esc(task?.title ?? w.task)}</p></div>
+          <div class="work-manage-heading"><p class="result-model">${brandMark(model)}<span data-i18n-ignore>${esc(model.name)}</span>${w.effort ? `<span class="badge" data-i18n-ignore>${esc(w.effort)}</span>` : ''}</p>
+            <h3 data-i18n-ignore>${esc(w.title)}</h3><p class="muted" data-i18n-ignore>${esc(task?.title ?? w.task)}</p></div>
           <dl class="facts">
-            <div><dt>发布者</dt><dd>${esc(publisher)}</dd></div>
-            ${w.addedAt ? `<div><dt>发布日期</dt><dd>${formatTime(w.addedAt)}</dd></div>` : ''}
-            <div><dt>内容审核</dt><dd>${moderationBadge(w.moderation) || '已通过'}${w.moderation?.reason ? `<p>${esc(w.moderation.reason)}</p>` : ''}</dd></div>
-            <div><dt>作品核验</dt><dd>${statusBadge(w.status, { always: true })}${w.reason ? `<p>${esc(w.reason)}</p>` : ''}</dd></div>
-            ${w.reviewer ? `<div><dt>上次核验</dt><dd>${esc(w.reviewer)} · ${formatTime(w.reviewedAt)}</dd></div>` : ''}
+            <div><dt>发布者</dt><dd>${publisher}</dd></div>
+            ${w.addedAt ? `<div><dt>发布日期</dt><dd data-i18n-time="${esc(w.addedAt)}">${formatTime(w.addedAt)}</dd></div>` : ''}
+            <div><dt>内容审核</dt><dd>${moderationBadge(w.moderation) || '已通过'}${w.moderation?.reason ? `<p data-i18n-ignore>${esc(w.moderation.reason)}</p>` : ''}</dd></div>
+            <div><dt>作品核验</dt><dd>${statusBadge(w.status, { always: true })}${w.reason ? `<p data-i18n-ignore>${esc(w.reason)}</p>` : ''}</dd></div>
+            ${w.reviewer ? `<div><dt>上次核验</dt><dd><span data-i18n-ignore>${esc(w.reviewer)}</span> · <span data-i18n-time="${esc(w.reviewedAt)}">${formatTime(w.reviewedAt)}</span></dd></div>` : ''}
           </dl>
           <div class="actions work-manage-links">
             ${w.scene ? `<a class="btn sm" href="${esc(w.scene)}" target="_blank" rel="noopener">打开作品${icon('arrow')}</a>` : '<span class="fine">暂无可用的作品预览。</span>'}
@@ -66,12 +66,12 @@ export function openWorkManagement(ctx, w, { questions = [], audit = [], createE
           </div>
           ${ownReason ? `<p class="fine work-manage-own">${esc(ownReason)}</p>` : ''}
           <details class="work-manage-audit"><summary>审核与管理记录</summary>
-            ${records.length ? `<ol class="audit">${records.map((row) => `<li><time>${formatTime(row.at)}</time><span class="audit-actor">${esc(row.actor)}</span><b>${esc(ACTIONS[row.action] ?? row.action)}</b>${row.detail ? `<span>${esc(auditDetail(row))}</span>` : ''}</li>`).join('')}</ol>` : '<p class="muted">还没有记录。</p>'}
+            ${records.length ? `<ol class="audit">${records.map((row) => `<li><time data-i18n-time="${esc(row.at)}">${formatTime(row.at)}</time><span class="audit-actor" data-i18n-ignore>${esc(row.actor)}</span><b>${esc(ACTIONS[row.action] ?? row.action)}</b>${row.detail ? `<span${row.action === 'face-settings' ? '' : ' data-i18n-ignore'}>${row.action === 'face-settings' ? auditDetail(row) : esc(auditDetail(row))}</span>` : ''}</li>`).join('')}</ol>` : '<p class="muted">还没有记录。</p>'}
           </details>
         </aside>
         <section class="work-manage-fields">
           <h3 class="mini-heading">作品信息</h3>
-          <label class="field"><span class="field-label">所属题目</span><select class="input" name="task"${movable ? '' : ' disabled'}>${[...homes].map(([id, title]) => `<option value="${esc(id)}"${id === w.task ? ' selected' : ''}>${esc(title)}</option>`).join('')}</select><span class="field-hint">${homeHint}</span></label>
+          <label class="field"><span class="field-label">所属题目</span><select class="input" name="task"${movable ? '' : ' disabled'}>${[...homes].map(([id, title]) => `<option data-i18n-ignore value="${esc(id)}"${id === w.task ? ' selected' : ''}>${esc(title)}</option>`).join('')}</select><span class="field-hint">${homeHint}</span></label>
           ${workFieldsHtml(ctx, task, w, { expanded: true })}
           <div class="work-display-settings"><h3 class="mini-heading">展示设置</h3>
             <label class="work-display-setting"><span><b>展览馆公开展示</b><small data-gallery-hint></small></span><input type="checkbox" role="switch" name="show_gallery" aria-label="展览馆公开展示"${initial.show_gallery ? ' checked' : ''}></label>

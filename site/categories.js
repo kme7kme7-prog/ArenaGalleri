@@ -1,3 +1,4 @@
+import { translateText } from './i18n.js';
 // Questions sit on two axes. The category is the kind of work asked for (writing, reasoning, design, 3D):
 // it groups the library and the leaderboard, decides which submission formats a question accepts and
 // how its works are judged. Stored names stay as they are, so links and votes keep working; `label` is
@@ -71,7 +72,7 @@ export function searchMatch(task, query) {
   const words = query.split(/\s+/).map((word) => fold(word).folded).filter(Boolean);
   if (!words.length) return { inPrompt: false };
   // The separator survives folding, so a word cannot run from the title into the summary.
-  const own = fold([task.title, task.summary, categoryLabel(task.category), ...domainsOf(task)].join('|')).folded;
+  const own = fold([task.title, task.summary, categoryLabel(task.category), translateText(categoryLabel(task.category)), ...domainsOf(task), ...domainsOf(task).map(translateText)].join('|')).folded;
   const prompts = [task.prompt ?? '', ...(task.promptVariants ?? []).map((variant) => variant.prompt ?? '')]
     .filter(Boolean).map((text) => ({ text, ...fold(text) }));
   const promptOnly = words.filter((word) => !own.includes(word));

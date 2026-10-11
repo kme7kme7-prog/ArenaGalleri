@@ -1,3 +1,5 @@
+import { formatDate, formatTime, formatNumber } from './i18n.js';
+export { formatDate, formatTime, formatNumber };
 // Shared page helpers: DOM shortcuts, escaping, storage, icons and marks.
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -10,8 +12,6 @@ export const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)'
 export const pad = (n) => String(n).padStart(2, '0');
 export const byName = (a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' });
 export const formatBytes = (bytes) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
-export const formatDate = (value) => (value ? new Date(value).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }) : '');
-export const formatTime = (value) => (value ? new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
 
 const ICONS = {
   grid: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
@@ -61,8 +61,8 @@ export const brandMark = (m, cls = 'brand-mark') => (m.logo
   : `<span class="${cls}${m.unlisted ? ' is-unlisted' : ''}" aria-hidden="true">${esc((m.name ?? '?').slice(0, 1))}</span>`);
 // The vendor under a model name; a model outside the registry says so (see models.js).
 const UNLISTED = { declared: '厂商由投稿者填写', inferred: '厂商按模型名称推断' };
-export const vendorLine = (m) => (!m.unlisted ? esc(m.vendor ?? '')
-  : m.vendor ? `${esc(m.vendor)} · <span class="unlisted" title="注册表尚未收录这个模型，${UNLISTED[m.unlisted]}">未收录</span>`
+export const vendorLine = (m) => (!m.unlisted ? `<span data-i18n-ignore>${esc(m.vendor ?? '')}</span>`
+  : m.vendor ? `<span data-i18n-ignore>${esc(m.vendor)}</span> · <span class="unlisted" title="注册表尚未收录这个模型，${UNLISTED[m.unlisted]}">未收录</span>`
     : '<span class="unlisted" title="注册表尚未收录这个模型，也无法从名称判断厂商">未收录模型</span>');
 
 // ---- theme ------------------------------------------------------------------------------
@@ -96,6 +96,6 @@ export const versionedMedia = (src) => {
 export function img(src, alt, cls = '', eager = false) {
   src = versionedMedia(src);
   return src
-    ? `<img class="${cls}" src="${esc(src)}" alt="${esc(alt)}" loading="${eager ? 'eager' : 'lazy'}"${eager ? ' fetchpriority="high"' : ''} decoding="async" />`
+    ? `<img data-i18n-ignore class="${cls}" src="${esc(src)}" alt="${esc(alt)}" loading="${eager ? 'eager' : 'lazy'}"${eager ? ' fetchpriority="high"' : ''} decoding="async" />`
     : `<div class="${cls} img-empty">暂无截图</div>`;
 }

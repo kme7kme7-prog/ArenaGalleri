@@ -7,6 +7,7 @@ import { api, arenaScope, isSenior, isStaff, needsEmail, openAuth, openDialog, p
 import { aigcLabel } from './legal.js';
 import { domainsOf, matchesQuery, tracksOf, votedTask } from './categories.js';
 import { linkReferences, referenceSheet } from './references.js';
+import { languageButton, setPageTitle } from './i18n.js';
 
 const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-pointer-lock allow-downloads';
 const VERDICT = { a: '你认为 A 更好', b: '你认为 B 更好', tie: '你认为不分伯仲', skip: '你跳过了这一组' };
@@ -67,7 +68,7 @@ function lobby(root, ctx) {
     const admin = !open && isStaff();
     return `<li class="arena-task${open ? '' : ' is-closed'}"><a ${open ? `href="#/arena/${esc(t.id)}"` : admin ? `href="#/${esc(t.id)}" title="查看这道题的盲评池"` : 'aria-disabled="true"'}>
       <span class="num">No.${pad(ctx.DATA.tasks.indexOf(t) + 1)}</span>
-      <span class="arena-task-title"><b>${esc(t.title)}</b><small>${esc([domainsOf(t).join('、'), t.summary].filter(Boolean).join(' · '))}</small></span>
+      <span class="arena-task-title"><b data-i18n-ignore>${esc(t.title)}</b><small>${domainsOf(t).map((domain) => `<span>${esc(domain)}</span>`).join(' · ')}${t.summary ? ` · <span data-i18n-ignore>${esc(t.summary)}</span>` : ''}</small></span>
       <span class="arena-task-meta">可盲评 ${p.works} 件<br>${p.entries} 个配置</span>
       <span class="arena-task-go">${open ? `只评这题${icon('right')}` : (p.works ? `还差 ${2 - p.entries} 个配置` : '暂无作品')}</span>
     </a></li>`;
@@ -162,7 +163,7 @@ function lobby(root, ctx) {
     view.query = e.target.value;
     drawList();
   };
-  document.title = `盲评 · ${ctx.DATA.title}`;
+  setPageTitle(['盲评', ctx.DATA.title]);
   draw();
   return { onPlatformChange: draw, destroy() { root.onclick = null; root.onchange = null; root.oninput = null; } };
 }
@@ -176,11 +177,11 @@ function match(root, ctx, first, scope) {
   const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); };
 
   document.body.classList.add('is-viewer');
-  document.title = `盲评 · ${task.title}`;
+  setPageTitle(['盲评', { text: task.title, original: true }]);
   root.innerHTML = `<div class="viewer arena">
     <header class="vbar">
       ${ctx.backLink('vback')}
-      <div class="arena-heading"><b><span data-title>${esc(task.title)}</span><span class="arena-scope" data-scope hidden></span></b><span data-round>正在准备</span></div>
+      <div class="arena-heading"><b><span data-title data-i18n-ignore>${esc(task.title)}</span><span class="arena-scope" data-scope hidden></span></b><span data-round>正在准备</span></div>
       <div class="vtools">
         <div class="seg arena-mode" role="group" aria-label="出题方式">
           <button data-a="mode" data-mode="random" aria-pressed="false" title="每一组都从范围内随机换题"><span class="mode-long">随机换题</span><span class="mode-short">随机</span></button>
@@ -197,6 +198,7 @@ function match(root, ctx, first, scope) {
         <a class="vtool" data-board href="#/leaderboard/${esc(task.id)}" title="这道题的榜单">${icon('rank')}<span class="vtool-text">榜单</span></a>
         <span class="vdivider" aria-hidden="true"></span>
         ${themeButton('vtool icon-only')}
+        ${languageButton('vtool')}
       </div>
     </header>
     <div class="arena-mbar">
@@ -218,7 +220,7 @@ function match(root, ctx, first, scope) {
         <span class="split-grip"><button data-layout="b" title="收起 A，只看 B" aria-label="收起作品 A">${icon('prev')}</button><i></i><button data-layout="a" title="收起 B，只看 A" aria-label="收起作品 B">${icon('next')}</button></span>
       </div>` : ''}`).join('')}</div>
       <aside class="guide arena-prompt" aria-label="提示词"><div class="guide-in">
-        <div class="guide-head"><div><p class="eyebrow">本题提示词</p><h2 data-prompt-title>${esc(task.title)}</h2></div><button class="icon-btn" data-a="prompt" aria-label="收起提示词">${icon('close')}</button></div>
+        <div class="guide-head"><div><p class="eyebrow">本题提示词</p><h2 data-prompt-title data-i18n-ignore>${esc(task.title)}</h2></div><button class="icon-btn" data-a="prompt" aria-label="收起提示词">${icon('close')}</button></div>
         <div data-prompt-body></div>
       </div></aside>
     </div>
@@ -246,8 +248,8 @@ function match(root, ctx, first, scope) {
     const model = ctx.modelOf({ model: work.model, modelName: work.modelName, vendor: work.vendor });
     const chosen = state.result.choice === side;
     return `<span class="pane-letter">${letter(side)}</span>${brandMark(model, 'brand-mark sm')}
-      <span class="arena-who revealed"><b>${esc(work.modelName)}</b>${work.effort ? `<span class="badge">${esc(work.effort)}</span>` : ''}<small>${esc(work.title)}</small></span>
-      ${chosen ? '<span class="arena-pick-seal" title="你的选择"><span>所</span><span>选</span></span>' : ''}
+      <span class="arena-who revealed"><b data-i18n-ignore>${esc(work.modelName)}</b>${work.effort ? `<span class="badge" data-i18n-ignore>${esc(work.effort)}</span>` : ''}<small data-i18n-ignore>${esc(work.title)}</small></span>
+      ${chosen ? '<span class="arena-pick-seal" title="你的选择"><span>所选</span></span>' : ''}
       ${reactionBar(`${task.id}/${work.id}`, { locked: work.status === 'questioned' })}
       ${paneTools(side)}
       ${ctx.inGallery(task.id, work.id) ? `<a class="pane-close" href="#/${esc(task.id)}/${esc(work.id)}" title="在展厅中打开" aria-label="在展厅中打开 ${esc(work.title)}">${icon('arrow')}</a>` : ''}
@@ -276,9 +278,9 @@ function match(root, ctx, first, scope) {
     if (state.result) {
       const { choice, counted, reason } = state.result;
       const { win, tie, loss } = state.tally;
-      const tally = state.pin && win + tie + loss ? `<span class="arena-tally">${esc(state.pin.name)}：${win + tie + loss} 组 · ${win} 胜 ${tie} 平 ${loss} 负${state.place ? ` · ${state.place}` : ''}</span>` : '';
+      const tally = state.pin && win + tie + loss ? `<span class="arena-tally"><span data-i18n-ignore>${esc(state.pin.name)}</span>：<span>${win + tie + loss} 组 · ${win} 胜 ${tie} 平 ${loss} 负</span>${state.place ? ` · <span>${state.place}</span>` : ''}</span>` : '';
       bar.innerHTML = `<div class="vote-in is-result">
-        <p class="vote-verdict"><b>${VERDICT[choice]}</b>${tally}<span>${REASON[counted ? 'counted' : reason] ?? ''}${state.counted ? ` · 本次已计入 ${state.counted} 组` : ''}${!counted && reason === 'anonymous' ? ' <button class="link" data-auth="login">登录</button>' : ''}${!counted && reason === 'unbound' ? ' <button class="link" data-bind-email>绑定邮箱</button>' : ''}</span></p>
+        <p class="vote-verdict"><b>${VERDICT[choice]}</b>${tally}<span><span>${REASON[counted ? 'counted' : reason] ?? ''}</span>${state.counted ? ` <span>· 本次已计入 ${state.counted} 组</span>` : ''}${!counted && reason === 'anonymous' ? ' <button class="link" data-auth="login">登录</button>' : ''}${!counted && reason === 'unbound' ? ' <button class="link" data-bind-email>绑定邮箱</button>' : ''}</span></p>
         <div class="vote-actions"><a class="btn" href="#/leaderboard/${esc(task.id)}">${icon('rank')}查看榜单</a><button class="btn primary" data-a="next">下一组<kbd>N</kbd></button></div>
       </div>`;
       return;
@@ -427,7 +429,7 @@ function match(root, ctx, first, scope) {
   // The page follows the task on view: heading, prompt drawer, leaderboard link.
   function setTask(t) {
     task = t;
-    document.title = `盲评 · ${t.title}`;
+    setPageTitle(['盲评', { text: t.title, original: true }]);
     $('[data-title]', el).textContent = t.title;
     $('[data-prompt-title]', el).textContent = t.title;
     $('[data-board]', el).href = `#/leaderboard/${t.id}`;
@@ -445,7 +447,7 @@ function match(root, ctx, first, scope) {
     const chip = $('[data-a="unpin"]', el);
     chip.hidden = !state.pin;
     chip.title = '退出固定模型，之后的组照常抽取';
-    chip.innerHTML = state.pin ? `<span class="vtool-text">固定</span><b>${esc(state.pin.name)}</b>${icon('close')}` : '';
+    chip.innerHTML = state.pin ? `<span class="vtool-text">固定</span><b data-i18n-ignore>${esc(state.pin.name)}</b>${icon('close')}` : '';
   }
 
   function unpin() {
@@ -489,7 +491,7 @@ function match(root, ctx, first, scope) {
     const strip = document.createElement('div');
     strip.className = 'arena-switched';
     strip.setAttribute('role', 'status');
-    strip.innerHTML = `<span>这一组换成了</span><b>${esc(task.title)}</b><button class="link" type="button" data-a="open-prompt">看提示词</button>`;
+    strip.innerHTML = `<span>这一组换成了</span><b data-i18n-ignore>${esc(task.title)}</b><button class="link" type="button" data-a="open-prompt">看提示词</button>`;
     $('.arena-stage', el).append(strip);
     later(() => { strip.classList.add('is-gone'); later(() => strip.remove(), 600); }, 4500);
   }
@@ -505,7 +507,7 @@ function match(root, ctx, first, scope) {
     $('.arena-stage', el).innerHTML = `<div class="board-empty arena-empty">
       <p class="board-empty-title">${esc(unavailable ? '当前范围暂时没有可继续盲评的组合' : exhausted ? (state.random ? '这个范围里的组合你都评过了' : '这道题的组合你都评过了') : error.message)}</p>
       <p>${unavailable ? '部分题目当前无法配对。换个范围继续，或稍后再来。' : exhausted ? `感谢你的每一次选择。${state.random ? '换个范围继续' : '换一道题继续'}，或去看看榜单的变化。` : '稍后再来，或者先去看看其他题目。'}</p>
-      <div class="board-empty-actions">${others.slice(0, 3).map((t) => `<a class="btn" href="#/arena/${esc(t.id)}">${esc(t.title)}${icon('right')}</a>`).join('')}<a class="btn primary" href="#/leaderboard${state.random ? '' : `/${esc(task.id)}`}">${icon('rank')}查看榜单</a></div>
+      <div class="board-empty-actions">${others.slice(0, 3).map((t) => `<a class="btn" href="#/arena/${esc(t.id)}"><span data-i18n-ignore>${esc(t.title)}</span>${icon('right')}</a>`).join('')}<a class="btn primary" href="#/leaderboard${state.random ? '' : `/${esc(task.id)}`}">${icon('rank')}查看榜单</a></div>
     </div>`;
     drawBar();
   }
@@ -719,9 +721,9 @@ function match(root, ctx, first, scope) {
         className: 'arena-login-sheet',
         body: `<p class="sheet-text">盲评对所有人开放，区别只在于这一票算不算数。</p>
           <ul class="vote-ways">
-            <li class="is-try"><span class="vote-way-mark" aria-hidden="true"><span>体</span><span>验</span></span>
+            <li class="is-try"><span class="vote-way-mark" aria-hidden="true"><span>体验</span></span>
               <span><b>${unbound ? '未绑定邮箱' : '未登录'}</b><small>可以完整体验，选择不计入榜单</small></span></li>
-            <li class="is-count"><span class="vote-way-mark" aria-hidden="true"><span>计</span><span>票</span></span>
+            <li class="is-count"><span class="vote-way-mark" aria-hidden="true"><span>计票</span></span>
               <span><b>登录并绑定邮箱</b><small>每对作品计一票，计入模型榜单</small></span></li>
           </ul>
           <div class="sheet-actions"><button class="btn" type="button" data-sheet-close>先体验</button><button class="btn primary" type="button" data-count>${unbound ? '绑定邮箱后开始' : '登录后开始'}${icon('right')}</button></div>

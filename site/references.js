@@ -19,12 +19,12 @@ export const useReferenceViewer = (open) => { openViewer = open; };
 export function referenceSheet(refs = [], { key, credit = '', download = true, still = false } = {}) {
   if (!refs.length) return '';
   sets.set(key, { refs, credit, key });
-  const tile = (ref, i) => `<img src="${esc(media(ref.thumb ?? ref.src))}" alt="${still ? esc(caption(ref, i)) : ''}" loading="lazy" decoding="async"><span class="ref-no">${pad(i + 1)}${ref.caption ? `<span>${esc(ref.caption)}</span>` : ''}</span>`;
+  const tile = (ref, i) => `<img data-i18n-ignore src="${esc(media(ref.thumb ?? ref.src))}" alt="${still ? esc(caption(ref, i)) : ''}" loading="lazy" decoding="async"><span class="ref-no">${pad(i + 1)}${ref.caption ? `<span data-i18n-ignore>${esc(ref.caption)}</span>` : ''}</span>`;
   return `<div class="ref-sheet">
     <div class="ref-sheet-head"><b>参考图</b><span class="ref-count">${refs.length}</span>${download && !still ? `<button class="text-action" type="button" data-ref-key="${esc(key)}" data-ref-download>${icon('download')}<span>全部下载</span></button>` : ''}</div>
     <div class="ref-grid">${refs.map((ref, i) => (still ? `<span class="ref-tile">${tile(ref, i)}</span>`
       : `<button type="button" class="ref-tile" data-ref-key="${esc(key)}" data-ref="${i}" aria-label="查看参考图 ${esc(caption(ref, i))}">${tile(ref, i)}</button>`)).join('')}</div>
-    <p class="ref-credit">${credit ? `图片来源：${esc(credit)} · ` : ''}按顺序一并提供给模型</p></div>`;
+    <p class="ref-credit">${credit ? `<span>图片来源：</span><span data-i18n-ignore>${esc(credit)}</span> · ` : ''}<span>按顺序一并提供给模型</span></p></div>`;
 }
 
 // The prompt stays verbatim; a file name it writes out opens that picture.
@@ -40,7 +40,7 @@ export function linkReferences(text, refs = [], key) {
 function openReference(set, index) {
   openViewer?.(set.refs.map((ref, i) => ({
     src: media(ref.src), thumb: media(ref.thumb ?? ref.src), title: caption(ref, i),
-    sub: set.credit ? `图片来源：${set.credit}` : '', download: { href: media(ref.src), name: ref.name },
+    sub: set.credit ? `图片来源：${set.credit}` : '', credit: set.credit, download: { href: media(ref.src), name: ref.name },
   })), index, null, { strip: true, label: '参考图' });
 }
 

@@ -1,3 +1,4 @@
+import { languageButton } from './i18n.js';
 import { $, esc, icon } from './ui.js';
 
 let nextTitle = 0;
@@ -15,7 +16,7 @@ export function openAuthDialog({ title, body, className = '', onClose }) {
   panel.setAttribute('aria-labelledby', titleId);
   panel.tabIndex = -1;
   panel.innerHTML = `<div class="sheet-in">
-    <header class="sheet-head"><h2 id="${titleId}">${esc(title)}</h2><button class="icon-btn" type="button" data-sheet-close aria-label="关闭">${icon('close')}</button></header>
+    <header class="sheet-head"><h2 id="${titleId}">${esc(title)}</h2><div class="sheet-head-tools">${languageButton()}<button class="icon-btn" type="button" data-sheet-close aria-label="关闭">${icon('close')}</button></div></header>
     <div class="sheet-body">${body}</div>
   </div>`;
   const previous = [...document.querySelectorAll('.auth-overlay')].at(-1);

@@ -1,3 +1,4 @@
+import { initI18n, languageButton, setPageTitle } from './i18n.js';
 // 亿模亿样 — single-page gallery and platform. Routes are hash based, so the archive works
 // on any static host; the platform routes need the server (npm start).
 //   #/                        home: latest questions and answers
@@ -24,6 +25,7 @@ import { modelResolver } from './models.js';
 import { createWorkControls, workFrameUrl } from './work-controls.js';
 import { hasModelPreview, screenshotOf } from './work-preview-media.js';
 
+initI18n();
 const root = $('#app');
 let DATA;
 let MODELS;
@@ -43,6 +45,7 @@ const sourceLine = (r) => {
   const harness = harnessOf(r);
   return [harness?.name, providerOf(r)?.name].filter(Boolean).join(' · ');
 };
+const sourceHtml = (r) => [harnessOf(r)?.name ? `<span data-i18n-ignore>${esc(harnessOf(r).name)}</span>` : '', providerOf(r)?.name ? `<span>${esc(providerOf(r).name)}</span>` : ''].filter(Boolean).join(' · ');
 const sourceKey = (r, field, nameField) => r[field] ? `id:${r[field]}` : r[nameField] ? `name:${r[nameField]}` : 'unset';
 const label = (r) => (r.effort ? `${modelOf(r).name} · ${r.effort}` : modelOf(r).name);
 // Works outside the blind test (multi-turn or with human help) say so on their card.
@@ -54,7 +57,7 @@ const aiScoreBadge = (r) => {
   return grade ? `<span class="badge" title="${esc(grade.judge ? `评分模型：${grade.judge}` : 'AI 评分')}">AI 评分 ${grade.score} / ${grade.max}</span>`
     : '<span class="badge" title="推理题由 AI 评分，评分开放前不显示">AI 评分待开放</span>';
 };
-const resultBadges = (r) => `${r.effort ? `<span class="badge">${esc(r.effort)}</span>` : ''}${r.sourceLabel ? `<span class="badge source-badge">${esc(r.sourceLabel)}</span>` : ''}${generationBadges(r)}`;
+const resultBadges = (r) => `${r.effort ? `<span class="badge" data-i18n-ignore>${esc(r.effort)}</span>` : ''}${r.sourceLabel ? `<span class="badge source-badge" data-i18n-ignore>${esc(r.sourceLabel)}</span>` : ''}${generationBadges(r)}`;
 // Leaderboard entry of a work (model + effort), the same key the server ranks by.
 const normal = (s) => String(s ?? '').normalize('NFKC').trim().toLowerCase();
 const modelKey = (r) => (MODELS.has(r.model) ? r.model : `x:${normal(r.modelName ?? r.model)}`);
@@ -96,7 +99,7 @@ const cover = screenshotOf;
 function coverHtml(r, cls = '', eager = false) {
   const src = cover(r);
   if (src) return img(src, r.title, cls, eager);
-  return `<div class="${cls} img-empty upload-cover"><b>${esc(r.title)}</b><span>${platform.site?.capture ? '截图生成中' : '暂无截图'}</span></div>`;
+  return `<div class="${cls} img-empty upload-cover"><b><span data-i18n-ignore>${esc(r.title)}</span></b><span>${platform.site?.capture ? '截图生成中' : '暂无截图'}</span></div>`;
 }
 const taskHref = (t) => `#/${t.id}`;
 const viewHref = (t, a, b) => `#/${t.id}/${a}${b ? `/vs/${b}` : ''}`;
@@ -157,8 +160,8 @@ const LIBRARY = { text: '题库', href: '#/questions' };
 function breadcrumbTrail(crumbs = []) {
   const items = crumbs.length ? crumbs : [{ text: DATA.subtitle }];
   return items.map((c, i) => `${i ? '<span class="sep" aria-hidden="true">/</span>' : ''}${c.href
-    ? `<a href="${esc(back?.up === c.href ? back.href : c.href)}" title="${esc(c.text)}"${back?.up === c.href ? ' data-back' : ''}${c.href === LIBRARY.href ? ' data-home-view="tasks"' : ''}>${esc(c.text)}</a>`
-    : `<span aria-current="page" title="${esc(c.text)}">${esc(c.text)}</span>`}`).join('');
+    ? `<a${c.original ? ' data-i18n-ignore' : ''} href="${esc(back?.up === c.href ? back.href : c.href)}" title="${esc(c.text)}"${back?.up === c.href ? ' data-back' : ''}${c.href === LIBRARY.href ? ' data-home-view="tasks"' : ''}>${esc(c.text)}</a>`
+    : `<span${c.original ? ' data-i18n-ignore' : ''} aria-current="page" title="${esc(c.text)}">${esc(c.text)}</span>`}`).join('');
 }
 // Shown under the top bar while the platform and the archive disagree on the data version.
 const platformNotice = () => `<div class="platform-notice" role="status"><div class="wrap platform-notice-in">
@@ -177,7 +180,7 @@ function header(crumbs = [], showPreviewSetting = false, current = '', { notice 
     <div class="topbar-tools${showPreviewSetting ? ' has-preview-setting' : ''}${platform.available ? ' has-platform' : ''}">
       ${nav}
       ${platform.available ? '' : ext(DATA.repo, 'GitHub', 'topbar-link topbar-github')}
-      ${themeButton()}
+      ${languageButton()}${themeButton()}
       ${accountControl(current === 'me')}
     </div>
   </div></header>${notice && platform.available && platform.connectionError ? `<div class="platform-notice" role="status"><div class="wrap platform-notice-in"><span class="platform-notice-mark" aria-hidden="true"></span><p><strong>连接暂时中断</strong><span>当前保留上次加载的作品与账户信息，重新连接后更新。</span></p><button type="button" class="link" data-platform-reconnect>重新连接</button></div></div>` : platform.stale && notice ? platformNotice() : ''}`;
@@ -188,9 +191,9 @@ function galleryStageHeader(t, mode) {
   return `<header class="topbar sandbar"><div class="wrap topbar-in sandbar-in">
     <a class="brand" href="#/" aria-label="${esc(DATA.title)} · 首页">${LOGO}<span class="wordmark">${esc(DATA.title)}</span></a>
     ${backLink('top-back')}
-    <nav class="crumbs sand-crumbs" aria-label="面包屑">${breadcrumbTrail([LIBRARY, { text: t.title, href: taskHref(t) }])}</nav>
+    <nav class="crumbs sand-crumbs" aria-label="面包屑">${breadcrumbTrail([LIBRARY, { text: t.title, original: true, href: taskHref(t) }])}</nav>
     <nav class="display-modes" aria-label="展示模式">${modes.map(([id, name]) => `<a ${id === mode ? 'aria-current="page"' : 'data-switch-mode'} href="#/${t.id}/${id}">${name}</a>`).join('')}</nav>
-    <div class="sandbar-tools"><span class="sand-count">已选择 <b data-count>0</b> 件</span><button class="btn sm" data-action="panel" aria-expanded="true" aria-controls="${mode === 'sandtable' ? 'sand-library' : 'exhibition-library'}">选择模型</button>${themeButton()}</div>
+    <div class="sandbar-tools"><span class="sand-count">已选择 <b data-count>0</b> 件</span><button class="btn sm" data-action="panel" aria-expanded="true" aria-controls="${mode === 'sandtable' ? 'sand-library' : 'exhibition-library'}">选择模型</button>${languageButton()}${themeButton()}</div>
   </div></header>`;
 }
 const footer = () => `<footer class="footer"><div class="wrap footer-in">
@@ -201,12 +204,12 @@ const footer = () => `<footer class="footer"><div class="wrap footer-in">
 
 // A shared two-column shell keeps every platform page in the same exhibition. The top bar is the
 // site navigation and carries the way back; the sidebar only holds this section's own views.
-function pageStart({ title, description, section, meta = '', nav = '', heading = title, caption = '', crumbs = [{ text: title }] }) {
+function pageStart({ title, description, descriptionOriginal = false, section, meta = '', nav = '', heading = title, headingOriginal = false, caption = '', crumbs = [{ text: title }] }) {
   return `${header(crumbs, false, section)}<div class="app-layout platform-layout">
     <aside class="app-sidebar">
-      <h1>${esc(title)}</h1><p class="side-intro">${esc(description)}</p>${meta}${nav}
+      <h1>${esc(title)}</h1><p class="side-intro"${descriptionOriginal ? ' data-i18n-ignore' : ''}>${esc(description)}</p>${meta}${nav}
       <div class="side-bottom"><p>同一份提示词，<br>看见不同的答案。</p></div>
-    </aside><main class="workspace page"><div class="collection-heading"><h2>${esc(heading)}</h2>${caption || '<span class="collection-caption">亿模亿样 · 模型作品对比</span>'}</div>`;
+    </aside><main class="workspace page"><div class="collection-heading"><h2${headingOriginal ? ' data-i18n-ignore' : ''}>${esc(heading)}</h2>${caption || '<span class="collection-caption">亿模亿样 · 模型作品对比</span>'}</div>`;
 }
 // Views of the current section in a platform sidebar: [href, glyph, text, current, count].
 const sideNav = (label, links) => `<nav class="side-nav section-nav" aria-label="${esc(label)}">${links.map(([href, glyph, text, current, count]) => `<a class="side-link" href="${esc(href)}"${current ? ' aria-current="page"' : ''}>${icon(glyph)}${esc(text)}${count === undefined ? '' : `<span class="nav-count">${count}</span>`}</a>`).join('')}</nav>`;
@@ -248,7 +251,7 @@ const act = (kind, href, glyph, title, note, hint = '') => (href
 
 // Filter selects share the task page's toolbar: the option text carries the label and count.
 const selectControl = (name, aria, options) => `<label class="result-sort">${aria}<select data-${name} aria-label="${aria}">${options}</select></label>`;
-const option = (value, text, selected) => `<option value="${esc(value)}"${selected ? ' selected' : ''}>${esc(text)}</option>`;
+const option = (value, text, selected, suffix = null) => `<option${suffix === null ? '' : ` data-i18n-ignore data-i18n-option-original="${esc(text)}" data-i18n-option-suffix="${esc(suffix)}"`} value="${esc(value)}"${selected ? ' selected' : ''}>${esc(text)}${suffix === null ? '' : esc(suffix)}</option>`;
 const answeredBy = (t, id) => counted(t).some((r) => registeredOf(r) === id);
 // A card names its form, then its domains.
 const tagLine = (t) => `${t.category ? `<li class="tag-kind">${esc(categoryLabel(t.category))}</li>` : ''}${domainsOf(t).map((d) => `<li class="tag-domain">${esc(d)}</li>`).join('')}`;
@@ -291,11 +294,11 @@ function renderLibrary(scopes = [], fresh = true) {
         <div class="question-byline"><ul class="tag-line">${tagLine(t)}</ul>
           <span class="avatar question-avatar${bySite(t) ? ' is-site' : ''}" role="img" aria-label="发布者：${esc(authorName(t))}" title="发布者：${esc(authorName(t))}">${authorAvatar(t)}</span>
         </div>
-        <h3><a href="${taskHref(t)}">${esc(t.title)}</a></h3>
-        <p class="summary">${esc(t.summary)}</p>
-        <p class="prompt-hit" data-prompt-hit hidden></p>
+        <h3><a href="${taskHref(t)}"><span data-i18n-ignore>${esc(t.title)}</span></a></h3>
+        <p class="summary"><span data-i18n-ignore>${esc(t.summary)}</span></p>
+        <p data-i18n-ignore class="prompt-hit" data-prompt-hit hidden></p>
         <div class="question-meta">
-          <span class="question-date">${esc(t.date ?? '')}</span>
+          <span class="question-date" data-i18n-date="${esc(t.date ?? '')}">${formatDate(t.date)}</span>
           ${t.references?.length ? `<span class="question-refs" title="附 ${t.references.length} 张参考图，作答需要识图">${icon('image')}参考图 ${t.references.length}</span>` : ''}
           <a href="${taskHref(t)}">${modelCount(works)} 个模型 · ${works.length} 件作品${icon('next')}</a>
         </div>
@@ -329,7 +332,7 @@ function renderLibrary(scopes = [], fresh = true) {
   if (!answering.some(([, models]) => models.some((m) => m.id === homeState.model))) homeState.model = '';
   // Search leads every list's toolbar; the heading keeps the page's own actions or a quiet note.
   const taskToolbar = `<div class="collection-toolbar">${searchControl('home', '搜索题目或提示词', homeState.query)}<div class="toolbar-actions">
-    ${selectControl('home-model', '按作答模型筛选', option('', '全部作答模型', !homeState.model) + answering.map(([vendor, models]) => `<optgroup label="${esc(vendor)}">${models.map((m) => option(m.id, `${m.name}（${DATA.tasks.filter((t) => answeredBy(t, m.id)).length} 题）`, m.id === homeState.model)).join('')}</optgroup>`).join(''))}
+    ${selectControl('home-model', '按作答模型筛选', option('', '全部作答模型', !homeState.model) + answering.map(([vendor, models]) => `<optgroup label="${esc(vendor)}">${models.map((m) => option(m.id, m.name, m.id === homeState.model, `（${DATA.tasks.filter((t) => answeredBy(t, m.id)).length} 题）`)).join('')}</optgroup>`).join(''))}
     ${selectControl('home-sort', '题目排序', Object.entries(questionSorts).map(([value, text]) => option(value, text, value === homeState.sort)).join(''))}
   </div></div>`;
   const modelToolbar = `<div class="collection-toolbar">${searchControl('model', '搜索模型或厂商', homeState.modelQuery)}<div class="toolbar-actions">
@@ -345,8 +348,8 @@ function renderLibrary(scopes = [], fresh = true) {
         : brandMark(m);
       return `<li class="dir-model" data-dir-model="${esc([m.name, ...(m.aliases ?? []), m.vendorNote ?? '', vendor].join(' '))}">${mark}
         <div class="dir-model-body">
-          <h4>${esc(m.name)}${m.vendorNote ? `<span class="note">${esc(m.vendorNote)}</span>` : ''}</h4>
-          ${mine.length ? `<ul class="dir-works">${mine.map(({ t, r }) => `<li><a href="${viewHref(t, r.id)}" title="${esc(t.title)}">${esc(r.title)}${resultBadges(r)}</a></li>`).join('')}</ul>` : '<p class="muted">暂无作品</p>'}
+          <h4><span data-i18n-ignore>${esc(m.name)}</span>${m.vendorNote ? `<span class="note">${esc(m.vendorNote)}</span>` : ''}</h4>
+          ${mine.length ? `<ul class="dir-works">${mine.map(({ t, r }) => `<li><a href="${viewHref(t, r.id)}" data-i18n-original-attrs="title" title="${esc(t.title)}"><span data-i18n-ignore>${esc(r.title)}</span>${resultBadges(r)}</a></li>`).join('')}</ul>` : '<p class="muted">暂无作品</p>'}
         </div>
       </li>`;
     }).join('');
@@ -402,7 +405,7 @@ function renderLibrary(scopes = [], fresh = true) {
     const order = sortedTasks().sort((a, b) => promptOnly.has(a.id) - promptOnly.has(b.id));
     const list = $('.task-list', root), cards = $$('[data-task-card]', list);
     if (order.some((t, i) => cards[i].dataset.taskCard !== t.id)) list.append(...order.map((t) => cards.find((card) => card.dataset.taskCard === t.id)));
-    $('#h-tasks').textContent = [homeState.category && categoryLabel(homeState.category), homeState.domain, MODELS.get(homeState.model)?.name].filter(Boolean).join(' · ') || '全部题目';
+    $('#h-tasks').innerHTML = [homeState.category ? `<span>${esc(categoryLabel(homeState.category))}</span>` : '', homeState.domain ? `<span>${esc(homeState.domain)}</span>` : '', homeState.model ? `<span data-i18n-ignore>${esc(MODELS.get(homeState.model)?.name)}</span>` : ''].filter(Boolean).join(' · ') || '全部题目';
     $('[data-home-count]').textContent = `${count} 道题目`;
     $('[data-home-empty]').hidden = count > 0;
     $('[data-task-new]')?.toggleAttribute('hidden', count === 0);
@@ -420,6 +423,7 @@ function renderLibrary(scopes = [], fresh = true) {
       row.hidden = !shown || Boolean(homeState.vendor && row.dataset.dirVendor !== homeState.vendor);
       if (!row.hidden) { models += shown; vendorsShown++; }
     }
+    $('#h-models').toggleAttribute('data-i18n-ignore', Boolean(homeState.vendor));
     $('#h-models').textContent = homeState.vendor || '模型索引';
     $('[data-model-count]').textContent = `${vendorsShown} 家厂商 · ${models} 个模型`;
     $('[data-model-empty]').hidden = models > 0;
@@ -429,8 +433,8 @@ function renderLibrary(scopes = [], fresh = true) {
     $$('[data-home-category]').forEach((el) => el.setAttribute('aria-pressed', String(homeState.view === 'tasks' && el.dataset.homeCategory === homeState.category)));
     $$('[data-home-domain]').forEach((el) => el.setAttribute('aria-pressed', String(homeState.view === 'tasks' && el.dataset.homeDomain === homeState.domain)));
     const scopes = homeState.view === 'tasks' ? [homeState.category, homeState.domain].filter(Boolean) : [];
-    const scope = homeState.view === 'models' ? '模型索引' : scopes.map((x) => (categoryOf(x) ? categoryLabel(x) : x)).join(' · ');
-    $('.topbar .crumbs').innerHTML = breadcrumbTrail(scope ? [LIBRARY, { text: scope }] : [{ text: '题库' }]);
+    const scopeCrumbs = homeState.view === 'models' ? [{ text: '模型索引' }] : scopes.map((x) => ({ text: categoryOf(x) ? categoryLabel(x) : x }));
+    $('.topbar .crumbs').innerHTML = breadcrumbTrail(scopeCrumbs.length ? [LIBRARY, ...scopeCrumbs] : [{ text: '题库' }]);
     const address = [LIBRARY.href, ...(homeState.view === 'models' ? ['models'] : scopes.map(encodeURIComponent))].join('/');
     if (location.hash !== address) history.replaceState(history.state, '', address);
     previews?.setPaused(homeState.view !== 'tasks');
@@ -463,7 +467,8 @@ function renderLibrary(scopes = [], fresh = true) {
     if (category || domain || view || event.target.closest('[data-home-reset], [data-model-reset]')) filter();
   };
   filter();
-  document.title = `题库 · ${DATA.title}`;
+  window.addEventListener('localechange', filter, { signal: controller.signal });
+  setPageTitle(['题库', DATA.title]);
   async function loadPreviews(choice) {
     const result = choice?.result;
     if (destroyed || !initialPlatformSettled || homeState.view !== 'tasks' || result?.previewMode === 'screenshot' || !(result?.previewModel || result?.previewLoader)) return;
@@ -530,7 +535,7 @@ const displayedResults = (t) => foldOrder(t, groupVariantResults(t, sortedResult
 function resultVariantButtons(t, r, pane = null) {
   const choices = variantChoices(t, r);
   if (!choices.length) return '';
-  return `<div class="seg result-variants" role="group" aria-label="${esc(label(r))}的提示词版本">${choices.map((choice) => `<button ${pane === null ? 'data-result-variant' : `data-pane-variant="${pane}"`} data-variant-result="${esc(choice.result?.id ?? '')}" aria-pressed="${choice.id === r.promptVariant}"${choice.result ? '' : ' disabled title="这版结果尚未收录"'}>${esc(choice.label)}</button>`).join('')}</div>`;
+  return `<div class="seg result-variants" role="group" aria-label="${esc(label(r))}的提示词版本">${choices.map((choice) => `<button ${pane === null ? 'data-result-variant' : `data-pane-variant="${pane}"`} data-variant-result="${esc(choice.result?.id ?? '')}" aria-pressed="${choice.id === r.promptVariant}"${choice.result ? '' : ' disabled title="这版结果尚未收录"'}><span data-i18n-ignore>${esc(choice.label)}</span></button>`).join('')}</div>`;
 }
 let resultPreviews = null;
 let previewVersion = 0;
@@ -637,7 +642,7 @@ function shotGrid(t) {
     const src = r.captures[cond.id];
     return `<figure class="shot">
       <button class="shot-img" data-shot="${esc(r.id)}" aria-label="放大查看 ${esc(label(r))} · ${esc(cond.label)}">${img(src, `${label(r)} · ${cond.label}`)}</button>
-      <figcaption><b>${esc(r.title)}</b><span>${esc(label(r))}${r.status !== 'verified' ? ` · ${STATUS[r.status].label}` : ''}</span><a href="${viewHref(t, r.id)}">在线预览</a></figcaption>
+      <figcaption><b><span data-i18n-ignore>${esc(r.title)}</span></b><span><span data-i18n-ignore>${esc(label(r))}</span>${r.status !== 'verified' ? ` · ${STATUS[r.status].label}` : ''}</span><a href="${viewHref(t, r.id)}">在线预览</a></figcaption>
     </figure>`;
   }).join('')}</div>`;
 }
@@ -660,16 +665,16 @@ function resultCard(t, r) {
   return `<article class="result${screenshotPreview ? ' is-screenshot-preview' : ''}${lead ? ' is-lead' : ''}" data-vendor="${esc(vendorOf(r))}" data-model="${esc(modelKey(r))}" data-id="${esc(r.id)}" data-status="${r.status}">
     <div class="result-media">
       <a href="${viewHref(t, r.id)}" aria-label="在线预览：${esc(r.title)}，${esc(label(r))}">${screenshotPreview && screenshot ? img(screenshot, r.title, 'result-screenshot-preview', eagerScreenshot) : coverHtml(r, 'result-screenshot-preview', eagerScreenshot)}${!screenshotPreview && r.previewPoster ? img(r.previewPoster, '', 'result-model-poster', eagerPoster) : ''}<span class="play">${icon('arrow')}在线预览</span></a>
-      ${lead ? '<span class="lead-seal" aria-hidden="true"><span>代</span><span>表</span></span>' : ''}
+      ${lead ? '<span class="lead-seal" aria-hidden="true"><span>代表</span></span>' : ''}
       ${t.results.length > 1 ? `<button class="pick" data-pick="${esc(r.id)}" aria-pressed="false" aria-label="加入对比：${esc(r.title)}"><span class="pick-box">${icon('plus')}${icon('check')}</span><span class="pick-text">对比</span></button>` : ''}
     </div>
     <div class="result-body">
       ${resultVariantButtons(t, r)}
-      <p class="result-model">${brandMark(m, 'brand-mark sm')}<b>${esc(m.name)}</b>${resultBadges(r)}${aiJudged(t) ? aiScoreBadge(r) : ''}${platform.featured?.[t.id]?.models?.[modelKey(r)] === r.id ? '<span class="badge featured-badge" title="盲评票选出的代表作">代表作</span>' : ''}${statusBadge(r.status, { reason: r.reason })}</p>
+      <p class="result-model">${brandMark(m, 'brand-mark sm')}<b><span data-i18n-ignore>${esc(m.name)}</span></b>${resultBadges(r)}${aiJudged(t) ? aiScoreBadge(r) : ''}${platform.featured?.[t.id]?.models?.[modelKey(r)] === r.id ? '<span class="badge featured-badge" title="盲评票选出的代表作">代表作</span>' : ''}${statusBadge(r.status, { reason: r.reason })}</p>
       ${lead ? `<p class="lead-why">${t.cover === coverWork.id ? '管理员指定的本题封面' : platform.featured?.[t.id]?.cover === coverWork.id ? '盲评票选的代表作' : '本题封面作品 · 盲评票数足够后改由票选决定'}</p>` : ''}
-      <h3><a href="${viewHref(t, r.id)}">${esc(r.title)}${icon('arrow')}</a></h3>
-      <p class="result-by">${esc(authorName(r))} 发布${sourceLine(r) || r.tool ? ` · ${esc(sourceLine(r) || r.tool)}` : ''}${r.addedAt ? ` · ${formatDate(r.addedAt)}` : ''}</p>
-      ${r.status === 'questioned' && r.reason ? `<p class="result-reason">${icon('alert')}<span>${esc(r.reason)}</span></p>` : ''}
+      <h3><a href="${viewHref(t, r.id)}"><span data-i18n-ignore>${esc(r.title)}</span>${icon('arrow')}</a></h3>
+      <p class="result-by"><span data-i18n-ignore>${esc(authorName(r))}</span> <span>发布</span>${sourceLine(r) || r.tool ? ` · ${sourceLine(r) ? sourceHtml(r) : `<span data-i18n-ignore>${esc(r.tool)}</span>`}` : ''}${r.addedAt ? ` · <span data-i18n-date="${esc(r.addedAt)}">${formatDate(r.addedAt)}</span>` : ''}</p>
+      ${r.status === 'questioned' && r.reason ? `<p data-i18n-ignore class="result-reason">${icon('alert')}<span>${esc(r.reason)}</span></p>` : ''}
       <div class="result-foot">
         ${r.gallery.length ? `<button class="text-action" data-gallery="${esc(r.id)}">${icon('image')}截图 ${r.gallery.length}</button>` : ''}
         ${reactionBar(workKey(t, r), { locked: !interactive(r) })}
@@ -767,7 +772,7 @@ function renderTask(t) {
   if (!providerChoices.some(([key]) => key === taskState.provider)) taskState.provider = '';
   taskState.picks = taskState.picks.filter((id) => t.results.some((r) => r.id === id));
   const hasCaptures = t.results.some((r) => Object.keys(r.captures).length);
-  const captureNotes = t.results.filter((r) => r.captureNote).map((r) => `${esc(r.title)}：${esc(r.captureNote)}`);
+  const captureNotes = t.results.filter((r) => r.captureNote).map((r) => `<span data-i18n-ignore>${esc(r.title)}</span>：<span data-i18n-ignore>${esc(r.captureNote)}</span>`);
   const works = counted(t);
   const pool = platform.arena[t.id];
   const actions = platform.available ? `<div class="task-acts">
@@ -777,11 +782,11 @@ function renderTask(t) {
     ${t.acceptsUploads ? act('upload', `#/submit/${esc(t.id)}`, icon('upload'), '上传作品', '交一份你的答案') : act('upload', '', icon('upload'), '暂不接受投稿', t.promptPending ? '提示词原文尚未公开' : '这道题暂时关闭了投稿')}
   </div>` : '';
 
-  root.innerHTML = `${header([LIBRARY, { text: t.title }], false, 'questions')}<div class="app-layout task-layout">
+  root.innerHTML = `${header([LIBRARY, { text: t.title, original: true }], false, 'questions')}<div class="app-layout task-layout">
     <aside class="app-sidebar">
-      <h1>${esc(t.title)}</h1>
-      <p class="side-intro">${esc(t.summary)}</p>
-      <p class="side-byline">${esc(authorName(t))} 发起${t.date ? ` · ${esc(t.date)}` : ''}</p>
+      <h1><span data-i18n-ignore>${esc(t.title)}</span></h1>
+      <p class="side-intro"><span data-i18n-ignore>${esc(t.summary)}</span></p>
+      <p class="side-byline"><span data-i18n-ignore>${esc(authorName(t))}</span> <span>发起</span>${t.date ? ` · <span data-i18n-date="${esc(t.date)}">${formatDate(t.date)}</span>` : ''}</p>
       <ul class="tags side-tags">${t.category ? `<li class="tag-kind">${esc(categoryLabel(t.category))}</li>` : ''}${domainsOf(t).map((d) => `<li><a href="${LIBRARY.href}/${encodeURIComponent(d)}">${esc(d)}</a></li>`).join('')}</ul>
       <nav class="side-nav task-nav" aria-label="本页">
         <button class="side-link" data-go="results" aria-pressed="true">${icon('grid')}作品<span class="nav-count">${t.results.length}</span></button>
@@ -795,10 +800,10 @@ function renderTask(t) {
         ${isStaff() && platform.activityReady ? adminPoolLine(t, pool) : ''}</div>
       <section class="side-prompt" aria-labelledby="side-prompt-title">
         <div class="side-prompt-head"><h2 id="side-prompt-title">题面</h2>
-          ${variantsOf(t).length ? `<div class="seg" role="group" aria-label="提示词版本">${variantsOf(t).map((variant) => `<button data-prompt-variant="${esc(variant.id)}" aria-pressed="${variant.id === taskState.promptVariant}">${esc(variant.label)}</button>`).join('')}</div>` : ''}
+          ${variantsOf(t).length ? `<div class="seg" role="group" aria-label="提示词版本">${variantsOf(t).map((variant) => `<button data-prompt-variant="${esc(variant.id)}" aria-pressed="${variant.id === taskState.promptVariant}"><span data-i18n-ignore>${esc(variant.label)}</span></button>`).join('')}</div>` : ''}
           <button class="text-action side-prompt-more" data-prompt-more aria-expanded="false">展开</button><button class="text-action" data-copy>复制</button></div>
         ${referenceSheet(t.references, { key: t.id, credit: t.referenceCredit })}
-        <pre data-prompt-text>${linkReferences(selectedPrompt(t), t.references, t.id)}</pre>
+        <pre data-i18n-ignore data-prompt-text>${linkReferences(selectedPrompt(t), t.references, t.id)}</pre>
       </section>
     </aside>
     <main class="workspace page">
@@ -833,7 +838,7 @@ function renderTask(t) {
     </section>` : ''}
     ${footer()}</main></div>
   <div class="tray" role="region" aria-label="对比栏" hidden></div>`;
-  document.title = `${t.title} · ${DATA.title}`;
+  setPageTitle([{ text: t.title, original: true }, DATA.title]);
   syncTaskView(t);
   filterResults(t);
   syncPicks(t);
@@ -1046,7 +1051,7 @@ function syncPicks(t) {
   const sandIds = picks.filter((id) => t.results.some((r) => r.id === id && hosted(r)));
   const sandNote = sandIds.length < picks.length ? ' title="网页上传的作品没有沙盘模型"' : '';
   const slot = (r, i) => (r
-    ? `<li class="slot"><span class="slot-thumb">${img(cover(r), '', '', true)}</span><span class="slot-text"><b>${esc(r.title)}</b><small>${esc(label(r))}</small></span><button class="slot-x" data-unpick="${esc(r.id)}" aria-label="移出对比：${esc(r.title)}">${icon('close')}</button></li>`
+    ? `<li class="slot"><span class="slot-thumb">${img(cover(r), '', '', true)}</span><span class="slot-text"><b><span data-i18n-ignore>${esc(r.title)}</span></b><small><span data-i18n-ignore>${esc(label(r))}</span></small></span><button class="slot-x" data-unpick="${esc(r.id)}" aria-label="移出对比：${esc(r.title)}">${icon('close')}</button></li>`
     : `<li class="slot empty"><span class="slot-thumb">${pad(i + 1)}</span><span class="slot-text"><b>再选一件</b><small>点击作品上的「对比」</small></span></li>`);
   tray.innerHTML = `<ol class="slots">${slot(chosen[0], 0)}<li class="vs" aria-hidden="true">${chosen.length > 2 ? `+${chosen.length - 1}` : 'vs'}</li>${chosen.length <= 2 ? slot(chosen[1], 1) : `<li class="slot"><span class="slot-text"><b>共 ${chosen.length} 件作品</b><small>在同一画布上查看原作</small></span></li>`}</ol>
     <div class="tray-actions">
@@ -1104,7 +1109,7 @@ const lightbox = (() => {
     image.src = it.src;
     image.alt = it.title;
     if (image.complete) image.classList.add('is-loaded');
-    caption.innerHTML = `<b>${esc(it.title)}</b><span>${esc(it.sub ?? '')}</span>`;
+    caption.innerHTML = `<b><span data-i18n-ignore>${esc(it.title)}</span></b>${it.credit !== undefined ? it.credit ? `<span>图片来源：<span data-i18n-ignore>${esc(it.credit)}</span></span>` : '' : `<span data-i18n-ignore>${esc(it.sub ?? '')}</span>`}`;
     count.textContent = items.length > 1 ? `${label ? `${label} ` : ''}${index + 1} / ${items.length}` : label;
     el.classList.toggle('single', items.length < 2);
     // Items with a download name offer the file under that name.
@@ -1169,7 +1174,7 @@ const lightbox = (() => {
       label = name;
       strip.hidden = !withStrip || list.length < 2;
       el.classList.toggle('has-strip', !strip.hidden);
-      strip.innerHTML = strip.hidden ? '' : list.map((it, k) => `<button type="button" data-lb-go="${k}" aria-label="${esc(it.title)}"><img src="${esc(it.thumb ?? it.src)}" alt="" decoding="async"></button>`).join('');
+      strip.innerHTML = strip.hidden ? '' : list.map((it, k) => `<button data-i18n-ignore type="button" data-lb-go="${k}" aria-label="${esc(it.title)}"><img src="${esc(it.thumb ?? it.src)}" alt="" decoding="async"></button>`).join('');
       lastFocus = document.activeElement;
       show();
       el.hidden = false;
@@ -1205,24 +1210,24 @@ function workFacts(r) {
   const switches = admin ? [r.arena?.state === 'in_pool' ? 'arena-off' : r.arena?.state === 'off' ? 'arena-on' : '', 'hide'].filter(Boolean) : [];
   return `<div class="guide-block guide-status" data-status="${r.status}">
     <h3>核验状态</h3>
-    <p class="guide-state">${statusBadge(r.status, { always: true })}<span>${esc(arenaText(r.arena) ? `已公开 · ${arenaText(r.arena)}` : info.hint)}</span></p>
+    <p class="guide-state">${statusBadge(r.status, { always: true })}${arenaText(r.arena) ? `<span>已公开</span> · <span>${esc(arenaText(r.arena))}</span>` : `<span>${esc(info.hint)}</span>`}</p>
     ${switches.length ? `<div class="actions">${switches.map((action) => `<button class="btn sm" data-face="${action}">${VIEWER_FACES[action][0]}</button>`).join('')}</div>` : ''}
-    ${r.reason ? `<p class="guide-reason">${esc(r.reason)}</p>` : ''}
+    ${r.reason ? `<p data-i18n-ignore class="guide-reason">${esc(r.reason)}</p>` : ''}
     <dl class="facts">
-      <div><dt>发布</dt><dd>${esc(authorName(r))}${r.addedAt ? ` · ${formatDate(r.addedAt)}` : ''}</dd></div>
+      <div><dt>发布</dt><dd><span data-i18n-ignore>${esc(authorName(r))}</span>${r.addedAt ? ` · <span data-i18n-date="${esc(r.addedAt)}">${formatDate(r.addedAt)}</span>` : ''}</dd></div>
       ${sourceFacts(r)}
       ${r.files ? `<div><dt>文件</dt><dd>${r.files} 个 · ${formatBytes(r.bytes)}</dd></div>` : ''}
     </dl>
-    ${r.note ? `<p class="guide-note">${esc(r.note)}</p>` : ''}
+    ${r.note ? `<p data-i18n-ignore class="guide-note">${esc(r.note)}</p>` : ''}
   </div>`;
 }
 
 function createViewer(t) {
   const state = { panes: [], queries: [], active: 0, guide: store.get('guide') === '1' && wide() };
   const byId = (id) => t.results.find((r) => r.id === id);
-  const options = () => sortedResults(t).map((r) => `<option value="${esc(r.id)}">${esc(r.title)} · ${esc(label(r))}${r.promptVariant ? ` · ${esc(variantsOf(t).find((variant) => variant.id === r.promptVariant)?.label)}` : ''}${r.status !== 'verified' ? ` · ${STATUS[r.status].label}` : ''}</option>`).join('');
+  const options = () => sortedResults(t).map((r) => option(r.id, `${r.title} · ${label(r)}${r.promptVariant ? ` · ${variantsOf(t).find((variant) => variant.id === r.promptVariant)?.label}` : ''}`, false, r.status !== 'verified' ? ` · ${STATUS[r.status].label}` : '')).join('');
   const many = t.results.length > 1;
-  document.title = `在线预览 · ${t.title}`;
+  setPageTitle(['在线预览', { text: t.title, original: true }]);
 
   root.innerHTML = `<div class="viewer">
     <header class="vbar">
@@ -1242,7 +1247,7 @@ function createViewer(t) {
         <a class="vtool" data-v="open" aria-label="在新窗口打开独立页面" target="_blank" rel="noopener" title="在新窗口打开独立页面">${icon('arrow')}<span class="vtool-text">新窗口</span></a>
         <button class="vtool" data-v="full" aria-label="全屏" title="全屏（F）">${icon('full')}<span class="vtool-text">全屏</span></button>
         <span class="vdivider" aria-hidden="true"></span>
-        ${themeButton('vtool icon-only')}
+        ${languageButton('vtool')}${themeButton('vtool icon-only')}
       </div>
     </header>
     <div class="vmain">
@@ -1286,7 +1291,7 @@ function createViewer(t) {
     $('.pane-variants', pane).innerHTML = resultVariantButtons(t, r, i);
     $('.pane-variants', pane).hidden = !variantChoices(t, r).length;
     if (!r.scene) {
-      body.innerHTML = `<div class="loader static"><b>${esc(r.title)}</b><span>该作品尚未构建，无法在线预览。</span></div>`;
+      body.innerHTML = `<div class="loader static"><b><span data-i18n-ignore>${esc(r.title)}</span></b><span>该作品尚未构建，无法在线预览。</span></div>`;
       return;
     }
     const split = state.panes.length > 1;
@@ -1295,8 +1300,8 @@ function createViewer(t) {
     // Works on the content origin get the frame sandbox that repeats the server's policy.
     const sandbox = hosted(r) ? '' : ' sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-pointer-lock allow-downloads" referrerpolicy="no-referrer"';
     // Replace the whole frame so the previous scene's WebGL context is released.
-    body.innerHTML = `<iframe src="${esc(src)}" title="${esc(r.title)} · ${esc(label(r))}" allow="fullscreen; autoplay; clipboard-write" allowfullscreen${sandbox}></iframe>
-      <div class="loader"${bg ? ` style="--cover:url('${esc(bg)}')"` : ''}><div class="spinner" aria-hidden="true"></div><b>${esc(r.title)}</b><span>${esc(label(r))} · 正在载入</span></div>`;
+    body.innerHTML = `<iframe data-i18n-ignore src="${esc(src)}" title="${esc(r.title)} · ${esc(label(r))}" allow="fullscreen; autoplay; clipboard-write" allowfullscreen${sandbox}></iframe>
+      <div class="loader"${bg ? ` style="--cover:url('${esc(bg)}')"` : ''}><div class="spinner" aria-hidden="true"></div><b><span data-i18n-ignore>${esc(r.title)}</span></b><span><span data-i18n-ignore>${esc(label(r))}</span> · 正在载入</span></div>`;
     const frame = $('iframe', body);
     if (split) controls.add(frame, { inject: hosted(r) });
     const loader = $('.loader', body);
@@ -1316,17 +1321,17 @@ function createViewer(t) {
     const split = state.panes.length > 1;
     guide.innerHTML = `<div class="guide-in">
       <div class="guide-head">
-        <div><p class="eyebrow">${split ? `${state.active === 0 ? 'A 栏' : 'B 栏'} · ` : ''}操作指南</p><h2>${esc(r.title)}</h2><p class="guide-model">${esc(label(r))}</p></div>
+        <div><p class="eyebrow">${split ? `${state.active === 0 ? 'A 栏' : 'B 栏'} · ` : ''}操作指南</p><h2><span data-i18n-ignore>${esc(r.title)}</span></h2><p data-i18n-ignore class="guide-model"><span data-i18n-ignore>${esc(label(r))}</span></p></div>
         <button class="icon-btn" data-v="guide" aria-label="收起指南">${icon('close')}</button>
       </div>
-      ${r.summary ? `<p class="guide-summary">${esc(r.summary)}</p>` : ''}
+      ${r.summary ? `<p class="guide-summary"><span data-i18n-ignore>${esc(r.summary)}</span></p>` : ''}
       ${workFacts(r)}
       ${platform.available ? `<div class="guide-block"><h3>表情</h3>${reactionBar(workKey(t, r), { locked: !interactive(r) }) || '<p class="fine">存疑作品不再接受互动。</p>'}</div>` : ''}
       ${g.presets?.length ? `<div class="guide-block"><h3>快速跳转</h3>
-        <div class="presets">${g.presets.map((p) => `<button class="chip${state.queries[state.active] === p.query ? ' on' : ''}" data-preset="${esc(p.query)}">${esc(p.label)}</button>`).join('')}
+        <div class="presets">${g.presets.map((p) => `<button class="chip${state.queries[state.active] === p.query ? ' on' : ''}" data-preset="${esc(p.query)}"><span data-i18n-ignore>${esc(p.label)}</span></button>`).join('')}
         <button class="chip ghost" data-preset="">默认</button></div></div>` : ''}
-      ${(g.sections ?? []).map((s) => `<div class="guide-block"><h3>${esc(s.title)}</h3><dl class="keys">${s.items.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl></div>`).join('')}
-      ${g.tips?.length ? `<div class="guide-block"><h3>看点</h3><ul class="tips">${g.tips.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+      ${(g.sections ?? []).map((s) => `<div data-i18n-ignore class="guide-block"><h3>${esc(s.title)}</h3><dl class="keys">${s.items.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl></div>`).join('')}
+      ${g.tips?.length ? `<div class="guide-block"><h3>看点</h3><ul data-i18n-ignore class="tips">${g.tips.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
       <div class="guide-block"><h3>本站快捷键</h3><dl class="keys">
         <div><dt>← / →</dt><dd>切换作品</dd></div>
         <div><dt>G · S · F</dt><dd>指南 · 并排 · 全屏</dd></div>
@@ -1511,6 +1516,7 @@ function createViewer(t) {
 
 // ---- router ---------------------------------------------------------------------------
 function notFound(msg) {
+  setPageTitle(['找不到页面', DATA.title]);
   root.innerHTML = `${header()}<main class="page wrap empty-page"><p class="kicker"><span class="num">404</span></p><h1>找不到页面</h1><p>${esc(msg)}</p><a class="btn primary" href="#/">回到首页${icon('right')}</a></main>`;
 }
 
@@ -1884,6 +1890,6 @@ try {
 } catch (err) {
   window.ArenaEntry?.fail();
   root.innerHTML = err.status === 429
-    ? `<main class="wrap empty-page"><h1>访问较频繁</h1><p>${esc(err.message)}</p></main>`
-    : `<main class="wrap empty-page"><h1>数据加载失败</h1><p>${esc(err.message)}</p><p>本地查看请先运行 <code>npm run build</code>，再用 <code>npm start</code> 打开。</p></main>`;
+    ? `<main class="wrap empty-page">${languageButton()}<h1>访问较频繁</h1><p>${esc(err.message)}</p></main>`
+    : `<main class="wrap empty-page">${languageButton()}<h1>数据加载失败</h1><p>${esc(err.message)}</p><p>本地查看请先运行 <code>npm run build</code>，再用 <code>npm start</code> 打开。</p></main>`;
 }

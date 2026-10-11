@@ -1,3 +1,4 @@
+import { setPageTitle } from './i18n.js';
 // Personal center (#/me), and the admin review queue (#/review[/<tab>]).
 import { $, $$, brandMark, esc, formatBytes, formatDate, formatTime, icon, img } from './ui.js';
 import { memberChips, memberList, memberResults, membersState, openMember } from './member-management.js';
@@ -45,7 +46,7 @@ function accountNav(ctx, current) {
 
 function thumb(ctx, w, { link = true } = {}) {
   const src = Object.values(w.captures ?? {})[0] ?? w.cover;
-  const inner = src ? img(src, '') : `<span class="img-empty upload-cover"><b>${esc(w.title)}</b></span>`;
+  const inner = src ? img(src, '') : `<span class="img-empty upload-cover"><b data-i18n-ignore>${esc(w.title)}</b></span>`;
   return link
     ? `<a class="work-thumb" href="#/${esc(w.task)}/${esc(w.id)}" tabindex="-1" aria-hidden="true">${inner}</a>`
     : `<span class="work-thumb" aria-hidden="true">${inner}</span>`;
@@ -71,20 +72,26 @@ const HELD = {
   },
 };
 const held = (item) => Boolean(HELD.work[item.moderation?.status]);
+const dateHtml = (value) => `<time data-i18n-date="${esc(value)}">${formatDate(value)}</time>`;
+const timeHtml = (value) => `<time data-i18n-time="${esc(value)}">${formatTime(value)}</time>`;
+const sourceHtml = (ctx, w) => [ctx.harnessOf(w)?.name ? `<span data-i18n-ignore>${esc(ctx.harnessOf(w).name)}</span>` : '', ctx.providerOf(w)?.name ? `<span>${esc(ctx.providerOf(w).name)}</span>` : ''].filter(Boolean).join(' · ');
 // What an admin needs about a held work: the automatic or human verdict and any error code.
 function contentNote(w) {
   if (!held(w)) return '';
   const m = w.moderation;
-  const text = [autoRejected(m) ? (injected(m) ? '自动拒绝 · 提示词注入' : '自动拒绝') : '', m.reason, m.categories?.length ? `类别：${riskLabels(m.categories).join('、')}` : '',
-    m.error ? `错误：${m.error}` : ''].filter(Boolean).join(' · ') || (m.status === 'pending' ? '自动审核进行中' : '');
-  return text ? `<p class="result-reason">${icon(m.status === 'rejected' ? 'alert' : 'guide')}<span>${esc(text)}</span></p>` : '';
+  const parts = [autoRejected(m) ? `<span>${injected(m) ? '自动拒绝 · 提示词注入' : '自动拒绝'}</span>` : '',
+    m.reason ? `<span data-i18n-ignore>${esc(m.reason)}</span>` : '',
+    m.categories?.length ? `<span>类别：</span>${riskLabels(m.categories).map((label) => `<span>${esc(label)}</span>`).join(' · ')}` : '',
+    m.error ? `<span>错误：</span><span data-i18n-ignore>${esc(m.error)}</span>` : ''].filter(Boolean);
+  const text = parts.join(' · ') || (m.status === 'pending' ? '<span>自动审核进行中</span>' : '');
+  return text ? `<p class="result-reason">${icon(m.status === 'rejected' ? 'alert' : 'guide')}${text}</p>` : '';
 }
 function heldNote(kind, item) {
   const status = item.moderation?.status;
   const hint = HELD[kind][status];
   if (!hint) return '';
-  const reason = status === 'rejected' && item.moderation.reason ? `原因：${item.moderation.reason}` : '';
-  return `<p class="result-reason">${icon(status === 'rejected' ? 'alert' : 'clock')}<span>${esc(hint + reason)}</span></p>`;
+  const reason = status === 'rejected' && item.moderation.reason ? `<span>原因：</span><span data-i18n-ignore>${esc(item.moderation.reason)}</span>` : '';
+  return `<p class="result-reason">${icon(status === 'rejected' ? 'alert' : 'clock')}<span>${esc(hint)}</span>${reason}</p>`;
 }
 
 // Where an upload stands for its author: the stages it passes, where it is, and what that means.
@@ -105,12 +112,12 @@ function authorStage(w, questions) {
   const stage = (label, group, badge, note, failed = false) => ({ stages: stages.map((s) => [s, '']), current: at(label), group, badge, note, failed });
   if (content === 'pending') return stage('内容审核', 'held', '内容审核中', auto ? '自动检查内容，通常几分钟，通过前只有你能看到。' : '管理员检查内容，通过前只有你能看到。');
   if (content === 'review') return stage('内容审核', 'held', '等待人工复核', HELD.work.review);
-  if (content === 'rejected') return stage('内容审核', 'issue', '内容未通过', `作品不会公开。${w.moderation.reason ? `原因：${w.moderation.reason}。` : ''}可以删除后修改，再重新上传。`, true);
+  if (content === 'rejected') return { ...stage('内容审核', 'issue', '内容未通过', '', true), noteHtml: `<span>作品不会公开。</span>${w.moderation.reason ? `<span>原因：</span><span data-i18n-ignore>${esc(w.moderation.reason)}</span>。` : ''}<span>可以删除后修改，再重新上传。</span>` };
   if (['pending', 'review'].includes(asked)) return stage('题目审核', 'held', '题目审核中', '所属题目正在人工审核，通过后作品进入核验流程，届时可以编辑信息。');
   if (asked === 'rejected') return stage('题目审核', 'issue', '题目未通过', '所属题目没有通过审核，作品不会公开。', true);
-  if (w.status === 'questioned') return stage('存疑', 'issue', '存疑', `核验存疑${w.reason ? `：${w.reason}` : ''}。存疑作品不能再修改，可以删除后重新上传。`, true);
-  if (w.status === 'verified') return { ...stage('已验证', 'verified', '已验证', `${w.reviewedAt ? `${formatDate(w.reviewedAt)} ` : ''}通过核验，${faceOn(w) ? `已公开${arenaText(w.arena) ? `，${arenaText(w.arena)}` : ''}` : '已被管理员撤下'}。`), current: stages.length };
-  return stage('等待核验', 'waiting', '等待核验', `等待管理员核对生成信息，公开展示以人工审核和展示设置为准。${days > 0 ? `已等待 ${days} 天。` : ''}`);
+  if (w.status === 'questioned') return { ...stage('存疑', 'issue', '存疑', '', true), noteHtml: `<span>核验存疑</span>${w.reason ? `：<span data-i18n-ignore>${esc(w.reason)}</span>` : ''}。<span>存疑作品不能再修改，可以删除后重新上传。</span>` };
+  if (w.status === 'verified') return { ...stage('已验证', 'verified', '已验证', ''), noteHtml: `${w.reviewedAt ? `${dateHtml(w.reviewedAt)} ` : ''}<span>已通过核验</span> · <span>${faceOn(w) ? '已公开' : '已被管理员撤下'}</span>${faceOn(w) && arenaText(w.arena) ? ` · <span>${arenaText(w.arena)}</span>` : ''}`, current: stages.length };
+  return { ...stage('等待核验', 'waiting', '等待核验', ''), noteHtml: `<span>等待管理员核对生成信息，公开展示以人工审核和展示设置为准。</span>${days > 0 ? `<span>已等待 ${days} 天。</span>` : ''}` };
 }
 
 // Where an upload sits in the review queue. Content comes first; verification needs released
@@ -133,6 +140,7 @@ const galleryOn = (w) => Boolean(w.show_gallery ?? ['show2', 'both'].includes(w.
 const faceOn = (w) => galleryOn(w) || Boolean(w.show_arena ?? ['show1', 'both'].includes(w.audience));
 // One sentence for where a decided upload shows now.
 const doneLine = (w) => (faceOn(w) ? `已公开${galleryOn(w) ? '' : '（未上展览馆）'} · ${arenaText(w.arena) || '不进盲评'}` : '已撤下：展览馆和盲评都不显示');
+const doneHtml = (w) => faceOn(w) ? `<span>已公开</span>${galleryOn(w) ? '' : '<span>（未上展览馆）</span>'} · <span>${arenaText(w.arena) || '不进盲评'}</span>` : '<span>已撤下：展览馆和盲评都不显示</span>';
 // The face switches behind the row actions and the dialog's take-down: [button, faces, toast].
 const FACE_ACTIONS = {
   'arena-on': ['开启盲评', { show_arena: true }, '已开启盲评'],
@@ -147,6 +155,7 @@ const faceButton = (w, action, primary = false) => `<button class="btn sm${prima
 const pickBox = (id, title, picked) => `<label class="row-pick"><input type="checkbox" data-pick="${esc(id)}"${picked ? ' checked' : ''} aria-label="选择「${esc(title)}」"></label>`;
 // Who published a work or question, for staff: members by name, staff by name and role.
 const publisher = (ctx, item) => (byStaff(item) ? `${item.author?.name ?? ctx.DATA.title} · ${ROLE_LABELS[item.author?.role ?? 'admin']}` : item.author.name ?? '已注销的用户');
+const publisherHtml = (ctx, item) => `<span data-i18n-ignore>${esc(item.author?.name ?? (byStaff(item) ? ctx.DATA.title : ''))}</span>${byStaff(item) ? ` · <span>${ROLE_LABELS[item.author?.role ?? 'admin']}</span>` : item.author?.name ? '' : '<span>已注销的用户</span>'}`;
 // What the admin does next with a work, by bucket; one primary action per row. A moderator's
 // own work opens read-only, for another admin to decide; only senior admins delete.
 function adminAction(w, bucket) {
@@ -182,16 +191,16 @@ function workRow(ctx, w, { bucket = null, questions = [], picked } = {}) {
     ${picked === undefined ? '' : pickBox(pickId(w), w.title, picked)}
     ${thumb(ctx, w, { link: false })}
     <div class="work-main">
-      <p class="result-model">${brandMark(model, 'brand-mark sm')}<b>${esc(w.modelName)}</b>${w.effort ? `<span class="badge">${esc(w.effort)}</span>` : ''}${mine
+      <p class="result-model">${brandMark(model, 'brand-mark sm')}<b data-i18n-ignore>${esc(w.modelName)}</b>${w.effort ? `<span class="badge" data-i18n-ignore>${esc(w.effort)}</span>` : ''}${mine
         ? `<span class="status status-${tone}">${icon({ issue: 'alert', verified: 'check' }[mine.group] ?? 'clock')}${mine.badge}</span>`
         : `${moderationBadge(w.moderation, HELD.work[w.moderation?.status])}${statusBadge(w.status, { always: true, reason: w.reason })}`}</p>
-      <h3><a href="${href}"${hidden ? ' target="_blank" rel="noopener"' : ''}>${esc(w.title)}</a></h3>
-      <p class="work-meta">${esc(task?.title ?? questions.find((q) => q.id === w.task)?.title ?? w.task)}${variant ? ` · ${esc(variant.label)}` : ''}${ctx.sourceLine(w) ? ` · ${esc(ctx.sourceLine(w))}` : w.tool ? ` · 作者原始声明：${esc(w.tool)}` : ''}${w.addedAt ? ` · ${formatDate(w.addedAt)}` : ''}${admin ? ` · ${esc(publisher(ctx, w))}` : ''}</p>
+      <h3><a href="${href}"${hidden ? ' target="_blank" rel="noopener"' : ''} data-i18n-ignore>${esc(w.title)}</a></h3>
+      <p class="work-meta"><span data-i18n-ignore>${esc(task?.title ?? questions.find((q) => q.id === w.task)?.title ?? w.task)}</span>${variant ? ` · <span data-i18n-ignore>${esc(variant.label)}</span>` : ''}${ctx.sourceLine(w) ? ` · ${sourceHtml(ctx, w)}` : w.tool ? ` · 作者原始声明：<span data-i18n-ignore>${esc(w.tool)}</span>` : ''}${w.addedAt ? ` · ${dateHtml(w.addedAt)}` : ''}${admin ? ` · ${publisherHtml(ctx, w)}` : ''}</p>
       ${mine
-        ? `${stageTrack(mine.stages, mine.current, { row: true, compact: true, failed: mine.failed })}<p class="result-reason">${icon(mine.failed ? 'alert' : mine.group === 'verified' ? 'check' : 'clock')}<span>${esc(mine.note)}</span></p>`
+        ? `${stageTrack(mine.stages, mine.current, { row: true, compact: true, failed: mine.failed })}<p class="result-reason">${icon(mine.failed ? 'alert' : mine.group === 'verified' ? 'check' : 'clock')}<span>${mine.noteHtml ?? esc(mine.note)}</span></p>`
         : `${contentNote(w) || (bucket === 'rejected' ? `<p class="result-reason">${icon('alert')}<span>所属题目未通过审核，作品不会公开。</span></p>` : '')}
-      ${['verified', 'off'].includes(bucket) ? `<p class="result-reason">${icon(bucket === 'off' ? 'alert' : 'check')}<span>${esc(doneLine(w))}</span></p>` : ''}
-      ${w.reason ? `<p class="result-reason">${icon('alert')}<span>${esc(w.reason)}</span></p>` : ''}`}
+      ${['verified', 'off'].includes(bucket) ? `<p class="result-reason">${icon(bucket === 'off' ? 'alert' : 'check')}<span>${doneHtml(w)}</span></p>` : ''}
+      ${w.reason ? `<p class="result-reason">${icon('alert')}<span data-i18n-ignore>${esc(w.reason)}</span></p>` : ''}`}
     </div>
     <div class="work-side">
       ${reactionSummary(w)}
@@ -211,7 +220,7 @@ function editWork(ctx, w) {
     title: '编辑作品信息',
     className: 'edit-work-sheet',
     body: `<form class="submit-form" data-edit-form novalidate>
-      <p class="sheet-text">核验通过前可以修改。${platform.site.contentModeration ? '改动文字后会重新做内容审核，审核期间作品暂不公开。' : ''}</p>
+      <p class="sheet-text"><span>核验通过前可以修改。</span> ${platform.site.contentModeration ? '<span>改动文字后会重新做内容审核，审核期间作品暂不公开。</span>' : ''}</p>
       ${workFieldsHtml(ctx, task, w)}
       <p class="form-error" role="alert"></p>
       <div class="sheet-actions"><button class="btn" type="button" data-sheet-close>取消</button><button class="btn primary" type="submit">保存</button></div>
@@ -280,13 +289,13 @@ function questionRow(ctx, question) {
   const note = m.status === 'rejected'
     ? `${m.reason ? reviewVerdict(m) : ''}<p class="result-reason">${icon('guide')}<span>${resubmit ? '按意见修改后可以重新提交，题目和示例结果都会保留。' : '这道题公开过，不能修改后重新提交。'}</span></p>`
     : again ? `<p class="result-reason">${icon('clock')}<span>已重新提交，管理员会对照上次意见审核。通过前只有你能看到。</span></p>${m.previous?.reason
-      ? `<details class="prompt-peek question-previous"><summary>${icon('guide')}上次审核意见${m.previous.at ? ` · ${esc(formatDate(m.previous.at))}` : ''}</summary><p>${esc(m.previous.reason)}</p></details>` : ''}`
+      ? `<details class="prompt-peek question-previous"><summary>${icon('guide')}上次审核意见${m.previous.at ? ` · ${dateHtml(m.previous.at)}` : ''}</summary><p data-i18n-ignore>${esc(m.previous.reason)}</p></details>` : ''}`
       : heldNote('question', question);
   return `<article class="submission-question${resubmit ? ' can-resubmit' : ''}">
     <span class="submission-question-mark" aria-hidden="true">${icon('text')}</span>
-    <div class="submission-question-body"><h3>${hidden ? esc(question.title) : `<a href="#/${esc(question.id)}">${esc(question.title)}</a>`}${moderationBadge(m, HELD.question[m.status], QUESTION_LABELS)}${again ? `<span class="badge">第 ${m.round} 次提交</span>` : ''}</h3>
-      <p class="summary">${esc(question.summary)}</p>
-      <p class="work-meta">${[categoryLabel(question.category), ...domainsOf(question)].filter(Boolean).map(esc).join(' · ')}<span>${esc(question.date)}${hidden ? '' : ` · ${works} 件作品`}</span></p>
+    <div class="submission-question-body"><h3>${hidden ? `<span data-i18n-ignore>${esc(question.title)}</span>` : `<a href="#/${esc(question.id)}" data-i18n-ignore>${esc(question.title)}</a>`}${moderationBadge(m, HELD.question[m.status], QUESTION_LABELS)}${again ? `<span class="badge">第 ${m.round} 次提交</span>` : ''}</h3>
+      <p class="summary" data-i18n-ignore>${esc(question.summary)}</p>
+      <p class="work-meta">${[categoryLabel(question.category), ...domainsOf(question)].filter(Boolean).map((label) => `<span>${esc(label)}</span>`).join(' · ')}<span>${esc(question.date)}${hidden ? '' : ` · ${works} 件作品`}</span></p>
       ${note}
     </div><div class="actions">${hidden ? '' : `<a class="btn sm" href="#/${esc(question.id)}">查看题目${icon('next')}</a>`}${resubmit ? `<a class="btn sm primary" href="#/new/${encodeURIComponent(question.id)}">修改后重新提交${icon('next')}</a>` : ''}${works && !hidden ? '' : `<button class="icon-btn" data-delete-question="${esc(question.id)}" title="删除题目" aria-label="删除「${esc(question.title)}」">${icon('trash')}</button>`}</div>
   </article>`;
@@ -348,8 +357,8 @@ function profileOverview(state) {
         <label class="field-label" for="profile-nickname">昵称</label>
         <div class="profile-name-row"><input class="input" id="profile-nickname" name="nickname" value="${esc(name)}" required maxlength="24" autocomplete="nickname"><button class="btn primary" type="submit">保存</button><button class="btn" type="button" data-edit-cancel>取消</button></div>
         <p class="form-error" data-profile-error role="alert" hidden></p>
-      </form>` : `<p class="profile-name"><b>${esc(name)}</b><button class="btn sm ghost" type="button" data-edit-name>编辑昵称</button></p>`}
-      <p class="profile-account">登录账号 ${esc(user.name)}${state.joinedAt ? ` · ${formatDate(state.joinedAt)} 加入` : ''}</p>
+      </form>` : `<p class="profile-name"><b data-i18n-ignore>${esc(name)}</b><button class="btn sm ghost" type="button" data-edit-name>编辑昵称</button></p>`}
+      <p class="profile-account"><span>登录账号</span> <span data-i18n-ignore>${esc(user.name)}</span>${state.joinedAt ? ` · <span>加入</span> ${dateHtml(state.joinedAt)}` : ''}</p>
     </div><button class="link profile-logout" type="button" data-logout>退出登录</button>
   </section>
   <section class="profile-bindings" aria-labelledby="bindings-title">
@@ -436,7 +445,7 @@ function pickTask(ctx) {
     title: '上传到哪道题？',
     className: 'upload-pick-sheet',
     body: tasks.length
-      ? `<p class="sheet-text">每件作品都对应一道题目，请按它的提示词生成后上传。</p><div class="upload-picks">${tasks.map((t) => `<a class="upload-pick" href="#/submit/${esc(t.id)}"><b>${esc(t.title)}</b><span>${t.results.filter(ctx.interactive).length} 件作品</span>${icon('next')}</a>`).join('')}</div>`
+      ? `<p class="sheet-text">每件作品都对应一道题目，请按它的提示词生成后上传。</p><div class="upload-picks">${tasks.map((t) => `<a class="upload-pick" href="#/submit/${esc(t.id)}"><b><span data-i18n-ignore>${esc(t.title)}</span></b><span>${t.results.filter(ctx.interactive).length} 件作品</span>${icon('next')}</a>`).join('')}</div>`
       : '<p class="sheet-text">暂时没有接受投稿的题目。</p>',
   });
   sheet.el.addEventListener('click', (e) => { if (e.target.closest('a')) sheet.close(); });
@@ -527,7 +536,7 @@ function mine(root, ctx) {
     const calendar = root.querySelector('.activity-scroll');
     if (calendar) calendar.scrollLeft = calendar.scrollWidth;
     ctx.settleImages();
-    document.title = `个人中心 · ${ctx.DATA.title}`;
+    setPageTitle(['个人中心', ctx.DATA.title]);
   }
   root.onsubmit = async (event) => {
     const form = event.target.closest('[data-profile-form]');
@@ -652,20 +661,20 @@ export function openReview(ctx, w, { questions = [], onDecided } = {}) {
     className: 'review-sheet',
     body: `<div class="review">
       <div class="review-facts">
-        <div class="review-head">${thumb(ctx, w, { link: shown })}<div><h3>${esc(w.title)}</h3><p class="result-model">${statusBadge(w.status, { always: true })}<span>${esc(task?.title ?? w.task)}</span></p>
+        <div class="review-head">${thumb(ctx, w, { link: shown })}<div><h3 data-i18n-ignore>${esc(w.title)}</h3><p class="result-model">${statusBadge(w.status, { always: true })}<span data-i18n-ignore>${esc(task?.title ?? w.task)}</span></p>
           <div class="actions"><a class="btn sm" href="${esc(w.scene)}" target="_blank" rel="noopener">打开作品${icon('arrow')}</a>${shown ? `<a class="btn sm" href="#/${esc(w.task)}/${esc(w.id)}">在展厅中查看</a>` : ''}</div></div></div>
         <dl class="facts">
-          <div><dt>发布者</dt><dd>${esc(publisher(ctx, w))}${w.addedAt ? ` · ${formatTime(w.addedAt)}` : ''}</dd></div>
+          <div><dt>发布者</dt><dd>${publisherHtml(ctx, w)}${w.addedAt ? ` · ${timeHtml(w.addedAt)}` : ''}</dd></div>
           <div><dt>声明的模型</dt><dd>${esc(w.modelName)}${w.vendor ? ` · ${esc(w.vendor)}` : ''}${w.model ? '' : `（未收录${guess ? `，按名称推断为 ${esc(guess)}` : ''}，可在数据仓注册表补录）`}</dd></div>
           <div><dt>推理档位</dt><dd>${esc(w.effort || '默认 / 未设置')}</dd></div>
-          <div><dt>Harness</dt><dd>${esc(ctx.harnessOf(w)?.name ?? '未注明')}</dd></div>
+          <div><dt>Harness</dt><dd>${ctx.harnessOf(w)?.name ? `<span data-i18n-ignore>${esc(ctx.harnessOf(w).name)}</span>` : '未注明'}</dd></div>
           <div><dt>服务商</dt><dd>${esc(ctx.providerOf(w)?.name ?? '未注明')}</dd></div>
           <div><dt>作者原始声明</dt><dd>${esc(w.tool || '未注明')}</dd></div>
           ${w.files ? `<div><dt>文件</dt><dd>${esc(w.sourceName ?? '')} · ${w.files} 个 · ${formatBytes(w.bytes)} · 入口 ${esc(w.root ? `${w.root}/` : '')}${esc(w.entry ?? '')}</dd></div>` : ''}
-          ${w.reviewer ? `<div><dt>上次核验</dt><dd>${esc(w.reviewer)} · ${formatTime(w.reviewedAt)}</dd></div>` : ''}
+          ${w.reviewer ? `<div><dt>上次核验</dt><dd><span data-i18n-ignore>${esc(w.reviewer)}</span> · ${timeHtml(w.reviewedAt)}</dd></div>` : ''}
         </dl>
-        ${w.summary ? `<p class="review-text">${esc(w.summary)}</p>` : ''}
-        <h4>生成说明</h4><p class="review-text">${w.note ? esc(w.note) : '<span class="muted">作者没有填写。</span>'}</p>
+        ${w.summary ? `<p class="review-text" data-i18n-ignore>${esc(w.summary)}</p>` : ''}
+        <h4>生成说明</h4><p class="review-text">${w.note ? `<span data-i18n-ignore>${esc(w.note)}</span>` : '<span class="muted">作者没有填写。</span>'}</p>
         ${w.checks ? `<h4>上传检查</h4><ul class="checks">${w.checks.map((c) => `<li class="check is-${c.state}">${icon(c.state === 'ok' ? 'check' : c.state === 'info' ? 'guide' : 'alert')}<span><b>${esc(c.label)}</b>${esc(c.detail)}</span></li>`).join('')}</ul>` : ''}
         ${w.trial ? `<h4>作者浏览器中的试加载</h4><ul class="checks">${trialRows(w.trial)}</ul>` : ''}
       </div>
@@ -675,9 +684,9 @@ export function openReview(ctx, w, { questions = [], onDecided } = {}) {
           ${workFieldsHtml(ctx, task, w, { expanded: true })}
           <div class="review-meta-actions"><button type="button" class="btn sm" data-save-meta>只保存信息</button></div>
         </details>
-        <p class="fine">${w.status === 'verified' ? `现在：${esc(doneLine(w))}` : '通过后公开到展览馆；单轮生成且无人工介入的作品同时进入盲评。'}</p>
+        <p class="fine">${w.status === 'verified' ? `<span>现在：</span>${doneHtml(w)}` : '通过后公开到展览馆；单轮生成且无人工介入的作品同时进入盲评。'}</p>
         ${w.status === 'verified' ? '' : '<label class="field"><span class="field-label"><input type="checkbox" name="toInbox"> 娱乐作品（进竞技场收件箱）</span><small>勾选后不进展览馆，也不进任何池子</small></label>'}
-        <label class="field"><span class="field-label">存疑原因<small>标记存疑时必填，作者与访客都能看到</small></span><textarea class="input" name="reason" rows="3" maxlength="500">${esc(w.status === 'questioned' ? w.reason : '')}</textarea></label>
+        <label class="field"><span class="field-label">存疑原因<small>标记存疑时必填，作者与访客都能看到</small></span><textarea data-i18n-ignore class="input" name="reason" rows="3" maxlength="500">${esc(w.status === 'questioned' ? w.reason : '')}</textarea></label>
         <p class="form-error" role="alert"></p>
         ${canDecide(w) ? '' : `<div class="review-blocked">${icon('alert')}<p>这是你发布的作品，需要由其他管理员核验。</p></div>`}
         <div class="sheet-actions">
@@ -768,14 +777,14 @@ function openContent(ctx, w, { questions = [], onDecided } = {}) {
     className: 'review-sheet',
     body: `<div class="review">
       <div class="review-facts">
-        <div class="review-head">${thumb(ctx, w, { link: false })}<div><h3>${esc(w.title)}</h3><p class="result-model">${moderationBadge(m)}<span>${esc(task?.title ?? w.task)}</span></p>
+        <div class="review-head">${thumb(ctx, w, { link: false })}<div><h3 data-i18n-ignore>${esc(w.title)}</h3><p class="result-model">${moderationBadge(m)}<span data-i18n-ignore>${esc(task?.title ?? w.task)}</span></p>
           <div class="actions"><a class="btn sm" href="${esc(w.scene)}" target="_blank" rel="noopener">打开作品${icon('arrow')}</a></div></div></div>
         <dl class="facts">
-          <div><dt>发布者</dt><dd>${esc(publisher(ctx, w))}${w.addedAt ? ` · ${formatTime(w.addedAt)}` : ''}</dd></div>
+          <div><dt>发布者</dt><dd>${publisherHtml(ctx, w)}${w.addedAt ? ` · ${timeHtml(w.addedAt)}` : ''}</dd></div>
           <div><dt>审核来源</dt><dd>${esc(source)}</dd></div>
-          <div><dt>结论</dt><dd>${esc(m.reason || '暂无')}</dd></div>
+          <div><dt>结论</dt><dd>${m.reason ? `<span data-i18n-ignore>${esc(m.reason)}</span>` : '暂无'}</dd></div>
           ${m.categories?.length ? `<div><dt>风险类别</dt><dd>${esc(riskLabels(m.categories).join('、'))}</dd></div>` : ''}
-          ${m.error ? `<div><dt>未完成原因</dt><dd>${esc(m.error)}</dd></div>` : ''}
+          ${m.error ? `<div><dt>未完成原因</dt><dd data-i18n-ignore>${esc(m.error)}</dd></div>` : ''}
         </dl>
         ${listed ? '' : '<p class="fine">这是新题目的示例结果：题目和内容通过审核后，结果才会进入核验。</p>'}
       </div>
@@ -785,7 +794,7 @@ function openContent(ctx, w, { questions = [], onDecided } = {}) {
           ${workFieldsHtml(ctx, task, w, { expanded: true })}
           <div class="review-meta-actions"><button type="button" class="btn sm" data-save-meta>只保存信息</button></div>
         </details>
-        <label class="field"><span class="field-label">理由<small>拒绝时必填，作者会看到</small></span><textarea class="input" name="reason" rows="3" maxlength="500"></textarea></label>
+        <label class="field"><span class="field-label">理由<small>拒绝时必填，作者会看到</small></span><textarea data-i18n-ignore class="input" name="reason" rows="3" maxlength="500"></textarea></label>
         <p class="form-error" role="alert"></p>
         <div class="sheet-actions">
           ${canDecide(w) && platform.site.contentModeration && platform.site.autoModeration !== false && m.status !== 'pending' ? '<button type="button" class="btn ghost" data-content-act="retry">重新自动审核</button>' : ''}
@@ -859,11 +868,11 @@ function resubmission(q) {
   const fields = CHANGE_FIELDS.filter(([key]) => Object.hasOwn(before, key) && JSON.stringify(before[key]) !== JSON.stringify(q[key]));
   const text = (key, value) => (key === 'category' ? categoryLabel(value) : key === 'domains' ? (value ?? []).join('、') : value ?? '');
   const changes = fields.filter(([key]) => key !== 'prompt')
-    .map(([key, label]) => `<li><b>${label}</b><del>${esc(text(key, before[key]))}</del><span>${esc(text(key, q[key]))}</span></li>`).join('');
-  const prompt = fields.some(([key]) => key === 'prompt') ? `<div class="line-diff">${lineDiff(before.prompt, q.prompt ?? '')
+    .map(([key, label]) => `<li><b>${label}</b><del><span data-i18n-ignore>${esc(text(key, before[key]))}</span></del><span><span data-i18n-ignore>${esc(text(key, q[key]))}</span></span></li>`).join('');
+  const prompt = fields.some(([key]) => key === 'prompt') ? `<div class="line-diff" data-i18n-ignore>${lineDiff(before.prompt, q.prompt ?? '')
     .map(([op, line]) => `<div class="is-${DIFF_LINES[op][0]}"><span class="line-op">${DIFF_LINES[op][1]}</span><span>${esc(line)}</span></div>`).join('')}</div>` : '';
-  const decided = [before.reviewer, before.at ? `${formatDate(before.at)} 拒绝` : ''].filter(Boolean).join(' · ');
-  return `${before.reason ? `<div class="question-history"><p class="question-history-head">${icon('alert')}上次意见${decided ? `<span>· ${esc(decided)}</span>` : ''}</p><p>${esc(before.reason)}</p></div>` : ''}
+  const decided = [before.reviewer ? `<span data-i18n-ignore>${esc(before.reviewer)}</span>` : '', before.at ? `${dateHtml(before.at)} <span>拒绝</span>` : ''].filter(Boolean).join(' · ');
+  return `${before.reason ? `<div class="question-history"><p class="question-history-head">${icon('alert')}上次意见${decided ? `<span>· ${decided}</span>` : ''}</p><p data-i18n-ignore>${esc(before.reason)}</p></div>` : ''}
     <div class="question-history"><p class="question-history-head">本次改动<span>· ${fields.length ? fields.map(([, label]) => label).join('、') : '参考图、提交格式或示例结果'}</span></p>${changes ? `<ul class="question-changes">${changes}</ul>` : ''}${prompt}</div>`;
 }
 
@@ -877,9 +886,9 @@ function reviewQuestionRow(ctx, q, picked) {
   return `<article class="submission-question review-question">
     ${picked === undefined ? '' : pickBox(q.id, q.title, picked)}
     <span class="submission-question-mark" aria-hidden="true">${icon('text')}</span>
-    <div class="submission-question-body"><h3>${shown ? `<a href="#/${esc(q.id)}">${esc(q.title)}</a>` : esc(q.title)}${moderationBadge(q.moderation, '', QUESTION_LABELS)}${q.moderation?.previous ? `<span class="badge">重新提交 · 第 ${q.moderation.round} 次</span>` : ''}</h3>
-      <p class="summary">${esc(q.summary)}</p>
-      <p class="work-meta">${esc(publisher(ctx, q))}<span>${esc(q.date)} · ${q.works ?? 0} 件作品</span>${q.category ? `<span>${esc(categoryLabel(q.category))}</span>` : ''}${domainsOf(q).map((d) => `<span>${esc(d)}</span>`).join('')}</p>
+    <div class="submission-question-body"><h3>${shown ? `<a href="#/${esc(q.id)}" data-i18n-ignore><span data-i18n-ignore>${esc(q.title)}</span></a>` : `<span data-i18n-ignore><span data-i18n-ignore>${esc(q.title)}</span></span>`}${moderationBadge(q.moderation, '', QUESTION_LABELS)}${q.moderation?.previous ? `<span class="badge">重新提交 · 第 ${q.moderation.round} 次</span>` : ''}</h3>
+      <p class="summary" data-i18n-ignore>${esc(q.summary)}</p>
+      <p class="work-meta">${publisherHtml(ctx, q)}<span>${esc(q.date)} · ${q.works ?? 0} 件作品</span>${q.category ? `<span>${esc(categoryLabel(q.category))}</span>` : ''}${domainsOf(q).map((d) => `<span>${esc(d)}</span>`).join('')}</p>
       ${detail ? `<p class="result-reason">${icon(status === 'rejected' ? 'alert' : 'guide')}<span>${esc(detail)}</span></p>` : ''}
       ${resubmission(q)}
       ${samples.length ? `<ul class="question-samples">${samples.map(sampleRow).join('')}</ul>` : shown ? '' : '<p class="result-reason"><span>没有附带示例结果。</span></p>'}
@@ -909,11 +918,11 @@ function catalogRow(ctx, q, buckets) {
     .filter(([, k]) => k).map(([text, k]) => `${text} ${k}`);
   return `<article class="submission-question review-question">
     <span class="submission-question-mark" aria-hidden="true">${icon('text')}</span>
-    <div class="submission-question-body"><h3>${shown ? `<a href="#/${esc(q.id)}">${esc(q.title)}</a>` : esc(q.title)}${shown ? '' : `<span class="status status-${waiting ? 'unverified' : 'questioned'}">${icon(waiting ? 'clock' : 'alert')}${waiting ? '待审核' : '未公开'}</span>`}${shown && !q.acceptsUploads ? '<span class="badge">不收投稿</span>' : ''}</h3>
-      <p class="summary">${esc(q.summary)}</p>
-      <p class="work-meta">${esc(publisher(ctx, q))}${q.date ? `<span>${esc(q.date)}</span>` : ''}${q.category ? `<span>${esc(categoryLabel(q.category))}</span>` : ''}${domainsOf(q).map((d) => `<span>${esc(d)}</span>`).join('')}</p>
+    <div class="submission-question-body"><h3>${shown ? `<a href="#/${esc(q.id)}" data-i18n-ignore><span data-i18n-ignore>${esc(q.title)}</span></a>` : `<span data-i18n-ignore><span data-i18n-ignore>${esc(q.title)}</span></span>`}${shown ? '' : `<span class="status status-${waiting ? 'unverified' : 'questioned'}">${icon(waiting ? 'clock' : 'alert')}${waiting ? '待审核' : '未公开'}</span>`}${shown && !q.acceptsUploads ? '<span class="badge">不收投稿</span>' : ''}</h3>
+      <p class="summary" data-i18n-ignore>${esc(q.summary)}</p>
+      <p class="work-meta">${publisherHtml(ctx, q)}${q.date ? `<span>${esc(q.date)}</span>` : ''}${q.category ? `<span>${esc(categoryLabel(q.category))}</span>` : ''}${domainsOf(q).map((d) => `<span>${esc(d)}</span>`).join('')}</p>
       <p class="work-meta">${q.works ?? buckets.length} 件作品${counts.length ? ` · ${counts.join(' · ')}` : ''}${shown ? `<span>盲评池 ${pool?.works ?? 0} 件 · ${pool?.entries ?? 0} 个配置</span>` : ''}</p>
-      ${q.moderation?.status === 'rejected' && q.moderation.reason ? `<p class="result-reason">${icon('alert')}<span>${esc(q.moderation.reason)}</span></p>` : ''}
+      ${q.moderation?.status === 'rejected' && q.moderation.reason ? `<p class="result-reason">${icon('alert')}<span><span data-i18n-ignore>${esc(q.moderation.reason)}</span></span></p>` : ''}
     </div>
     <div class="actions">
       <a class="btn sm" href="#/review/works?task=${encodeURIComponent(q.id)}">管理作品</a>
@@ -947,7 +956,7 @@ function decideQuestion(q, status) {
         <p class="sheet-text">「${esc(q.title)}」${status === 'approved' ? '会公开到题库并开放投稿。' : withdraw ? '会从题库撤下，作者会看到下面的理由。' : '不会公开，作者会看到下面的理由。'}</p>
         ${withdraw ? `<p class="review-blocked">${icon('alert')}<span>${esc(withdraw)}</span></p>` : ''}
         ${status === 'approved' ? categoryFields(q) : ''}
-        <label class="field"><span class="field-label">理由${status === 'rejected' ? '<i>*</i>' : '<small>选填</small>'}</span><textarea class="input" name="reason" rows="3" maxlength="500"></textarea></label>
+        <label class="field"><span class="field-label">理由${status === 'rejected' ? '<i>*</i>' : '<small>选填</small>'}</span><textarea data-i18n-ignore class="input" name="reason" rows="3" maxlength="500"></textarea></label>
         <p class="form-error" role="alert"></p>
         <div class="sheet-actions"><button class="btn" type="button" data-sheet-close>取消</button><button class="btn primary${status === 'rejected' ? ' danger' : ''}" type="submit">${status === 'approved' ? '通过' : '拒绝'}</button></div>
       </form>`,
@@ -998,12 +1007,12 @@ function editQuestion(q, works = []) {
       onClose: () => { refs?.destroy(); resolve(saved); },
       body: `<form class="submit-form" data-q-edit-form novalidate>
         <label class="field"><span class="field-label">标题<i>*</i></span><input class="input" name="title" maxlength="70" required value="${esc(q.title)}"></label>
-        <label class="field"><span class="field-label">测试简述<i>*</i></span><textarea class="input" name="summary" maxlength="400" rows="2" required>${esc(q.summary ?? '')}</textarea></label>
+        <label class="field"><span class="field-label">测试简述<i>*</i></span><textarea data-i18n-ignore class="input" name="summary" maxlength="400" rows="2" required>${esc(q.summary ?? '')}</textarea></label>
         ${categoryFields(q)}
-        <label class="field"><span class="field-label">完整提示词<i>*</i>${locked ? `<small>已有 ${q.works} 件作品，不能再改</small>` : ''}</span><textarea class="input" name="prompt" maxlength="20000" rows="10" required${locked ? ' readonly' : ''}>${esc(q.prompt ?? '')}</textarea></label>
+        <label class="field"><span class="field-label">完整提示词<i>*</i>${locked ? `<small>已有 ${q.works} 件作品，不能再改</small>` : ''}</span><textarea data-i18n-ignore class="input" name="prompt" maxlength="20000" rows="10" required${locked ? ' readonly' : ''}>${esc(q.prompt ?? '')}</textarea></label>
         ${refs ? '<div data-ref-host></div>' : referenceSheet(q.references, { key: q.id, credit: q.referenceCredit, still: true })}
         <label class="field"><span class="field-label"><input type="checkbox" name="acceptsUploads"${q.acceptsUploads ? ' checked' : ''}> 接受投稿</span><small>关闭后题目照常展示，上传入口停用</small></label>
-        ${covers.length ? `<label class="field"><span class="field-label">封面作品<small>题库卡片显示这件作品</small></span><select class="input" name="cover"><option value="">自动（票选代表作，否则按默认规则）</option>${covers.map((w) => `<option value="${esc(w.id)}"${w.id === q.cover ? ' selected' : ''}>${esc(w.modelName)}${w.effort ? ` · ${esc(w.effort)}` : ''} · ${esc(w.title)}</option>`).join('')}</select></label>` : ''}
+        ${covers.length ? `<label class="field"><span class="field-label">封面作品<small>题库卡片显示这件作品</small></span><select class="input" name="cover"><option value="">自动（票选代表作，否则按默认规则）</option>${covers.map((w) => `<option data-i18n-ignore value="${esc(w.id)}"${w.id === q.cover ? ' selected' : ''}>${esc(w.modelName)}${w.effort ? ` · ${esc(w.effort)}` : ''} · ${esc(w.title)}</option>`).join('')}</select></label>` : ''}
         <p class="fine">保存不改变审核状态，改动会写入审核记录。</p>
         <p class="form-error" role="alert"></p>
         <div class="sheet-actions"><button class="btn" type="button" data-sheet-close>取消</button><button class="btn primary" type="submit">保存</button></div>
@@ -1171,9 +1180,9 @@ function review(root, ctx) {
     return `<article class="work-row is-pickable work-managed-row" data-status="${esc(w.status)}">
       <label class="row-pick"><input type="checkbox"${selectable ? ` data-pick="${key}"` : ' disabled'}${state.picked.has(pickId(w)) ? ' checked' : ''} aria-label="${esc(pickHint)}" title="${esc(pickHint)}"></label>
       ${thumb(ctx, w, { link: false })}<div class="work-main">
-        <p class="result-model">${brandMark(model, 'brand-mark sm')}<b>${esc(model.name)}</b>${w.effort ? `<span class="badge">${esc(w.effort)}</span>` : ''}</p>
-        <h3><a href="${href}"${hidden && w.scene ? ' target="_blank" rel="noopener"' : ''}>${esc(w.title)}</a></h3>
-        <p class="work-meta">${esc(task?.title ?? w.task)} · ${esc(publisher(ctx, w))}${w.addedAt ? ` · ${formatDate(w.addedAt)}` : ''}${w.mine ? ' · 本人作品' : ''}</p>
+        <p class="result-model">${brandMark(model, 'brand-mark sm')}<b data-i18n-ignore>${esc(model.name)}</b>${w.effort ? `<span class="badge" data-i18n-ignore>${esc(w.effort)}</span>` : ''}</p>
+        <h3><a href="${href}"${hidden && w.scene ? ' target="_blank" rel="noopener"' : ''} data-i18n-ignore>${esc(w.title)}</a></h3>
+        <p class="work-meta"><span data-i18n-ignore>${esc(task?.title ?? w.task)}</span> · ${publisherHtml(ctx, w)}${w.addedAt ? ` · ${dateHtml(w.addedAt)}` : ''}${w.mine ? ' · 本人作品' : ''}</p>
         <p class="work-state"><span${issue ? ' class="is-issue"' : ''}><small>${checkLabel}</small>${esc(checkText)}</span><span${ready && galleryOn(w) ? '' : ' class="is-muted"'}><small>展览馆</small>${ready && galleryOn(w) ? '已公开' : '未公开'}</span><span${arena === 'in_pool' ? '' : ' class="is-muted"'}${w.arena?.reason ? ` title="${esc(w.arena.reason)}"` : ''}><small>盲评</small>${arenaText}</span></p>
       </div><div class="work-side"><button class="btn sm" type="button" data-manage-work="${key}">管理</button></div>
     </article>`;
@@ -1278,11 +1287,11 @@ function review(root, ctx) {
     const empty = (text) => `<div class="board-empty"><p class="board-empty-title">${text}</p></div>`;
     // A logged work links to its gallery page, or to its preview while it is not in the gallery.
     const auditWork = (w, id) => !w ? `<span class="muted">${esc(id)}（已删除）</span>`
-      : ctx.inGallery(w.task, w.id) ? `<a href="#/${esc(w.task)}/${esc(w.id)}">${esc(w.title)}</a>`
-        : w.scene ? `<a href="${esc(w.scene)}" target="_blank" rel="noopener">${esc(w.title)}</a>` : esc(w.title);
+      : ctx.inGallery(w.task, w.id) ? `<a href="#/${esc(w.task)}/${esc(w.id)}" data-i18n-ignore>${esc(w.title)}</a>`
+        : w.scene ? `<a href="${esc(w.scene)}" target="_blank" rel="noopener" data-i18n-ignore>${esc(w.title)}</a>` : esc(w.title);
     let list;
     if (tab === 'log') {
-      list = state.audit.length ? `<ol class="audit">${state.audit.map((row) => `<li><time>${formatTime(row.at)}</time><span class="audit-actor">${esc(row.actor)}</span><b>${esc(ACTIONS[row.action] ?? row.action)}</b><span class="audit-work">${!row.work && row.action?.startsWith('question-') && row.task ? esc(questionTitles.get(row.task) ?? row.task) : ''}${row.work ? auditWork(byKey.get(`${row.task}/${row.work}`), row.work) : ''}${row.detail ? ` · ${esc(row.detail)}` : ''}</span></li>`).join('')}</ol>` : '<p class="muted">还没有记录。</p>';
+      list = state.audit.length ? `<ol class="audit">${state.audit.map((row) => `<li>${timeHtml(row.at)}<span class="audit-actor" data-i18n-ignore>${esc(row.actor)}</span><b>${esc(ACTIONS[row.action] ?? row.action)}</b><span class="audit-work" data-i18n-ignore>${!row.work && row.action?.startsWith('question-') && row.task ? esc(questionTitles.get(row.task) ?? row.task) : ''}${row.work ? auditWork(byKey.get(`${row.task}/${row.work}`), row.work) : ''}${row.detail ? ` · <span data-i18n-ignore>${esc(row.detail)}</span>` : ''}</span></li>`).join('')}</ol>` : '<p class="muted">还没有记录。</p>';
     } else if (tab === 'questions') {
       const waiting = questions.filter(questionWaiting).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
       list = state.questionsError ? `<p class="muted">${esc(state.questionsError)}</p>`
@@ -1299,7 +1308,7 @@ function review(root, ctx) {
       list = `${waiting ? `${bulk}<div class="work-list">${waiting}</div>` : empty(REVIEW_EMPTY.content)}
         ${auto ? `<h3 class="review-subhead">自动审核中 · ${queue('auto').length}<small>完成后会自动转入「核验」或回到这里，也可以提前人工审核</small></h3><div class="work-list is-muted">${auto}</div>` : ''}`;
     } else if (tab === 'done') {
-      const chips = `<div class="chips review-filters">${Object.entries(DONE_FILTERS).map(([id, text]) => `<button class="chip${id === state.filter ? ' on' : ''}" type="button" data-filter="${id}" aria-pressed="${id === state.filter}">${text} · ${filterCount(id)}</button>`).join('')}</div>`;
+      const chips = `<div class="chips review-filters">${Object.entries(DONE_FILTERS).map(([id, text]) => `<button class="chip${id === state.filter ? ' on' : ''}" type="button" data-filter="${id}" aria-pressed="${id === state.filter}"><span>${text}</span> · ${filterCount(id)}</button>`).join('')}</div>`;
       list = `${chips}${rows('done') ? `${bulk}<div class="work-list">${rows('done')}</div>` : empty(state.filter === 'all' ? '还没有核验过的作品' : `没有${DONE_FILTERS[state.filter]}的作品`)}`;
     } else {
       list = rows(tab) ? `${bulk}<div class="work-list">${rows(tab)}</div>` : empty(REVIEW_EMPTY[tab]);
@@ -1317,7 +1326,7 @@ function review(root, ctx) {
         ${state.works === null ? '<p class="muted">正在载入…</p>' : list}
       </section>
     ${ctx.pageEnd()}`;
-    document.title = `审核 · ${ctx.DATA.title}`;
+    setPageTitle(['审核', ctx.DATA.title]);
     syncBulk();
   }
   // Updates the batch bar in place, so ticking boxes keeps the scroll position.
@@ -1394,7 +1403,7 @@ function review(root, ctx) {
         <p class="sheet-text">${esc(meaning)}</p>
         <ul class="bulk-list">${items.map((item) => `<li>${name(item)}</li>`).join('')}</ul>
         ${extra}
-        <label class="field"><span class="field-label">${status === 'questioned' ? '存疑原因' : '理由'}${needsReason ? '<i>*</i><small>所选各项共用</small>' : '<small>选填</small>'}</span><textarea class="input" name="reason" rows="3" maxlength="500"></textarea></label>
+        <label class="field"><span class="field-label">${status === 'questioned' ? '存疑原因' : '理由'}${needsReason ? '<i>*</i><small>所选各项共用</small>' : '<small>选填</small>'}</span><textarea data-i18n-ignore class="input" name="reason" rows="3" maxlength="500"></textarea></label>
         <p class="form-error" role="alert"></p>
         <div class="sheet-actions"><button class="btn" type="button" data-sheet-close>取消</button><button class="btn primary${status === 'rejected' ? ' danger' : ''}" type="submit">${label}</button></div>
       </form>`,

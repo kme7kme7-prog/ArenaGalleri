@@ -3,6 +3,7 @@
 // origin with a small probe that reports load time, errors and blocked requests.
 // After submitting, one stage track shows where the work is and follows it while it waits.
 import { $, $$, esc, formatBytes, formatTime, icon } from './ui.js';
+import { setPageTitle } from './i18n.js';
 import { api, isStaff, needsEmail, platform, refreshPlatform, toast } from './platform.js';
 import { createUploadRequest, resolveApiMedia } from './platform-api.js';
 import { onWorkFieldChange, readWorkFields, workFieldsHtml } from './work-fields.js';
@@ -77,7 +78,7 @@ export function mount(root, ctx) {
   const task = tasks.find((t) => t.id === ctx.param);
   if (!task || !task.acceptsUploads) {
     root.innerHTML = `${ctx.pageStart({ title: '上传作品', section: 'questions', heading: task ? '这道题暂不接受作品' : '从一道题目开始', description: '每份作品都对应一道明确的题目。',
-      crumbs: task ? [ctx.LIBRARY, { text: task.title, href: ctx.taskHref(task) }, { text: '上传作品' }] : [ctx.LIBRARY, { text: '上传作品' }] })}
+      crumbs: task ? [ctx.LIBRARY, { text: task.title, original: true, href: ctx.taskHref(task) }, { text: '上传作品' }] : [ctx.LIBRARY, { text: '上传作品' }] })}
       <section class="account-empty">${icon('grid')}<h2>${!task ? '请从题目内上传作品' : task.promptPending ? '提示词原文尚未公开' : '这道题暂时关闭了投稿'}</h2><p>${!task ? '在题库中打开一道题，点击「上传作品」。' : task.promptPending ? '待题目补充完整提示词后即可上传。' : '管理员重新开放后即可上传。'}</p><a class="btn primary" href="${task ? ctx.taskHref(task) : '#/questions'}">${task ? '返回题目' : '浏览题库'}</a></section>${ctx.pageEnd()}`;
     return {};
   }
@@ -126,12 +127,12 @@ export function uploadFlow(root, ctx, options) {
       summary: ['单个 <code>.html</code> 文件', `最大 ${formatBytes(maxBytes())}`],
       rules: ['脚本、样式、贴图和模型都写进这一个 HTML（内联或 data: URL）；不接受 ZIP，平台也不执行构建。',
         '使用 <code>three</code> 这类裸模块名时，需在页面里用 <code>&lt;script type="importmap"&gt;</code> 指向下面的 CDN。',
-        `作品不能联网，只能引用这些 CDN：${platform.site.cdn.map((host) => `<code>${esc(host)}</code>`).join('、')}。`],
+        `<span>作品不能联网，只能引用这些 CDN：</span>${platform.site.cdn.map((host) => `<code>${esc(host)}</code>`).join('、')}。`],
     };
   }
 
   function stepOne() {
-    const taskLabel = options.lead ? '' : `<div class="upload-task"><span>当前题目 · 固定关联</span><a href="${ctx.taskHref(task)}">${esc(task.title)}${icon('arrow')}</a></div>`;
+    const taskLabel = options.lead ? '' : `<div class="upload-task"><span>当前题目 · 固定关联</span><a data-i18n-ignore href="${ctx.taskHref(task)}">${esc(task.title)}${icon('arrow')}</a></div>`;
     if (!platform.user) {
       return `<div class="step-body">${taskLabel}<div class="notice">${icon('user')}<p>登录后上传到这道题，并在「个人中心」里跟进审核结果。</p><button class="btn primary sm" data-auth="login">登录 / 注册</button></div></div>`;
     }
@@ -142,7 +143,7 @@ export function uploadFlow(root, ctx, options) {
       const d = state.draft;
       return `<div class="step-body">${taskLabel}
         ${state.notice === 'prompt' ? `<div class="notice is-stale" data-sample-notice>${icon('alert')}<p><b>提示词改过了</b>示例结果需要按新的提示词生成。如果这份文件是按旧提示词生成的，请点「重新选择文件」替换；仍然适用的话，在下面重新确认试加载即可。</p></div>` : ''}
-        <p class="file-line">${icon('file')}<b>${esc(d.sourceName)}</b><span>${d.files} 个文件 · ${formatBytes(d.bytes)}</span></p>
+        <p class="file-line">${icon('file')}<b data-i18n-ignore>${esc(d.sourceName)}</b><span>${d.files} 个文件 · ${formatBytes(d.bytes)}</span></p>
         <ul class="checks">${d.checks.map(checkRow).join('')}</ul>
       </div>`;
     }
@@ -159,8 +160,8 @@ export function uploadFlow(root, ctx, options) {
     return `<div class="step-body">${taskLabel}
       ${templates.length > 1 ? `<label class="field"><span class="field-label">提交格式</span><select class="input" data-template${state.uploading ? ' disabled' : ''}>${templates.map((value) => `<option value="${value}"${value === state.template ? ' selected' : ''}>${TEMPLATE_LABELS[value]}</option>`).join('')}</select></label>` : ''}
       ${options.lead ? '' : promptPeek()}
-      ${state.notice?.file ? `<div class="notice is-stale" data-sample-notice>${icon('alert')}<p><b>原来的文件不再适用</b>提交格式改为「${esc(TEMPLATE_LABELS[state.template])}」，已移除「${esc(state.notice.file)}」，请重新选择文件。填过的结果信息会保留。</p></div>` : ''}
-      ${state.resumable && !state.uploading ? `<div class="notice resume-draft">${icon('clock')}<p>你之前上传过「${esc(state.resumable.sourceName)}」，试加载保留到 ${esc(formatTime(state.resumable.expiresAt))}。</p><button class="btn primary sm" type="button" data-act="resume">继续试加载</button><button class="btn sm" type="button" data-act="drop-draft">丢弃</button></div>` : ''}
+      ${state.notice?.file ? `<div class="notice is-stale" data-sample-notice>${icon('alert')}<p><b>原来的文件不再适用</b><span>提交格式改为</span> <span>${esc(TEMPLATE_LABELS[state.template])}</span> · <span>已移除文件</span> <span data-i18n-ignore>${esc(state.notice.file)}</span> · <span>请重新选择文件。填过的结果信息会保留。</span></p></div>` : ''}
+      ${state.resumable && !state.uploading ? `<div class="notice resume-draft">${icon('clock')}<p><span>你之前上传过</span> <span data-i18n-ignore>${esc(state.resumable.sourceName)}</span> · <span>试加载保留到</span> <span data-i18n-time="${esc(state.resumable.expiresAt)}">${esc(formatTime(state.resumable.expiresAt))}</span></p><button class="btn primary sm" type="button" data-act="resume">继续试加载</button><button class="btn sm" type="button" data-act="drop-draft">丢弃</button></div>` : ''}
       ${pendingFull() ? `<div class="notice">${icon('clock')}<p>你已有 ${platform.me.pending} 件作品在等待核验，核验之后再上传新的作品吧。</p></div>` : picker}
       ${pendingFull() ? '' : '<p class="fine">网络较慢时，上传可能需要较长时间。请保持页面打开；长时间没有进展，可取消后重试。</p>'}
       ${state.error ? `<p class="form-error" role="alert">${esc(state.error)}</p>` : ''}
@@ -193,8 +194,8 @@ export function uploadFlow(root, ctx, options) {
     const variants = task.promptVariants ?? [];
     const current = variants.find((v) => v.id === state.peek);
     const refs = task.references ?? [];
-    return `<details class="prompt-peek"><summary>${icon('guide')}查看本题提示词${variants.length ? ` · ${variants.length} 个版本，任选其一` : ''}${refs.length ? ` · 附 ${refs.length} 张参考图` : ''}</summary>
-      ${variants.length ? `<div class="seg" role="group" aria-label="提示词版本">${variants.map((v) => `<button type="button" data-peek="${esc(v.id)}" aria-pressed="${v.id === state.peek}">${esc(v.label)}</button>`).join('')}</div>` : ''}
+    return `<details class="prompt-peek"><summary>${icon('guide')}<span>查看本题提示词</span>${variants.length ? ` · ${variants.length} 个版本，任选其一` : ''}${refs.length ? ` · 附 ${refs.length} 张参考图` : ''}</summary>
+      ${variants.length ? `<div class="seg" role="group" aria-label="提示词版本">${variants.map((v) => `<button type="button" data-i18n-ignore data-peek="${esc(v.id)}" aria-pressed="${v.id === state.peek}">${esc(v.label)}</button>`).join('')}</div>` : ''}
       ${refs.length ? `<div class="prompt-peek-refs">${referenceSheet(refs, { key: task.id, credit: task.referenceCredit })}<p class="fine">请把这 ${refs.length} 张图按顺序一并提供给模型，作为附件或放进工作区均可。</p></div>` : ''}
       <pre>${linkReferences(current?.prompt ?? task.prompt, refs, task.id)}</pre></details>`;
   }
@@ -266,10 +267,10 @@ export function uploadFlow(root, ctx, options) {
   function stepThree() {
     if (!state.confirmed) return '<p class="step-placeholder">确认试加载后填写。</p>';
     const cover = `<div class="field"><span class="field-label">封面图片</span>${coverPick()}
-      <p class="field-hint">PNG / JPEG / WebP，不超过 ${formatBytes(platform.site.limits.coverBytes)}。${platform.site.capture ? '不上传时使用平台自动截图。' : '不上传时显示文字封面。'}</p></div>`;
+      <p class="field-hint">PNG / JPEG / WebP，不超过 ${formatBytes(platform.site.limits.coverBytes)}。<span>${platform.site.capture ? '不上传时使用平台自动截图。' : '不上传时显示文字封面。'}</span></p></div>`;
     return `<form class="step-body submit-form" novalidate>
       ${workFieldsHtml(ctx, task, null, { extra: cover })}
-      <label class="confirm"><input type="checkbox" name="attest" required><span>作品由所选模型按本题提示词生成，人工介入如实填写；我有权提交，并同意<a href="#/terms" target="_blank" rel="noopener">《使用条款》</a>与<a href="#/privacy" target="_blank" rel="noopener">《隐私政策》</a>。</span></label>
+      <label class="confirm"><input type="checkbox" name="attest" required><span>作品由所选模型按本题提示词生成，人工介入如实填写；我有权提交，并同意 <a href="#/terms" target="_blank" rel="noopener">《使用条款》</a> 与 <a href="#/privacy" target="_blank" rel="noopener">《隐私政策》</a>。</span></label>
       <p class="form-error" role="alert"></p>
       <div class="form-actions"><button class="btn primary" type="submit">${icon('upload')}<span data-submit-label>${options.submitLabel ?? '提交作品'}</span></button><span class="fine">${options.submitNote ?? '核验前可在个人中心修改信息。'}</span></div>
     </form>`;
@@ -279,7 +280,7 @@ export function uploadFlow(root, ctx, options) {
     if (options.done) return options.done(state.result);
     const w = state.work;
     const stage = workStage(w, ctx.inGallery(w.task, w.id));
-    const reason = stage.rejected && w.moderation?.reason ? `<p class="result-reason">${icon('alert')}<span>原因：${esc(w.moderation.reason)}</span></p>` : '';
+    const reason = stage.rejected && w.moderation?.reason ? `<p class="result-reason">${icon('alert')}<span><span>原因：</span><span data-i18n-ignore>${esc(w.moderation.reason)}</span></span></p>` : '';
     const actions = stage.rejected
       ? `<a class="btn primary" href="#/me/works">去我的作品处理${icon('right')}</a><button class="btn" data-act="another">重新上传</button>`
       : stage.live
@@ -302,8 +303,8 @@ export function uploadFlow(root, ctx, options) {
     if (!active || suspended) return;
     const limits = platform.site.limits;
     const page = options.page?.(Boolean(state.result)) ?? { title: '上传作品', section: 'questions', heading: state.result ? '作品已提交' : '带来你的答案',
-      description: task.title,
-      crumbs: [ctx.LIBRARY, { text: task.title, href: ctx.taskHref(task) }, { text: '上传作品' }] };
+      description: task.title, descriptionOriginal: true,
+      crumbs: [ctx.LIBRARY, { text: task.title, original: true, href: ctx.taskHref(task) }, { text: '上传作品' }] };
     const current = state.result ? -1 : !state.draft ? 0 : state.confirmed ? 2 : 1;
     const steps = [...(options.lead ? [options.lead.label] : []), isText() ? '填入原文' : '选择文件', isText() ? '预览排版' : '试加载', options.infoLabel ?? '作品信息'];
     root.innerHTML = `${ctx.pageStart({ ...page,
@@ -329,7 +330,7 @@ export function uploadFlow(root, ctx, options) {
         </aside>`}
       </section>
     ${ctx.pageEnd()}`;
-    document.title = `${page.title} · ${task.title || ctx.DATA.title}`;
+    setPageTitle([page.title, task.title ? { text: task.title, original: true } : ctx.DATA.title]);
     fitTrial();
     restoreFields();
   }

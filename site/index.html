@@ -4,6 +4,11 @@
   <meta charset="utf-8" />
   <script>
     if (new URLSearchParams(location.search).get('entry') === 'portal') document.documentElement.dataset.entry = 'gallery';
+    (() => {
+      let saved;
+      try { saved = localStorage.getItem('gallery-locale'); } catch { /* storage blocked */ }
+      document.documentElement.lang = ['zh-CN', 'en'].includes(saved) ? saved : /^zh\b/i.test(navigator.languages?.[0] ?? navigator.language ?? 'zh-CN') ? 'zh-CN' : 'en';
+    })();
   </script>
   <style>html[data-entry]::after { content:''; position:fixed; inset:0; z-index:2147483646; background:#121211; }</style>
   <script src="entry-boot.js"></script>
@@ -33,17 +38,17 @@
   <div id="lightbox" class="lightbox" role="dialog" aria-modal="true" aria-label="图片浏览" hidden>
     <div class="lb-top">
       <span class="lb-count" aria-live="polite"></span>
-      <div class="lb-tools"><span class="lb-file"></span><a class="lb-btn lb-download" aria-label="下载这张" hidden></a><button class="lb-btn lb-close" data-lb="close" aria-label="关闭（Esc）"></button></div>
+      <div class="lb-tools"><span data-i18n-ignore class="lb-file"></span><a class="lb-btn lb-download" aria-label="下载这张" hidden></a><button class="lb-btn lb-close" data-lb="close" aria-label="关闭（Esc）"></button></div>
     </div>
     <button class="lb-btn lb-nav lb-prev" data-lb="prev" aria-label="上一张（←）"></button>
     <figure class="lb-figure">
-      <img class="lb-img" alt="" />
+      <img data-i18n-ignore class="lb-img" alt="" />
       <figcaption class="lb-caption"></figcaption>
       <div class="lb-strip" hidden></div>
     </figure>
     <button class="lb-btn lb-nav lb-next" data-lb="next" aria-label="下一张（→）"></button>
   </div>
-  <noscript>此页面需要启用 JavaScript。</noscript>
+  <noscript>此页面需要启用 JavaScript。 Please enable JavaScript to use this page.</noscript>
   <script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/controls/OrbitControls.js":"./vendor/OrbitControls.js","three/addons/utils/BufferGeometryUtils.js":"./vendor/BufferGeometryUtils.js"}}</script>
   <script src="runtime-config.js"></script>
   <script type="module" src="app.js"></script>

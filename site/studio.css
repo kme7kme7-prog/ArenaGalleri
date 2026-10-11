@@ -1019,3 +1019,35 @@ dialog.sheet { border-radius: 10px; background: var(--surface); }
   .task-act { padding-right: 10px; gap: 8px; }
   .task-act-mark { width: 30px; height: 30px; }
 }
+/* Language changes update only UI copy; the current page and its controls remain mounted. */
+.locale-toggle {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  min-height: 34px; padding: 0 8px; flex: none;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: transparent; color: var(--muted); font-size: 11px; line-height: 1;
+  white-space: nowrap; cursor: pointer;
+}
+.locale-toggle:hover { color: var(--ink); border-color: var(--ink-2); background: var(--surface-2); }
+.locale-toggle [aria-current="true"] { color: var(--ink); font-weight: 650; }
+.locale-divider { color: var(--line-2); }
+html[lang="en"] .wordmark { letter-spacing: 0; }
+html[lang="en"] .home-verse { font-family: var(--sans); }
+html[lang="en"] .home-verse h1 { font-family: var(--sans); font-size: clamp(28px, 3.8vw, 58px); line-height: 1.15; }
+html[lang="en"] .home-verse-b { white-space: normal; }
+html[lang="en"] .home-cite { font-family: var(--sans); letter-spacing: .04em; }
+html[lang="en"] .collection-caption { letter-spacing: 0; }
+html[lang="en"] .question-meta { flex-wrap: wrap; }
+@media (max-width: 760px) {
+  .locale-toggle { min-height: 32px; padding-inline: 6px; gap: 4px; }
+  html[lang="en"] .result-sort { max-width: 100%; }
+  html[lang="en"] .result-sort select { max-width: 190px; }
+  html[lang="en"] .task-act small { white-space: normal; }
+  html[lang="en"] .vtools .vtool-text { display: none; }
+}
+@media (max-width: 460px) {
+  html[lang="en"] .topbar .wordmark { font-size: 12px; }
+  .topbar-tools .locale-toggle { margin-left: auto; }
+  .vtools .locale-toggle { font-size: 10px; padding-inline: 4px; }
+}
+.result-grid:not(.is-filtering) .is-lead .lead-seal > span { writing-mode: vertical-rl; }
+html[lang="en"] .result-grid:not(.is-filtering) .is-lead .lead-seal > span { writing-mode: horizontal-tb; font-family: var(--sans); font-size: 11px; }

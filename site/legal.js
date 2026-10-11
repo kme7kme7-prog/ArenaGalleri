@@ -1,3 +1,4 @@
+import { setPageTitle } from './i18n.js';
 // Legal pages (#/terms, #/privacy), the ICP filing line and the AI-generated label. The terms
 // and privacy wording is shared word for word with the arena site; change both together.
 // Sections can be linked as #/terms#<id> or #/privacy#<id>.
@@ -14,7 +15,7 @@ const mail = `<a href="mailto:${CONTACT}">${CONTACT}</a>`;
 const BEIAN = [['arenaofbias.icu', '闽ICP备2026019671号-2']];
 export function beianLink(host = location.hostname) {
   const entry = BEIAN.find(([domain]) => host === domain || host.endsWith(`.${domain}`));
-  return entry ? `<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">${esc(entry[1])}</a>` : '';
+  return entry ? `<a data-i18n-ignore href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">${esc(entry[1])}</a>` : '';
 }
 
 // Explicit label for AI-generated works, shown wherever a work is presented.
@@ -48,7 +49,7 @@ const TERMS = [
       <li><b>个人创作的平台收益不算商业用途。</b>个人创作者因平台创作激励获得的收益视为非商业引用，注明来源即可；接受品牌赞助或商业推广的内容按商业用途处理。</li>
       <li><b>不得批量抓取。</b>请勿以爬虫等自动化方式大规模获取本站数据。</li>
     </ul>
-    <div class="terms-cite"><span>引用格式</span><code data-cite-text>来源：亿模亿样（${esc(location.origin)}）</code><button class="btn sm" type="button" data-copy-cite>${icon('file')}复制</button></div>`],
+    <div class="terms-cite"><span>引用格式</span><samp data-cite-text>来源：亿模亿样（${esc(location.origin)}）</samp><button class="btn sm" type="button" data-copy-cite>${icon('file')}复制</button></div>`],
   ['conduct', '使用规范', () => `
     <p>使用本站时，不得以脚本、多账号或其他方式刷票、操纵榜单；不得上传恶意代码、侵权内容或违法违规内容；不得攻击、干扰本站服务或绕过访问限制。违反者，我们可删除相关内容、撤销投票，并限制或终止账号。</p>`],
   ['disclaimer', '免责声明', () => `<ul>
@@ -130,7 +131,7 @@ export function mount(root, ctx, kind) {
   })}<article class="terms">${doc.sections.map(([id, title, body], i) => `<section id="${kind}-${id}" aria-labelledby="${kind}-${id}-title">
       <h3 id="${kind}-${id}-title"><span class="terms-num">${num(i)}</span>${esc(title)}</h3>${body()}
     </section>`).join('')}<p class="terms-related">另请参阅：<a href="#/${other[0]}">${other[1]}</a></p></article>${ctx.pageEnd()}`;
-  document.title = `${doc.title} · ${ctx.DATA.title}`;
+  setPageTitle([doc.title, ctx.DATA.title]);
 
   const jump = (id, smooth) => {
     const section = $(`#${kind}-${id}`, root);

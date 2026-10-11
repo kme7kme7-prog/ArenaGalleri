@@ -1,3 +1,4 @@
+import { languageButton, translateText } from './i18n.js';
 // Platform layer: session, uploads, reactions and the dialogs they share. The gallery runs
 // without it as a static archive; `platform.available` is false when no API answers.
 import { $, $$, esc, formatDate, icon } from './ui.js';
@@ -430,7 +431,7 @@ export const bySite = (item) => byStaff(item) && !item?.author?.name;
 // Questions are always reviewed by a person, so a pending one waits for a senior admin.
 export const QUESTION_LABELS = { pending: '等待人工审核', rejected: '未通过' };
 // A reviewer's reason as its author reads it: the 朱批 on a rejected question, with when it was decided.
-export const reviewVerdict = (moderation, label = '审核意见') => `<div class="question-verdict"><p class="question-verdict-head">${icon('alert')}${label}${moderation.at ? `<span>· ${esc(formatDate(moderation.at))}</span>` : ''}</p><p>${esc(moderation.reason)}</p></div>`;
+export const reviewVerdict = (moderation, label = '审核意见') => `<div class="question-verdict"><p class="question-verdict-head">${icon('alert')}${label}${moderation.at ? `<span>· <time data-i18n-date="${esc(moderation.at)}">${esc(formatDate(moderation.at))}</time></span>` : ''}</p><p data-i18n-ignore>${esc(moderation.reason)}</p></div>`;
 // Everything waiting on an admin: unverified or held works, and questions under review.
 export const reviewCount = () => (platform.review?.unverified ?? 0) + (platform.review?.questions ?? 0) + (platform.review?.content ?? 0);
 
@@ -456,7 +457,7 @@ export function openDialog({ title, body, className = '', onClose }) {
   const dialog = document.createElement('dialog');
   dialog.className = `sheet ${className}`;
   dialog.innerHTML = `<div class="sheet-in">
-    <header class="sheet-head"><h2>${esc(title)}</h2><button class="icon-btn" type="button" data-sheet-close aria-label="关闭">${icon('close')}</button></header>
+    <header class="sheet-head"><h2>${esc(title)}</h2><div class="sheet-head-tools">${languageButton()}<button class="icon-btn" type="button" data-sheet-close aria-label="关闭">${icon('close')}</button></div></header>
     <div class="sheet-body">${body}</div>
   </div>`;
   document.body.append(dialog);
@@ -498,7 +499,7 @@ export function codeSender(sheet, form, request, widgetFor = formWidget(sheet, f
     const wait = countdown >= 60 ? `${Math.floor(countdown / 60)} 分 ${countdown % 60} 秒` : `${countdown} 秒`;
     send.disabled = countdown > 0;
     send.textContent = countdown > 0 ? `${wait}后重发` : '发送验证码';
-    if (cooldownMessage && errorLine.textContent === lastErrorText) {
+    if (cooldownMessage && (errorLine.textContent === lastErrorText || errorLine.textContent === translateText(lastErrorText))) {
       lastErrorText = countdown > 0 ? `${cooldownMessage}请在 ${wait}后重试。` : '';
       errorLine.textContent = lastErrorText;
     }
@@ -574,7 +575,7 @@ export function openBindEmail({ change = false, reason = '' } = {}) {
       className: 'auth-sheet code-sheet',
       onClose: () => resolve(bound),
       body: `<form class="auth-form" novalidate>
-        <p class="sheet-text">${esc(reason || (change ? '验证新邮箱后，原邮箱自动解除绑定。' : '邮箱用于找回密码与账号安全验证。'))}验证码 10 分钟内有效。</p>
+        <p class="sheet-text"><span>${esc(reason || (change ? '验证新邮箱后，原邮箱自动解除绑定。' : '邮箱用于找回密码与账号安全验证。'))}</span><span>验证码 10 分钟内有效。</span></p>
         ${EMAIL_FIELD}
         <div class="auth-turnstile" hidden></div>
         <p class="auth-turnstile-status" role="status"></p>
@@ -836,7 +837,7 @@ async function logout() {
 // A library avatar when the server names one it lists; otherwise the name's first letter.
 export function avatarFace(id, name) {
   if (id && platform.site?.avatars?.includes(id)) return `<img src="assets/avatars/${esc(id)}.svg" alt="" decoding="async">`;
-  return esc([...(name || '?')][0].toUpperCase());
+  return `<span data-i18n-ignore>${esc([...(name || '?')][0].toUpperCase())}</span>`;
 }
 
 // Signed-in accounts open their personal center; narrow screens keep a separate navigation menu.
@@ -849,7 +850,7 @@ export function accountControl(current = false) {
   const user = platform.user;
   const name = user?.nickname || user?.name;
   if (user) return `<div class="account" data-account${current ? ' data-current' : ''}>
-    <a class="account-btn signed-in" href="#/me"${current ? ' aria-current="page"' : ''} aria-label="${esc(name)} · 个人中心"><span class="avatar" aria-hidden="true">${avatarFace(user.avatar, name)}</span><span class="account-name">${esc(name)}</span></a>
+    <a class="account-btn signed-in" href="#/me"${current ? ' aria-current="page"' : ''} aria-label="${esc(name)} · 个人中心"><span class="avatar" aria-hidden="true">${avatarFace(user.avatar, name)}</span><span class="account-name" data-i18n-ignore>${esc(name)}</span></a>
     <button class="icon-btn account-navigation" data-menu aria-haspopup="true" aria-expanded="false" aria-label="打开导航菜单">${icon('menu')}</button>
   </div>`;
   return `<div class="account" data-account>
@@ -873,7 +874,7 @@ function menuHtml() {
     return `${nav}<div class="menu-group"><button role="menuitem" data-auth="login">${icon('user')}登录</button><button role="menuitem" data-auth="register">${icon('plus')}注册账号</button></div>`;
   }
   const name = user.nickname || user.name;
-  return `${nav}<div class="menu-user"><span class="avatar" aria-hidden="true">${avatarFace(user.avatar, name)}</span><span><b>${esc(name)}</b><small>${ROLE_LABELS[user.role] ?? '成员'} · 已评 ${platform.me?.votes ?? 0} 组</small></span></div>
+  return `${nav}<div class="menu-user"><span class="avatar" aria-hidden="true">${avatarFace(user.avatar, name)}</span><span><b data-i18n-ignore>${esc(name)}</b><small><span>${ROLE_LABELS[user.role] ?? '成员'}</span> · <span>已评 ${platform.me?.votes ?? 0} 组</span></small></span></div>
     <div class="menu-group">
       <a href="#/me" role="menuitem">${icon('user')}个人中心</a>
       ${isStaff(user) ? `<a href="#/review" role="menuitem">${icon('shield')}审核${reviewCount() ? `<span class="count">${reviewCount()}</span>` : ''}</a>` : ''}

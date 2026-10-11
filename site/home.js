@@ -1,3 +1,4 @@
+import { locale, setPageTitle, t as translate } from './i18n.js';
 import { $$, esc, icon, img, brandMark, reducedMotion } from './ui.js';
 import { catalogState, platform } from './platform.js';
 import { screenshotOf } from './work-preview-media.js';
@@ -116,7 +117,7 @@ function mountWaiting(root, ctx) {
   };
   update();
   const timer = retry ? setInterval(update, 1000) : null;
-  document.title = `${ctx.DATA.title} · ${ctx.DATA.subtitle}`;
+  setPageTitle([ctx.DATA.title, ctx.DATA.subtitle]);
   return { destroy() { if (timer) clearInterval(timer); } };
 }
 
@@ -156,7 +157,7 @@ export function mount(root, ctx) {
 
   // Every answer is a small browser window: the model in the title bar, its first screen below.
   const windowCard = (task, work, attrs = '', eager = false) => `<a class="home-window" data-home-task="${esc(task.id)}" data-home-work="${esc(work.id)}"${catalogReady() && ctx.inGallery(task.id, work.id) ? ` href="${ctx.viewHref(task, work.id)}"` : ' aria-disabled="true"'} aria-label="在线预览：${esc(work.title)}，${esc(ctx.label(work))}"${attrs}>
-      <span class="home-window-bar"><span class="home-window-dots" aria-hidden="true"><i></i><i></i><i></i></span>${brandMark(ctx.modelOf(work), 'home-window-mark')}<b>${esc(ctx.label(work))}</b></span>
+      <span class="home-window-bar"><span class="home-window-dots" aria-hidden="true"><i></i><i></i><i></i></span>${brandMark(ctx.modelOf(work), 'home-window-mark')}<b data-i18n-ignore>${esc(ctx.label(work))}</b></span>
       <span class="home-window-shot">${work.previewMode !== 'screenshot' && work.previewPoster ? img(shotOf(work), '', 'is-poster', eager).replace('<img ', '<img crossorigin="anonymous" ') : img(shotOf(work), '', '', eager)}</span>
     </a>`;
   const posterFrames = new Map(), posterCanvas = document.createElement('canvas');
@@ -194,8 +195,8 @@ export function mount(root, ctx) {
   });
   // Two matching copies make the strip loop without a jump. Only the first is keyboard-focusable.
   const stripMarkup = () => [false, true].map((copy) => `<div class="home-stream-group"${copy ? ' aria-hidden="true"' : ''}>${recentOf().map(({ task, work }) =>
-    `<div class="home-stream-item">${windowCard(task, work, copy ? ' tabindex="-1"' : '')}<span class="home-stream-task">${esc(shortTitle(task))}</span></div>`).join('')}</div>`).join('');
-  const tabsMarkup = (selected = 0) => decks.map((t, i) => `<button class="home-tab" role="tab" aria-selected="${i === selected}" data-home-tab="${i}"><small>${String(i + 1).padStart(2, '0')}</small>${esc(shortTitle(t))}<span class="home-tab-count">${answersOf(t).length}</span></button>`).join('');
+    `<div class="home-stream-item">${windowCard(task, work, copy ? ' tabindex="-1"' : '')}<span data-i18n-ignore class="home-stream-task">${esc(shortTitle(task))}</span></div>`).join('')}</div>`).join('');
+  const tabsMarkup = (selected = 0) => decks.map((t, i) => `<button class="home-tab" role="tab" aria-selected="${i === selected}" data-home-tab="${i}"><small>${String(i + 1).padStart(2, '0')}</small><span data-i18n-ignore>${esc(shortTitle(t))}</span><span class="home-tab-count">${answersOf(t).length}</span></button>`).join('');
 
   root.innerHTML = `${ctx.header()}<main class="landing page">
     <section class="home-hero" aria-labelledby="home-title">
@@ -206,7 +207,7 @@ export function mount(root, ctx) {
         </div>
         <p class="home-lede">同一份提示词交给不同的 AI 模型，并排打开，<span>差距一眼可见。</span></p>
         <div class="home-actions">
-          ${first ? `<a class="btn home-enter" data-home-cta href="${ctx.taskHref(first)}"><span>看看这<span data-home-n>${hanzi(firstCount)}</span>种</span>${icon('right')}</a>` : ''}
+          ${first ? `<a class="btn home-enter" data-home-cta href="${ctx.taskHref(first)}"><span data-home-n>看看这 ${firstCount} 种</span>${icon('right')}</a>` : ''}
           <a class="home-link" href="#/questions">浏览全部题目${icon('right')}</a>
         </div>
         <div class="home-proof">${proofMarkup()}<span class="home-connection" role="status">${connectionMarkup()}</span></div>
@@ -214,7 +215,7 @@ export function mount(root, ctx) {
       <div class="home-stage">
         <div class="home-deck-frame">
           <div class="home-deck"></div>
-          <a class="home-slip" href="#"><span class="home-slip-kicker">提示词</span><b></b><span class="home-slip-text"></span></a>
+          <a class="home-slip" href="#"><span class="home-slip-kicker">提示词</span><b data-i18n-ignore></b><span data-i18n-ignore class="home-slip-text"></span></a>
         </div>
       </div>
       <div class="home-foot">
@@ -241,6 +242,13 @@ export function mount(root, ctx) {
   let current = 0, cards = [], elapsed = 0, sinceShuffle = 0, playing = !reducedMotion(), autoQuestion = playing, hovering = false;
   let turning = 0, dealt = 0;
   const sung = [];
+  let currentVerse = VERSES[0], verseCount = firstCount;
+  const refreshLocale = () => {
+    sing(verseCount, currentVerse);
+    const count = answersOf(decks[current]).length;
+    if (cta) cta.querySelector('[data-home-n]').textContent = translate('看看这 {count} 种', { count });
+  };
+  window.addEventListener('localechange', refreshLocale);
   const refreshLinks = () => {
     $$('[data-home-work]', root).forEach((card) => {
       const task = ctx.DATA.tasks.find((t) => t.id === card.dataset.homeTask);
@@ -283,10 +291,12 @@ export function mount(root, ctx) {
   // A random couplet, not one of the last eight, set in its own typeface.
   // --len is the longer line in characters, which sizes the type.
   const sing = (n, [a, b, source, face]) => {
+    currentVerse = [a, b, source, face]; verseCount = n;
     const [pre, post] = b.split('{n}'), count = hanzi(n);
-    verse.dataset.face = face;
-    verse.querySelector('h1').innerHTML = `<span class="home-verse-a">${esc(a)}</span><span class="home-verse-b">${esc(pre)}<em>${count}</em>${esc(post)}<span class="home-stop">。</span></span>`;
-    verse.querySelector('.home-cite').textContent = source;
+    verse.dataset.face = locale() === 'en' ? '' : face;
+    verse.querySelector('h1').innerHTML = locale() === 'en' ? `<span class="home-verse-a">One prompt.</span><span class="home-verse-b"><em>${n}</em> different answers.</span>` : `<span class="home-verse-a">${esc(a)}</span><span class="home-verse-b">${esc(pre)}<em>${count}</em>${esc(post)}<span class="home-stop">。</span></span>`;
+    verse.querySelector('.home-cite').setAttribute('data-i18n-ignore', '');
+    verse.querySelector('.home-cite').textContent = locale() === 'en' ? 'ArenaGalleri · Compare AI models' : source;
     verse.style.setProperty('--len', String(Math.max([...a].length, [...`${pre}${count}${post}。`].length)));
   };
   // The next couplet fades in once its typeface has loaded (or after 1.2s), so it never flashes in a fallback font.
@@ -334,7 +344,7 @@ export function mount(root, ctx) {
     });
     // The headline and the number in the button follow the question in the deck.
     turn(works.length);
-    cta.querySelector('[data-home-n]').textContent = hanzi(works.length);
+    cta.querySelector('[data-home-n]').textContent = translate('看看这 {count} 种', { count: works.length });
     const selected = tabList.children[i];
     tabList.scrollTo({ left: selected.offsetLeft - tabList.offsetLeft - 24, behavior: reducedMotion() ? 'auto' : 'smooth' });
     cta.href = ctx.taskHref(t);
@@ -461,13 +471,14 @@ export function mount(root, ctx) {
   // Each visit opens on a different question.
   if (decks.length) show(pick([...decks.keys()]));
   else hero.classList.add('is-empty');
-  document.title = `${ctx.DATA.title} · ${ctx.DATA.subtitle}`;
+  setPageTitle([ctx.DATA.title, ctx.DATA.subtitle]);
   return {
     home: true,
     onPlatformChange: updateCatalog,
     destroy() {
       clearInterval(timer);
       clearInterval(retryTimer);
+      window.removeEventListener('localechange', refreshLocale);
       removeEventListener('scroll', onScroll);
       near.disconnect();
     },

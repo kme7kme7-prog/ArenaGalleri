@@ -29,11 +29,13 @@ const lockReason = (m) => (self(m) ? '不能修改自己的角色，需由其他
 const workTotal = (m) => m.works.verified + m.works.questioned + m.works.pending + m.works.rejected;
 const quota = (m) => (m.pendingLimit === null ? '不限' : `${m.pendingLimit} 件${m.trusted ? ' · 可信成员' : ''}`);
 const idleDays = (m) => (m.lastSeenAt ? (Date.now() - Date.parse(m.lastSeenAt)) / DAY : Infinity);
+const dateHtml = (value) => `<time data-i18n-date="${esc(value)}">${formatDate(value)}</time>`;
+const timeHtml = (value) => `<time data-i18n-time="${esc(value)}">${formatTime(value)}</time>`;
 const face = (m) => `<span class="avatar" aria-hidden="true">${avatarFace(m.avatar, m.nickname)}</span>`;
 function seen(m) {
   const days = idleDays(m);
   return days === Infinity ? '暂无活跃记录' : days < 1 / 24 ? '刚刚活跃' : days < 1 ? `${Math.round(days * 24)} 小时前活跃`
-    : days < 30 ? `${Math.round(days)} 天前活跃` : `${formatDate(m.lastSeenAt)} 最后活跃`;
+    : days < 30 ? `${Math.round(days)} 天前活跃` : `${dateHtml(m.lastSeenAt)} <span>最后活跃</span>`;
 }
 const inFilter = (m, filter) => ({ all: true, admin: m.role === 'admin', moderator: m.role === 'moderator', user: m.role === 'user', trusted: m.trusted })[filter];
 
@@ -53,11 +55,11 @@ function row(m) {
   const tags = [self(m) ? '<span class="badge">当前账号</span>' : '', m.fixed ? '<span class="badge" title="由服务器配置固定">固定</span>' : '',
     m.trusted ? '<span class="badge is-accent">可信成员</span>' : ''].join('');
   const { verified, questioned, pending, rejected } = m.works, total = workTotal(m);
-  const parts = [`已核验 ${verified}`, questioned && `存疑 ${questioned}`, pending && `待审 ${pending}`, rejected && `拒绝 ${rejected}`].filter(Boolean).join(' · ');
+  const parts = [`已核验 ${verified}`, questioned && `存疑 ${questioned}`, pending && `待审 ${pending}`, rejected && `拒绝 ${rejected}`].filter(Boolean).map((text) => `<span>${text}</span>`).join(' · ');
   return `<article class="work-row work-managed-row member-row">
     ${face(m)}<div class="work-main">
-      <h3>${esc(m.nickname)}<small>@${esc(m.name)}</small>${tags}</h3>
-      <p class="work-meta">注册于 ${formatDate(m.createdAt)} · ${seen(m)} · ${m.emailVerified ? '已绑定邮箱' : '未绑定邮箱'}</p>
+      <h3><span data-i18n-ignore>${esc(m.nickname)}</span><small data-i18n-ignore>@${esc(m.name)}</small>${tags}</h3>
+      <p class="work-meta"><span>注册于</span> ${dateHtml(m.createdAt)} · <span>${seen(m)}</span> · <span>${m.emailVerified ? '已绑定邮箱' : '未绑定邮箱'}</span></p>
       <p class="work-state"><span><small>角色</small>${icon(m.role === 'user' ? 'user' : 'shield')}${ROLE_LABELS[m.role]}</span><span${questioned ? ' class="is-issue"' : total ? '' : ' class="is-muted"'}><small>投稿</small>${total ? `${total} 件<small class="member-parts">${parts}</small>` : '0'}</span><span${m.questions ? '' : ' class="is-muted"'}><small>题目</small>${m.questions}</span><span${m.votes ? '' : ' class="is-muted"'}><small>计票</small>${m.votes}</span><span><small>待审额度</small>${quota(m)}</span></p>
     </div><div class="work-side"><button class="btn sm" type="button" data-manage-member="${esc(m.id)}">管理</button></div>
   </article>`;
@@ -93,20 +95,20 @@ export function openMember(m, { audit = [], onSaved }) {
   const sheet = openDialog({ title: '管理成员', className: 'member-sheet', body: `<form novalidate>
     <div class="member-body"><div class="member-grid">
       <aside class="member-facts">
-        <div class="member-id">${face(m)}<div><h3>${esc(m.nickname)}</h3><p>@${esc(m.name)}</p></div></div>
+        <div class="member-id">${face(m)}<div><h3 data-i18n-ignore>${esc(m.nickname)}</h3><p data-i18n-ignore>@${esc(m.name)}</p></div></div>
         <dl class="facts">
           <div><dt>当前角色</dt><dd>${ROLE_LABELS[m.role]}${m.fixed ? ' · 服务器固定' : ''}${m.trusted ? ' · 可信成员' : ''}</dd></div>
-          <div><dt>邮箱</dt><dd>${m.email ? `${esc(m.email)} · ${m.emailVerified ? '已验证' : '未验证'}` : '未绑定'}${m.emailVerified ? '' : '<p>未绑定邮箱不能投稿或发起题目。</p>'}</dd></div>
-          <div><dt>注册时间</dt><dd>${formatDate(m.createdAt)}</dd></div>
-          <div><dt>最近活跃</dt><dd>${m.lastSeenAt ? formatTime(m.lastSeenAt) : '暂无活跃记录'}</dd></div>
-          <div><dt>投稿</dt><dd>${workTotal(m)} 件<p>已核验 ${verified} · 存疑 ${questioned} · 待审 ${pending} · 拒绝 ${rejected}</p></dd></div>
+          <div><dt>邮箱</dt><dd>${m.email ? `<span data-i18n-ignore>${esc(m.email)}</span> · <span>${m.emailVerified ? '已验证' : '未验证'}</span>` : '未绑定'}${m.emailVerified ? '' : '<p>未绑定邮箱不能投稿或发起题目。</p>'}</dd></div>
+          <div><dt>注册时间</dt><dd>${dateHtml(m.createdAt)}</dd></div>
+          <div><dt>最近活跃</dt><dd>${m.lastSeenAt ? timeHtml(m.lastSeenAt) : '暂无活跃记录'}</dd></div>
+          <div><dt>投稿</dt><dd>${workTotal(m)} 件<p><span>已核验 ${verified}</span> · <span>存疑 ${questioned}</span> · <span>待审 ${pending}</span> · <span>拒绝 ${rejected}</span></p></dd></div>
           <div><dt>发起题目</dt><dd>${m.questions} 道</dd></div>
           <div><dt>盲评计票</dt><dd>${m.votes} 次</dd></div>
           <div><dt>待审额度</dt><dd>${quota(m)}${m.role === 'user' && !m.trusted ? `<p>可信成员需已核验满 3 件且近 90 天无存疑（现在已核验 ${verified} 件）。</p>` : ''}</dd></div>
         </dl>
         <div class="actions"><a class="btn sm" href="#/review/works?q=${encodeURIComponent(m.nickname)}">在全部作品中查看${icon('right')}</a></div>
         <details><summary>角色记录 · ${log.length}</summary>
-          ${log.length ? `<ol class="audit">${log.map((entry) => `<li><time>${formatTime(entry.at)}</time><span class="audit-actor">${esc(entry.actor)}</span><b>调整角色</b><span>${esc(entry.detail)}</span></li>`).join('')}</ol>` : '<p class="muted">最近的审核记录里没有角色调整。</p>'}
+          ${log.length ? `<ol class="audit">${log.map((entry) => `<li>${timeHtml(entry.at)}<span class="audit-actor" data-i18n-ignore>${esc(entry.actor)}</span><b>调整角色</b><span data-i18n-ignore>${esc(entry.detail)}</span></li>`).join('')}</ol>` : '<p class="muted">最近的审核记录里没有角色调整。</p>'}
         </details>
       </aside>
       <section class="member-roles">
@@ -125,7 +127,7 @@ export function openMember(m, { audit = [], onSaved }) {
   function sync() {
     const role = form.elements.role.value, down = RANK[role] < RANK[m.role];
     $('[data-role-change]', form).innerHTML = role === m.role ? ''
-      : `<div class="role-change${down ? ' is-down' : ''}"><b>${esc(m.nickname)}：${ROLE_LABELS[m.role]} → ${ROLE_LABELS[role]}</b><br>${CHANGES[`${m.role}>${role}`]}</div>`;
+      : `<div class="role-change${down ? ' is-down' : ''}"><b><span data-i18n-ignore>${esc(m.nickname)}</span>：<span>${ROLE_LABELS[m.role]}</span> → <span>${ROLE_LABELS[role]}</span></b><br>${CHANGES[`${m.role}>${role}`]}</div>`;
     submit.disabled = role === m.role;
     submit.textContent = role === m.role ? '保存角色' : `改为${ROLE_LABELS[role]}`;
     submit.classList.toggle('danger', down);

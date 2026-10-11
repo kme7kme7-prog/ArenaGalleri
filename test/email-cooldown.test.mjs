@@ -3,7 +3,8 @@ import test from 'node:test';
 
 test('email send respects JSON retry time, blocks repeated clicks and catches up after idle', async () => {
   const original = { document: globalThis.document, window: globalThis.window, addEventListener: globalThis.addEventListener, fetch: globalThis.fetch, now: Date.now,
-    interval: globalThis.setInterval, clear: globalThis.clearInterval };
+    interval: globalThis.setInterval, clear: globalThis.clearInterval, localStorage: globalThis.localStorage };
+  globalThis.localStorage = { getItem: () => 'en' };
   const doc = new EventTarget();
   doc.baseURI = 'https://gallery.test/';
   globalThis.document = doc;
@@ -35,9 +36,15 @@ test('email send respects JSON retry time, blocks repeated clicks and catches up
     assert.equal(requests, 1);
     assert.equal(send.disabled, true);
     assert.match(error.textContent, /11 分 23 秒/);
+    // Simulate the language observer translating a visible cooldown error.
+    const { translateText } = await import('../site/i18n.js');
+    error.textContent = translateText(error.textContent);
+    assert.match(error.textContent, /11 minutes 23 seconds/);
     now += 600000;
     doc.dispatchEvent(new Event('visibilitychange'));
     assert.match(send.textContent, /1 分 23 秒/);
+    assert.match(error.textContent, /1 分 23 秒/);
+    error.textContent = translateText(error.textContent);
     now += 83000;
     tick();
     assert.equal(send.disabled, false);
@@ -46,6 +53,7 @@ test('email send respects JSON retry time, blocks repeated clicks and catches up
     assert.equal(tick, null);
   } finally {
     el.dispatchEvent(new Event('close'));
+    globalThis.localStorage = original.localStorage;
     globalThis.document = original.document;
     globalThis.window = original.window;
     globalThis.addEventListener = original.addEventListener;

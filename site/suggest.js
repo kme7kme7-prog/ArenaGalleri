@@ -51,6 +51,7 @@ function open(input) {
     li.id = `${box.id}-${i}`;
     li.dataset.index = i;
     li.setAttribute('role', 'option');
+    li.setAttribute('data-i18n-ignore', '');
     li.append(Object.assign(document.createElement('b'), { textContent: item.value }));
     if (item.label) li.append(Object.assign(document.createElement('small'), { textContent: item.label }));
     return li;

@@ -1,4 +1,5 @@
 import { aigcLabel } from './legal.js';
+import { setPageTitle } from './i18n.js';
 
 const $ = (selector, root) => root.querySelector(selector);
 const escape = (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -11,7 +12,7 @@ const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 // frame loop, camera, effects, UI and dependencies, without injected code.
 export function createExhibition(root, task, { label, vendorOf, cover, header, initial = [] }) {
   document.body.classList.add('is-viewer');
-  document.title = `原作展厅 · ${task.title}`;
+  setPageTitle(['原作展厅', { text: task.title, original: true }]);
   root.innerHTML = `<main class="sandtable exhibition">
     ${header}
     <div class="sandbody">
@@ -20,7 +21,7 @@ export function createExhibition(root, task, { label, vendorOf, cover, header, i
         <label class="sand-search"><span aria-hidden="true">⌕</span><input type="search" placeholder="搜索模型或作品" aria-label="搜索模型或作品"></label>
         <div class="sand-filters"><select aria-label="筛选模型厂商"><option value="">全部厂商</option>${[...new Set(task.results.map(vendorOf))].sort().map((v) => `<option>${escape(v)}</option>`).join('')}</select><button data-action="clear">清空已选</button></div>
         <div class="sand-catalog">${task.results.map((r) => `<article class="sand-item" data-id="${r.id}">
-          <label class="sand-pick"><img src="${escape(cover(r))}" alt="" loading="lazy"><span><b>${escape(label(r))}</b><small>${escape(r.title)}</small></span><input type="checkbox" value="${r.id}" aria-label="加入展厅：${escape(label(r))}"></label>
+          <label class="sand-pick"><img src="${escape(cover(r))}" alt="" loading="lazy"><span data-i18n-ignore><b>${escape(label(r))}</b><small>${escape(r.title)}</small></span><input type="checkbox" value="${r.id}" aria-label="加入展厅：${escape(label(r))}"></label>
           <div class="sand-item-detail" hidden><span class="exhibition-status" role="status"></span><button data-focus="${r.id}">操作原作 ↗</button></div>
         </article>`).join('')}<p class="sand-no-results" hidden>没有匹配的作品，试试其他关键词。</p></div>
         <p class="sand-library-note">完整原作 · 独立实时运行<br>原有光影、动画、细节与交互全部保留。</p>
@@ -29,7 +30,7 @@ export function createExhibition(root, task, { label, vendorOf, cover, header, i
         <div class="exhibition-heading"><span class="kicker">THE ORIGINALS / LIVE GALLERY</span><span class="exhibition-mode">原作实时预览</span></div>
         <div class="exhibition-world"></div>
         <div class="exhibition-empty"><span class="kicker">YOUR OWN COLLECTION</span><div class="exhibition-empty-art" aria-hidden="true"><i></i><i></i><i></i></div><h1>让不同的答案，<br>在这里相遇。</h1><p>从一件作品开始，自由选择、放大、探索。<br>每个模型的光影与表达，都保持原样。</p><button class="btn primary" data-action="choose">选择第一件作品 ↗</button></div>
-        <div class="exhibition-focusbar" hidden><button data-action="back">← 返回画布</button><span><b></b><small>正在操作原作</small></span><a target="_blank" rel="noopener" data-original>独立打开 ↗</a></div>
+        <div class="exhibition-focusbar" hidden><button data-action="back">← 返回画布</button><span><b data-i18n-ignore></b><small>正在操作原作</small></span><a target="_blank" rel="noopener" data-original>独立打开 ↗</a></div>
         <div class="exhibition-toolbar" role="group" aria-label="画布操作">
           <button data-action="overview" title="总览（Home）">⌂ 总览</button><i></i>
           <button data-action="out" aria-label="缩小画布">−</button><output aria-label="画布缩放比例">100%</output><button data-action="in" aria-label="放大画布">＋</button><i></i>
@@ -129,7 +130,7 @@ export function createExhibition(root, task, { label, vendorOf, cover, header, i
     const result = task.results.find((r) => r.id === id); if (!result) return;
     const card = document.createElement('article'); card.className = 'exhibition-card'; card.dataset.card = id;
     card.setAttribute('aria-label', `${label(result)} 的完整原作`);
-    card.innerHTML = `<header class="exhibition-card-head"><span class="exhibition-number"></span><div><strong>${escape(label(result))}</strong><span>${escape(result.title)}</span></div>${aigcLabel()}<span class="exhibition-live"><i></i> LIVE</span><button data-remove="${id}" aria-label="移出展厅：${escape(label(result))}">×</button></header>
+    card.innerHTML = `<header class="exhibition-card-head"><span class="exhibition-number"></span><div data-i18n-ignore><strong>${escape(label(result))}</strong><span>${escape(result.title)}</span></div>${aigcLabel()}<span class="exhibition-live"><i></i> LIVE</span><button data-remove="${id}" aria-label="移出展厅：${escape(label(result))}">×</button></header>
       <div class="exhibition-viewport"><button class="exhibition-glass" data-focus="${id}" aria-label="操作原作：${escape(label(result))}"><span>操作原作 ↗</span></button></div>
       <footer class="exhibition-card-foot"><span class="exhibition-page-state" role="status"></span><span><button data-reload="${id}">重新打开</button><button data-focus="${id}">操作原作 ↗</button></span></footer>`;
     world.append(card);
