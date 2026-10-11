@@ -1,5 +1,14 @@
 # HANDOFF.md · 当前状态
 
+## 审核加载与刷新链路调查（2026-10-12，仅分析）
+
+- 用户要求检查审核不流畅并派出 GPT-6.1 Sol/medium。三个只读代理分别调查审核 UI、平台请求/刷新和独立后端；起始 Gallery 59a175d 工作区干净，未修改业务源码、配置或相邻仓。
+- 隔离 Chromium 确认高级管理员冷进入审核页重复读取 review/admin/questions；一次 refreshPlatform('review') 发出 catalog/session/activity 加两轮 review/admin/questions，共7个GET。activity 事件被无差别当作队列变更；两轮旧请求未取消。
+- 已实际点击复现连续审核 A→B→A：刷新列表延迟12秒时，465ms内通过前两件，下一弹窗再次打开已通过的A，第三件仍待核验。原因是成功响应未应用到本地队列，nextIn只排除当前件。1500件合成列表生成40695个DOM元素；全量匹配搜索同步处理113–120ms，含布局与两帧等待525–632ms，非生产速度结论。
+- 题目接口延迟4秒，作品GET已完成但冷页面703ms仍为载入、0行，4167ms才可使用；回访缓存可立即展示。当前后端review已带questions，前端仍额外读取admin/questions；应优先复用同次快照。另实测同path旧响应覆盖remembered缓存；切标签筛选重置、GET无超时/直接重试及旧账号401副作用来自源码检查。
+- 建议顺序：成功后更新本地队列/计数→按事件和操作缩小刷新→复用review题目快照→简单分页与一次计算复用→独立后端轻量列表/详情及审核计数。后端现行人工审核不等待截图/模型，全量列表与重复投影成本须另测现场，不能将本地HEAD视为全量生产运行文件。
+- check75/0、test43/43；四个关键脚本site/dist SHA一致后进行本地夹具复现，pageerror0并目视核对重新打开A。未build/intake（无源码、资源或数据变更），未生产登录/审核/投票、付费模型或部署。证据忽略目录output/playwright/review-flow-analysis-20261012/；[调查归档](docs/archive/2026-10-12-review-loading-analysis-wsnxxxs.md)。
+
 ## 中英文界面发布（2026-10-11，已上线）
 
 - 用户授权推送、部署；功能提交3ac719d已正常推送main，最终资产79b9b1bd64cf51af941ecb95上线。完整Gallery2358文件SHA通过，相对发布前30项变化（含5个新增语言模块），2328原文件逐字节保持；数据、媒体和实际生产API配置保持。
