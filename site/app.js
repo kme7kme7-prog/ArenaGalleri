@@ -1884,7 +1884,9 @@ try {
   initialPlatformSettled = true;
   if (!platform.available && resultSort === 'score') resultSort = 'added';
   mergePlatform();
-  await route({ keepScroll: true });
+  // A mounted review already owns its arrival read; preserve it across startup settling.
+  if (page?.review && /^#\/?review(?:\/|$)/.test(location.hash)) refreshAccountControls();
+  else await route({ keepScroll: true });
   await (homeArrival ?? window.ArenaEntry?.ready(root));
   startPlatformRecovery();
 } catch (err) {

@@ -24,6 +24,80 @@ async function environment(label, run) {
   }
 }
 
+test('late unauthorized reads do not clear a newer account', async () => {
+  await environment('old-unauthorized', async ({ api, platform, onPlatformChange }) => {
+    const oldRead = pending();
+    globalThis.fetch = (url) => url.endsWith('/review') ? oldRead.promise
+      : Promise.resolve(dto({ user: { id: 'bob', role: 'admin' } }));
+    platform.user = { id: 'alice', role: 'admin' };
+    const reading = api('review');
+    const rejected = assert.rejects(reading, (error) => error.status === 401);
+    await api('auth/login', { method: 'POST' });
+    let identities = 0;
+    const unsubscribe = onPlatformChange((reason) => { if (reason === 'identity') identities++; });
+    oldRead.resolve(dto({ error: 'Expired session' }, 401));
+    await rejected;
+    assert.equal(platform.user.id, 'bob');
+    assert.equal(identities, 0);
+    unsubscribe();
+    globalThis.fetch = () => Promise.resolve(dto({ error: 'Expired session' }, 401));
+    await assert.rejects(api('review'), (error) => error.status === 401);
+    assert.equal(platform.user, null, 'a current account 401 still clears its identity');
+  });
+});
+
+test('remembered reads and review writes reject older cache answers', async () => {
+  await environment('remembered-order', async ({ apiRemembered, recall, updateRememberedReviewWork }) => {
+    const older = pending(), newer = pending();
+    let calls = 0;
+    globalThis.fetch = () => ++calls === 1 ? older.promise : newer.promise;
+    const first = apiRemembered('review'), second = apiRemembered('review');
+    newer.resolve(dto({ works: [{ task: 'q', id: 'w', status: 'verified' }] }));
+    await second;
+    older.resolve(dto({ works: [{ task: 'q', id: 'w', status: 'unverified' }] }));
+    await first;
+    assert.equal(recall('review').works[0].status, 'verified');
+    const beforeWrite = pending();
+    globalThis.fetch = () => beforeWrite.promise;
+    const reading = apiRemembered('review');
+    updateRememberedReviewWork({ task: 'q', id: 'w', status: 'questioned' });
+    beforeWrite.resolve(dto({ works: [{ task: 'q', id: 'w', status: 'verified' }] }));
+    await reading;
+    assert.equal(recall('review').works[0].status, 'questioned');
+  });
+});
+
+test('aborting a response body preserves the remembered review', async () => {
+  await environment('aborted-body', async ({ apiRemembered, recall }) => {
+    globalThis.fetch = () => Promise.resolve(dto({ works: [{ task: 'q', id: 'w' }] }));
+    await apiRemembered('review');
+    const controller = new AbortController();
+    const bodyStarted = pending();
+    globalThis.fetch = () => Promise.resolve({
+      json: () => new Promise((resolve, reject) => {
+        controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true });
+        bodyStarted.resolve();
+      }),
+    });
+    const rejected = assert.rejects(apiRemembered('review', { signal: controller.signal }), { name: 'AbortError' });
+    await bodyStarted.promise;
+    controller.abort();
+    await rejected;
+    assert.equal(recall('review').works[0].id, 'w');
+  });
+});
+
+test('known work mutations resolve returned cover and capture media', async () => {
+  await environment('mutation-media', async ({ api }) => {
+    globalThis.fetch = () => Promise.resolve(dto({ work: { task: 'q', id: 'w', cover: 'uploads/cover.webp', captures: { front: 'uploads/front.webp' } } }));
+    for (const path of ['works/q/w/review', 'works/q/w/moderation', 'works/q/w/moderation/retry', 'admin/works/q/w/meta', 'admin/works/q/w/face-settings']) {
+      const { work } = await api(path, { method: 'POST', body: {} });
+      assert.equal(work.cover, 'https://backend.test/uploads/cover.webp', path);
+      assert.equal(work.captures.front, 'https://backend.test/uploads/front.webp', path);
+    }
+  });
+});
+
 test('catalog renders before delayed session, and activity starts after both without blocking', async () => {
   await environment('delay', async ({ connectPlatform, platform, catalogState }) => {
     const session = pending(), activity = pending(), calls = [];

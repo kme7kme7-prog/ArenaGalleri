@@ -1,6 +1,6 @@
 // Work metadata and display settings share a sheet; review decisions keep their own dialogs.
 import { $, $$, brandMark, esc, formatTime, icon, img } from './ui.js';
-import { api, byStaff, canDecide, isSenior, moderationBadge, openDialog, refreshPlatform, ROLE_LABELS, setFaces, statusBadge, toast } from './platform.js';
+import { accountVersion, api, byStaff, canDecide, isSenior, moderationBadge, openDialog, refreshPlatform, ROLE_LABELS, setFaces, statusBadge, toast, updateRememberedReviewWork } from './platform.js';
 import { templatesOf } from './categories.js';
 import { workFieldsHtml } from './work-fields.js';
 
@@ -21,7 +21,8 @@ function auditDetail(row) {
   } catch { return `<span data-i18n-ignore>${esc(row.detail ?? '')}</span>`; }
 }
 
-export function openWorkManagement(ctx, w, { questions = [], audit = [], createEditor, onReview, onContent } = {}) {
+export function openWorkManagement(ctx, w, { questions = [], audit = [], createEditor, onReview, onContent, onChanged, onRemoved } = {}) {
+  const owner = accountVersion();
   const listed = ctx.DATA.tasks.find((t) => t.id === w.task);
   const task = listed ?? questions.find((q) => q.id === w.task);
   const packaged = Boolean(ctx.packagedWork(w.task, w.id));
@@ -137,16 +138,21 @@ export function openWorkManagement(ctx, w, { questions = [], audit = [], createE
     let metadataSaved = false;
     try {
       metadataSaved = await editor.save(meta);
+      if (owner !== accountVersion()) { sheet.close(); return; }
+      if (metadataSaved) onChanged?.(w);
       if (Object.keys(faces).length) {
         const { work } = await setFaces(w.task, w.id, faces);
+        if (owner !== accountVersion()) { sheet.close(); return; }
         Object.assign(w, work);
+        updateRememberedReviewWork(w);
+        onChanged?.(w);
       }
       sheet.close();
       toast(metadataSaved || Object.keys(faces).length ? `已保存：${w.title}` : '信息与展示设置没有改动');
       await refreshPlatform('review');
     } catch (err) {
       error.textContent = metadataSaved ? `作品信息已保存，展示设置未保存：${err.message}。请重试保存。` : err.message;
-      if (metadataSaved) await refreshPlatform('review');
+      if (metadataSaved && owner === accountVersion()) await refreshPlatform('review');
     } finally { setBusy(false); }
   });
   $('[data-work-decision]', form).addEventListener('click', () => {
@@ -160,9 +166,11 @@ export function openWorkManagement(ctx, w, { questions = [], audit = [], createE
     error.textContent = '';
     try {
       const body = await withdrawDialog(w, packaged);
-      if (!body || !sheet.el.open) return;
+      if (!body || !sheet.el.open || owner !== accountVersion()) return;
       await api(`works/${encodeURIComponent(w.task)}/${encodeURIComponent(w.id)}`, { method: 'DELETE', body });
       sheet.close();
+      if (owner !== accountVersion()) return;
+      onRemoved?.();
       toast(body.void ? '作品已下架，对局已作废' : '作品已下架');
       await refreshPlatform('delete');
     } catch (err) { error.textContent = err.message; }

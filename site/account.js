@@ -2,7 +2,7 @@ import { setPageTitle } from './i18n.js';
 // Personal center (#/me), and the admin review queue (#/review[/<tab>]).
 import { $, $$, brandMark, esc, formatBytes, formatDate, formatTime, icon, img } from './ui.js';
 import { memberChips, memberList, memberResults, membersState, openMember } from './member-management.js';
-import { api, apiRemembered, arenaText, autoRejected, avatarFace, byStaff, canDecide, confirmDialog, injected, isSenior, isStaff, moderationBadge, openBindEmail, openDialog, platform, QUESTION_LABELS, recall, refreshPlatform, requireUser, reviewCount, reviewVerdict, riskLabels, ROLE_LABELS, setFaces, statusBadge, toast } from './platform.js';
+import { accountVersion, api, apiRemembered, arenaText, autoRejected, avatarFace, byStaff, canDecide, confirmDialog, injected, isSenior, isStaff, moderationBadge, openBindEmail, openDialog, platform, QUESTION_LABELS, recall, refreshPlatform, requireUser, reviewCount, reviewVerdict, riskLabels, ROLE_LABELS, setFaces, statusBadge, toast, updateRememberedReviewWork } from './platform.js';
 import { effortOptions, onWorkFieldChange, readWorkFields, workFieldsHtml } from './work-fields.js';
 import { openWorkManagement } from './work-management.js';
 import { CATEGORIES, categoryLabel, domainsOf, matchesQuery } from './categories.js';
@@ -26,6 +26,7 @@ const DONE_FILTERS = { all: '全部', public: '已公开', noarena: '不进盲�
 const FILTER_TABS = { verified: 'public', off: 'off', questioned: 'questioned', rejected: 'rejected', noarena: 'noarena', machine: 'machine', injection: 'injection' };
 const ME_TABS = { overview: '概览', works: '我的作品', questions: '我的题目' };
 const ACCOUNT = { title: '个人中心', description: '每一道提问，每一份解答，都是你的创作足迹。' };
+const accountKey = () => `${accountVersion()}:${platform.user?.id ?? ''}:${platform.user?.role ?? ''}`;
 const ACTIONS = { submit: '提交作品', verified: '通过核验', questioned: '标记存疑', unverified: '退回未验证', delete: '下架作品', 'delete-followup': '下架后处理',
   'question-create': '发起题目', 'question-review': '审核题目', 'question-edit': '编辑题目', 'question-resubmit': '重新提交题目', 'question-delete': '删除题目',
   'content-review': '内容审核', 'content-retry': '重新自动审核', meta: '编辑信息', 'face-settings': '调整展示设置', role: '调整角色' };
@@ -248,7 +249,8 @@ function editWork(ctx, w) {
   });
 }
 
-async function removeWork(w, { admin }) {
+async function removeWork(w, { admin, onChanged }) {
+  const owner = accountKey();
   const verified = w.status === 'verified';
   const ok = await confirmDialog({
     title: '下架这件作品？',
@@ -256,9 +258,11 @@ async function removeWork(w, { admin }) {
     confirm: '下架',
     danger: true,
   });
-  if (!ok) return false;
+  if (!ok || owner !== accountKey()) return false;
   try {
     await api(`works/${encodeURIComponent(w.task)}/${encodeURIComponent(w.id)}`, { method: 'DELETE' });
+    if (owner !== accountKey()) return true;
+    onChanged?.();
     toast('作品已下架');
     await refreshPlatform('delete');
     return true;
@@ -644,13 +648,16 @@ function reviewEditor(form, task, w) {
 // Saves the changed fields of a dialog's form; returns whether anything was sent.
 async function saveMeta(w, meta) {
   if (!Object.keys(meta).length) return false;
+  const owner = accountKey();
   const { work } = await api(`admin/works/${encodeURIComponent(w.task)}/${encodeURIComponent(w.id)}/meta`, { method: 'POST', body: meta });
   Object.assign(w, work);
+  if (owner === accountKey()) updateRememberedReviewWork(w);
   return true;
 }
 
 // Save information fixes before the decision; only verification needs a complete record.
-export function openReview(ctx, w, { questions = [], onDecided } = {}) {
+export function openReview(ctx, w, { questions = [], onChanged, onDecided } = {}) {
+  const owner = accountKey();
   const task = ctx.DATA.tasks.find((t) => t.id === w.task) ?? questions.find((q) => q.id === w.task);
   // An unregistered model without a declared vendor shows what its name suggests.
   const guess = w.model || w.vendor ? '' : ctx.modelOf({ modelName: w.modelName }).vendor;
@@ -703,10 +710,10 @@ export function openReview(ctx, w, { questions = [], onDecided } = {}) {
   const editor = reviewEditor(form, task, w);
   sheet.el.addEventListener('click', async (e) => {
     if (e.target.closest('a[href^="#"]')) { sheet.close(); return; }
-    if (e.target.closest('[data-open-content]') && canDecide(w)) { sheet.close(); openContent(ctx, w, { questions }); return; }
+    if (e.target.closest('[data-open-content]') && canDecide(w)) { sheet.close(); openContent(ctx, w, { questions, onChanged }); return; }
     const decide = e.target.closest('[data-decide]');
     if (e.target.closest('[data-remove]')) {
-      if (await removeWork(w, { admin: true })) sheet.close();
+      if (await removeWork(w, { admin: true, onChanged: () => onChanged?.(w) })) sheet.close();
       return;
     }
     const error = $('.form-error:not(.field-error)', form);
@@ -715,7 +722,10 @@ export function openReview(ctx, w, { questions = [], onDecided } = {}) {
       error.textContent = '';
       button.disabled = true;
       try {
-        toast(await editor.save(editor.collect()) ? `已保存：${w.title}` : '信息没有改动');
+        const saved = await editor.save(editor.collect());
+        if (owner !== accountKey()) { sheet.close(); return; }
+        if (saved) onChanged?.(w);
+        toast(saved ? `已保存：${w.title}` : '信息没有改动');
         await refreshPlatform('review');
       } catch (err) {
         error.textContent = err.message;
@@ -728,7 +738,11 @@ export function openReview(ctx, w, { questions = [], onDecided } = {}) {
     if (status === 'off') {
       $$('[data-decide]', form).forEach((b) => { b.disabled = true; });
       try {
-        await setFaces(w.task, w.id, FACE_ACTIONS.hide[1]);
+        const { work } = await setFaces(w.task, w.id, FACE_ACTIONS.hide[1]);
+        if (owner !== accountKey()) { sheet.close(); return; }
+        Object.assign(w, work);
+        updateRememberedReviewWork(w);
+        onChanged?.(w);
         sheet.close();
         toast(`已撤下：${w.title}`);
         await refreshPlatform('review');
@@ -752,8 +766,13 @@ export function openReview(ctx, w, { questions = [], onDecided } = {}) {
     }
     $$('[data-decide]', form).forEach((b) => { b.disabled = true; });
     try {
-      await editor.save(meta);
-      await api(`works/${encodeURIComponent(w.task)}/${encodeURIComponent(w.id)}/review`, { method: 'POST', body });
+      if (await editor.save(meta)) onChanged?.(w);
+      if (owner !== accountKey()) { sheet.close(); return; }
+      const { work } = await api(`works/${encodeURIComponent(w.task)}/${encodeURIComponent(w.id)}/review`, { method: 'POST', body });
+      Object.assign(w, work);
+      if (owner !== accountKey()) { sheet.close(); return; }
+      updateRememberedReviewWork(w);
+      onChanged?.(w);
       sheet.close();
       const note = onDecided?.() ?? '';
       toast(`已${{ verified: '通过核验', questioned: '标记存疑' }[body.status]}：${w.title}${note}`);
@@ -767,7 +786,8 @@ export function openReview(ctx, w, { questions = [], onDecided } = {}) {
 
 // Content review: approving releases the work for verification, rejecting keeps it hidden with a reason
 // the author reads, and a retry sends it through the automatic check again.
-function openContent(ctx, w, { questions = [], onDecided } = {}) {
+function openContent(ctx, w, { questions = [], onChanged, onDecided } = {}) {
+  const owner = accountKey();
   const m = w.moderation ?? {};
   const listed = ctx.DATA.tasks.find((t) => t.id === w.task);
   const task = listed ?? questions.find((q) => q.id === w.task);
@@ -814,7 +834,10 @@ function openContent(ctx, w, { questions = [], onDecided } = {}) {
       error.textContent = '';
       save.disabled = true;
       try {
-        toast(await editor.save(editor.collect()) ? `已保存：${w.title}` : '信息没有改动');
+        const saved = await editor.save(editor.collect());
+        if (owner !== accountKey()) { sheet.close(); return; }
+        if (saved) onChanged?.(w);
+        toast(saved ? `已保存：${w.title}` : '信息没有改动');
         await refreshPlatform('review');
       } catch (err) {
         error.textContent = err.message;
@@ -838,9 +861,14 @@ function openContent(ctx, w, { questions = [], onDecided } = {}) {
     $$('[data-content-act]', form).forEach((b) => { b.disabled = true; });
     const path = `works/${encodeURIComponent(w.task)}/${encodeURIComponent(w.id)}/moderation`;
     try {
-      await editor.save(meta);
-      if (act === 'retry') await api(`${path}/retry`, { method: 'POST' });
-      else await api(path, { method: 'POST', body: { status: act, reason: reason || '人工复核通过' } });
+      if (await editor.save(meta)) onChanged?.(w);
+      if (owner !== accountKey()) { sheet.close(); return; }
+      const { work } = act === 'retry' ? await api(`${path}/retry`, { method: 'POST' })
+        : await api(path, { method: 'POST', body: { status: act, reason: reason || '人工复核通过' } });
+      Object.assign(w, work);
+      if (owner !== accountKey()) { sheet.close(); return; }
+      updateRememberedReviewWork(w);
+      onChanged?.(w);
       sheet.close();
       const note = onDecided?.() ?? '';
       toast(`${{ retry: '已重新提交自动审核', approved: listed ? '内容已通过，转入核验' : '内容已通过', rejected: '内容已拒绝，作者会看到理由' }[act]}：${w.title}${note}`);
@@ -942,7 +970,8 @@ function categoryFields(q) {
 const questionShown = (q) => ['legacy', 'approved'].includes(q.moderation?.status ?? 'legacy');
 
 // Approving needs no reason and can correct the form and domains; rejecting requires a reason the author will read.
-function decideQuestion(q, status) {
+function decideQuestion(q, status, current = () => true) {
+  const owner = accountKey();
   // Rejecting a public question takes it and its works off the site until it is approved again.
   const withdraw = status === 'rejected' && questionShown(q)
     ? `这道题已经公开${q.works ? `，有 ${q.works} 件作品` : ''}。撤下后作品随之不再公开，相关投票暂不计入排行榜；重新通过后恢复。` : '';
@@ -981,7 +1010,7 @@ function decideQuestion(q, status) {
         sheet.close();
         // Settle on success too, so the list refreshes even if the close event never arrives.
         resolve(true);
-        toast(status === 'approved' ? '题目已通过' : '题目已拒绝');
+        if (owner === accountKey() && current()) toast(status === 'approved' ? '题目已通过' : '题目已拒绝');
       } catch (err) {
         error.textContent = err.message;
         button.disabled = false;
@@ -993,7 +1022,8 @@ function decideQuestion(q, status) {
 // Senior admins correct a question at any stage without changing its review status. A public
 // question that already has works keeps its prompt, so those works still answer the same question.
 // works: the question's works, for the cover choice.
-function editQuestion(q, works = []) {
+function editQuestion(q, works = [], current = () => true) {
+  const owner = accountKey();
   const locked = questionShown(q) && q.works > 0;
   const covers = works.filter((w) => w.status === 'verified');
   // Reference images belong to the prompt and lock with it.
@@ -1051,7 +1081,7 @@ function editQuestion(q, works = []) {
         saved = true;
         sheet.close();
         resolve(true);
-        toast(`已保存：${body.title ?? q.title}`);
+        if (owner === accountKey() && current()) toast(`已保存：${body.title ?? q.title}`);
       } catch (err) {
         error.textContent = err.message;
         button.disabled = false;
@@ -1086,34 +1116,75 @@ const BULK = {
     ['rejected', '拒绝', '已拒绝', '题目不会公开，作者会看到理由。']] },
 };
 
+const REVIEW_PAGE_SIZE = 50;
+let reviewPreferencesOwner = '';
+const reviewPreferences = new Map();
+
 function review(root, ctx) {
   const [routeTab = '', routeQuery = ''] = (ctx.param ?? '').split('?');
+  const owner = accountKey();
+  if (reviewPreferencesOwner !== owner) { reviewPreferences.clear(); reviewPreferencesOwner = owner; }
+  const rememberedPreferences = reviewPreferences.get(routeTab);
   const state = { works: null, audit: [], questions: null, questionsError: '', error: '', tab: null, filter: FILTER_TABS[routeTab] ?? 'all', picked: new Set(),
+    pages: {},
     catalog: { filter: 'all', query: '', category: '', domain: '', sort: 'latest' }, members: membersState(),
     managed: { filter: 'all', query: new URLSearchParams(routeQuery).get('q') ?? '', task: new URLSearchParams(routeQuery).get('task') ?? '', arena: 'all', sort: 'latest' } };
+  if (rememberedPreferences) {
+    state.filter = rememberedPreferences.filter;
+    state.pages = { ...rememberedPreferences.pages };
+    Object.assign(state.catalog, rememberedPreferences.catalog);
+    Object.assign(state.managed, rememberedPreferences.managed);
+  }
+  if (routeQuery) Object.assign(state.managed, { query: new URLSearchParams(routeQuery).get('q') ?? '', task: new URLSearchParams(routeQuery).get('task') ?? '' });
+  const rememberPreferences = () => reviewPreferences.set(routeTab, { filter: state.filter, pages: { ...state.pages }, catalog: { ...state.catalog }, managed: { ...state.managed } });
+  const pageItems = (items, key = state.tab) => {
+    const pages = Math.max(1, Math.ceil(items.length / REVIEW_PAGE_SIZE));
+    const page = state.pages[key] = Math.max(1, Math.min(state.pages[key] ?? 1, pages));
+    return items.slice((page - 1) * REVIEW_PAGE_SIZE, page * REVIEW_PAGE_SIZE);
+  };
+  const pagination = (items, key = state.tab) => {
+    pageItems(items, key);
+    const pages = Math.max(1, Math.ceil(items.length / REVIEW_PAGE_SIZE)), page = state.pages[key];
+    return pages > 1 ? `<nav class="review-pagination" aria-label="列表分页"><button type="button" class="btn sm" data-review-page="${esc(key)}" data-page="${page - 1}"${page === 1 ? ' disabled' : ''}>上一页</button><span>第 ${page} / ${pages} 页 · 共 ${items.length} 项</span><button type="button" class="btn sm" data-review-page="${esc(key)}" data-page="${page + 1}"${page === pages ? ' disabled' : ''}>下一页</button></nav>` : '';
+  };
+  let computed = new Map();
   // Packaged works come without media; they show the data pack's screenshots and scene.
   const settle = (data, questions) => Object.assign(state, { works: data.works.map((w) => ({ ...ctx.packagedWork(w.task, w.id), ...w })), audit: data.audit, error: '',
     questions: questions.list ?? state.questions ?? [], questionsError: questions.error ?? '' });
   // A return to the queue draws what it showed last time, and the arrival load redraws only if that changed.
   const known = isStaff() ? recall('review') : null;
-  if (known) settle(known, { list: isSenior() ? recall('admin/questions')?.questions : [] });
-  let active = true, request = 0;
-  async function load(arriving = false) {
+  if (known) settle(known, { list: known.questions ?? (isSenior() ? recall('admin/questions')?.questions : []) });
+  let active = true, request = 0, controller = null, loadingRequest = null, searchTimer = null;
+  function cancelLoad() { request++; controller?.abort(); controller = null; loadingRequest = null; }
+  function load(arriving = false, replace = false) {
+    if (loadingRequest && !replace) return loadingRequest;
+    if (replace) cancelLoad();
     const version = ++request;
-    if (!isStaff()) return draw();
+    if (!isStaff()) { draw(); return Promise.resolve(); }
+    const reading = new AbortController();
+    controller = reading;
+    const signal = reading.signal;
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; reading.abort(); }, 15000);
     const before = JSON.stringify(state);
-    try {
-      // Questions belong to senior admins.
-      const [data, questions] = await Promise.all([apiRemembered('review'),
-        isSenior() ? apiRemembered('admin/questions').then((body) => ({ list: body.questions }), (error) => ({ error: error.message })) : { list: [] }]);
-      if (!active || version !== request) return;
-      settle(data, questions);
-    } catch (error) {
-      if (!active || version !== request) return;
-      state.error = error.message;
-    }
-    if (!arriving || JSON.stringify(state) !== before) draw();
-    if (state.tab === 'members') loadMembers();
+    loadingRequest = (async () => {
+      try {
+        const data = await apiRemembered('review', { signal });
+        const questions = Array.isArray(data.questions) ? { list: data.questions } : isSenior()
+          ? await apiRemembered('admin/questions', { signal }).then((body) => ({ list: body.questions }), (error) => { if (signal.aborted) throw error; return { error: error.message }; }) : { list: [] };
+        if (!active || version !== request || owner !== accountKey()) return;
+        settle(data, questions);
+      } catch (error) {
+        if (!active || version !== request || owner !== accountKey()) return;
+        state.error = timedOut ? '审核列表加载超时，请重试。' : error.message;
+      } finally {
+        clearTimeout(timer);
+        if (version === request) { controller = null; loadingRequest = null; }
+      }
+      if (!arriving || JSON.stringify(state) !== before) draw();
+      if (state.tab === 'members') loadMembers();
+    })();
+    return loadingRequest;
   }
   // The member list belongs to senior admins and loads only when its tab is open.
   async function loadMembers() {
@@ -1134,18 +1205,28 @@ function review(root, ctx) {
     noarena: bucket === 'verified' && w.arena?.state !== 'in_pool', off: bucket === 'off', questioned: bucket === 'questioned', rejected: bucket === 'rejected',
     machine: bucket === 'rejected' && autoRejected(w.moderation), injection: bucket === 'rejected' && injected(w.moderation) })[filter];
   const filterCount = (filter) => (state.works ?? []).filter((w) => inDone(w, reviewBucket(ctx, w, state.questions ?? []), filter)).length;
-  const queue = (bucket) => (state.works ?? []).filter((w) => {
+  const queue = (bucket) => {
+    const key = `queue:${bucket}`;
+    if (computed.has(key)) return computed.get(key);
+    const items = (state.works ?? []).filter((w) => {
     const own = reviewBucket(ctx, w, state.questions ?? []);
     return bucket === 'done' ? inDone(w, own) : own === bucket;
   }).sort((a, b) => (['content', 'auto', 'unverified'].includes(bucket) ? 1 : -1) * (Date.parse(a.addedAt) - Date.parse(b.addedAt)));
+    computed.set(key, items);
+    return items;
+  };
+  const waitingQuestions = () => {
+    if (!computed.has('waiting-questions')) computed.set('waiting-questions', (state.questions ?? []).filter(questionWaiting).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)));
+    return computed.get('waiting-questions');
+  };
   const tabCount = (id) => (id === 'questions' ? (state.questions ?? []).filter(questionWaiting).length : queue(id).length);
   // Batch switches on the decided list: only where every row needs the same next step.
   const doneBulk = () => (state.tab === 'done' ? { noarena: 'arena-on', off: 'restore' }[state.filter] : null);
   // What the batch checkboxes of the current queue can select.
-  const pickable = () => (state.tab === 'questions' ? (state.questions ?? []).filter(questionWaiting).map((q) => q.id)
-    : state.tab === 'works' ? managedWorks().filter(displayReady).filter(canDecide).map(pickId)
-    : state.tab === 'done' ? (doneBulk() ? queue('done').filter(canDecide).filter((w) => doneBulk() !== 'arena-on' || w.arena?.state === 'off').map(pickId) : [])
-      : BULK[state.tab] ? queue(state.tab).filter(canDecide).map(pickId) : []);
+  const pickable = () => (state.tab === 'questions' ? pageItems(waitingQuestions()).map((q) => q.id)
+    : state.tab === 'works' ? pageItems(managedWorks()).filter(displayReady).filter(canDecide).map(pickId)
+    : state.tab === 'done' ? (doneBulk() ? pageItems(queue('done')).filter(canDecide).filter((w) => doneBulk() !== 'arena-on' || w.arena?.state === 'off').map(pickId) : [])
+      : BULK[state.tab] ? pageItems(queue(state.tab)).filter(canDecide).map(pickId) : []);
   const taskOf = (w) => ctx.DATA.tasks.find((t) => t.id === w.task) ?? state.questions?.find((q) => q.id === w.task);
   const displayReady = (w) => w.status === 'verified' && !held(w) && !w.entertainment_route && ctx.DATA.tasks.some((t) => t.id === w.task);
   const arenaState = (w) => !displayReady(w) ? 'not_ready' : w.arena?.state ?? 'not_ready';
@@ -1155,14 +1236,18 @@ function review(root, ctx) {
       unverified: ['unverified', 'sample'].includes(bucket), questioned: bucket === 'questioned', off: bucket === 'off', rejected: bucket === 'rejected' }[filter];
   };
   function managedWorks({ filtered = true } = {}) {
+    const key = `managed:${filtered}`;
+    if (computed.has(key)) return computed.get(key);
     const { filter, query, task, arena, sort } = state.managed;
     const terms = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
-    return (state.works ?? []).filter((w) => {
+    const items = (state.works ?? []).filter((w) => {
       if (task && w.task !== task || arena !== 'all' && arenaState(w) !== arena || filtered && !managedIn(w, filter)) return false;
       const text = [w.title, w.modelName, w.vendor, publisher(ctx, w), taskOf(w)?.title ?? w.task].join(' ').toLocaleLowerCase();
       return terms.every((term) => text.includes(term));
     }).sort((a, b) => sort === 'title' ? a.title.localeCompare(b.title, 'zh-CN', { numeric: true })
       : (sort === 'oldest' ? 1 : -1) * ((Date.parse(a.addedAt) || 0) - (Date.parse(b.addedAt) || 0)));
+    computed.set(key, items);
+    return items;
   }
   function managedRow(w) {
     const key = esc(pickId(w)), task = taskOf(w), model = ctx.modelOf(w);
@@ -1193,9 +1278,9 @@ function review(root, ctx) {
   }
   function managedResults() {
     const works = managedWorks(), total = (state.works ?? []).length;
-    const bulk = pickable().length ? `<div class="bulk-bar" data-bulk-bar><label class="row-pick"><input type="checkbox" data-pick-all aria-label="全选可管理展示的作品"></label><span data-bulk-count></span>${['gallery-on', 'hide', 'arena-off'].map((action, i) => `<button class="btn sm${i ? '' : ' primary'}" type="button" data-bulk-face="${action}" disabled>${FACE_ACTIONS[action][0]}</button>`).join('')}</div>` : '';
+    const bulk = pickable().length ? `<div class="bulk-bar" data-bulk-bar><label class="row-pick"><input type="checkbox" data-pick-all aria-label="全选当前页可管理的作品"></label><span data-bulk-count></span>${['gallery-on', 'hide', 'arena-off'].map((action, i) => `<button class="btn sm${i ? '' : ' primary'}" type="button" data-bulk-face="${action}" disabled>${FACE_ACTIONS[action][0]}</button>`).join('')}</div>` : '';
     return `<p class="work-manage-list-meta">显示 ${works.length} / ${total} 件作品${works.some((w) => !canDecide(w)) ? ' · 本人作品可编辑信息，展示设置由其他管理员处理' : ''}</p>${bulk}
-      ${works.length ? `<div class="work-list">${works.map(managedRow).join('')}</div>` : '<div class="board-empty"><p class="board-empty-title">没有匹配的作品</p><button class="btn sm" type="button" data-managed-reset>清除筛选</button></div>'}`;
+      ${works.length ? `<div class="work-list">${pageItems(works).map(managedRow).join('')}</div>${pagination(works)}` : '<div class="board-empty"><p class="board-empty-title">没有匹配的作品</p><button class="btn sm" type="button" data-managed-reset>清除筛选</button></div>'}`;
   }
   function managedList() {
     const taskTitles = new Map([...ctx.DATA.tasks, ...(state.questions ?? [])].map((t) => [t.id, t.title]));
@@ -1210,21 +1295,30 @@ function review(root, ctx) {
   }
   // Preserve input focus while filters and search redraw only the result area.
   function updateManaged() {
+    if (!active || owner !== accountKey() || !root.querySelector('[data-managed-results]')) return;
+    clearTimeout(searchTimer);
+    computed.clear();
+    state.pages.works = 1;
     state.picked.clear();
     root.querySelector('[data-managed-chips]').innerHTML = managedChips();
     root.querySelector('[data-managed-results]').innerHTML = managedResults();
     syncBulk();
     ctx.settleImages();
+    rememberPreferences();
   }
   // 全部题目, laid out like 全部作品: the search and selects set the scope the chips count within.
   function catalogQuestions({ filtered = true } = {}) {
+    const key = `catalog:${filtered}`;
+    if (computed.has(key)) return computed.get(key);
     const { filter, query, category, domain, sort } = state.catalog;
     const term = query.toLocaleLowerCase();
     const when = (q) => Date.parse(q.createdAt ?? q.date) || 0;
-    return (state.questions ?? []).filter((q) => (!category || q.category === category) && (!domain || domainsOf(q).includes(domain))
+    const items = (state.questions ?? []).filter((q) => (!category || q.category === category) && (!domain || domainsOf(q).includes(domain))
       && (!filtered || catalogIn(q, filter)) && (!query || matchesQuery(q, query) || publisher(ctx, q).toLocaleLowerCase().includes(term)))
       .sort((a, b) => sort === 'title' ? a.title.localeCompare(b.title, 'zh-CN', { numeric: true })
         : sort === 'works' ? (b.works ?? 0) - (a.works ?? 0) : (sort === 'oldest' ? 1 : -1) * (when(a) - when(b)));
+    computed.set(key, items);
+    return items;
   }
   function catalogChips() {
     const scope = catalogQuestions({ filtered: false });
@@ -1238,7 +1332,7 @@ function review(root, ctx) {
       buckets.get(w.task).push(reviewBucket(ctx, w, state.questions ?? []));
     }
     return `<p class="work-manage-list-meta">显示 ${questions.length} / ${total} 道题目</p>
-      ${questions.length ? `<div class="submission-questions">${questions.map((q) => catalogRow(ctx, q, buckets.get(q.id) ?? [])).join('')}</div>` : '<div class="board-empty"><p class="board-empty-title">没有匹配的题目</p><button class="btn sm" type="button" data-catalog-reset>清除筛选</button></div>'}`;
+      ${questions.length ? `<div class="submission-questions">${pageItems(questions).map((q) => catalogRow(ctx, q, buckets.get(q.id) ?? [])).join('')}</div>${pagination(questions)}` : '<div class="board-empty"><p class="board-empty-title">没有匹配的题目</p><button class="btn sm" type="button" data-catalog-reset>清除筛选</button></div>'}`;
   }
   function catalogList() {
     const questions = state.questions ?? [];
@@ -1253,10 +1347,17 @@ function review(root, ctx) {
   }
   // Preserve input focus while filters and search redraw only the result area.
   function updateCatalog() {
+    if (!active || owner !== accountKey() || !root.querySelector('[data-catalog-results]')) return;
+    clearTimeout(searchTimer);
+    computed.clear();
+    state.pages.catalog = 1;
     root.querySelector('[data-catalog-chips]').innerHTML = catalogChips();
     root.querySelector('[data-catalog-results]').innerHTML = catalogResults();
+    rememberPreferences();
   }
   function draw() {
+    clearTimeout(searchTimer);
+    computed.clear();
     if (!platform.user) return signedOut(root, ctx, '请先登录管理员账号');
     if (!isStaff()) {
       root.innerHTML = `${ctx.pageStart({ ...ACCOUNT, section: 'me', heading: '审核', nav: accountNav(ctx, 'review'), crumbs: [{ text: '个人中心', href: '#/me' }, { text: '审核' }] })}<section class="account-empty">${icon('shield')}<h2>只有管理员可以审核作品</h2><p>管理员由高级管理员授予。</p><a class="btn primary" href="#/questions">回到题库${icon('right')}</a></section>${ctx.pageEnd()}`;
@@ -1277,12 +1378,12 @@ function review(root, ctx) {
     for (const id of state.picked) if (!ids.includes(id)) state.picked.delete(id);
     const bulkButtons = doneBulk() ? `<button class="btn sm primary" type="button" data-bulk-face="${doneBulk()}" disabled>${FACE_ACTIONS[doneBulk()][0]}</button>`
       : (BULK[tab]?.actions ?? []).map(([status, label], i) => `<button class="btn sm${i ? '' : ' primary'}" type="button" data-bulk="${status}" disabled>${label}</button>`).join('');
-    const bulk = bulkButtons && ids.length ? `<div class="bulk-bar" data-bulk-bar><label class="row-pick"><input type="checkbox" data-pick-all aria-label="全选"></label><span data-bulk-count></span>${bulkButtons}</div>` : '';
+    const bulk = bulkButtons && ids.length ? `<div class="bulk-bar" data-bulk-bar><label class="row-pick"><input type="checkbox" data-pick-all aria-label="全选当前页"></label><span data-bulk-count></span>${bulkButtons}</div>` : '';
     const works = state.works ?? [];
     const byKey = new Map(works.map((w) => [pickId(w), w]));
     const questions = state.questions ?? [];
     const questionTitles = new Map([...ctx.DATA.tasks, ...questions].map((q) => [q.id, q.title]));
-    const rows = (bucket) => queue(bucket).map((w) => workRow(ctx, w, { bucket: bucket === 'done' ? reviewBucket(ctx, w, questions) : bucket, questions,
+    const rows = (bucket) => pageItems(queue(bucket), bucket).map((w) => workRow(ctx, w, { bucket: bucket === 'done' ? reviewBucket(ctx, w, questions) : bucket, questions,
       picked: bucket === tab && ids.includes(pickId(w)) ? state.picked.has(pickId(w)) : undefined })).join('');
     const empty = (text) => `<div class="board-empty"><p class="board-empty-title">${text}</p></div>`;
     // A logged work links to its gallery page, or to its preview while it is not in the gallery.
@@ -1293,9 +1394,9 @@ function review(root, ctx) {
     if (tab === 'log') {
       list = state.audit.length ? `<ol class="audit">${state.audit.map((row) => `<li>${timeHtml(row.at)}<span class="audit-actor" data-i18n-ignore>${esc(row.actor)}</span><b>${esc(ACTIONS[row.action] ?? row.action)}</b><span class="audit-work" data-i18n-ignore>${!row.work && row.action?.startsWith('question-') && row.task ? esc(questionTitles.get(row.task) ?? row.task) : ''}${row.work ? auditWork(byKey.get(`${row.task}/${row.work}`), row.work) : ''}${row.detail ? ` · <span data-i18n-ignore>${esc(row.detail)}</span>` : ''}</span></li>`).join('')}</ol>` : '<p class="muted">还没有记录。</p>';
     } else if (tab === 'questions') {
-      const waiting = questions.filter(questionWaiting).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+      const waiting = waitingQuestions();
       list = state.questionsError ? `<p class="muted">${esc(state.questionsError)}</p>`
-        : `${waiting.length ? `${bulk}<div class="submission-questions">${waiting.map((q) => reviewQuestionRow(ctx, q, state.picked.has(q.id))).join('')}</div>` : empty(REVIEW_EMPTY.questions)}
+        : `${waiting.length ? `${bulk}<div class="submission-questions">${pageItems(waiting).map((q) => reviewQuestionRow(ctx, q, state.picked.has(q.id))).join('')}</div>${pagination(waiting)}` : empty(REVIEW_EMPTY.questions)}
           <p class="fine">处理过的题目在<a href="#/review/catalog">全部题目</a>里。</p>`;
     } else if (tab === 'catalog') {
       list = state.questionsError ? `<p class="muted">${esc(state.questionsError)}</p>` : catalogList();
@@ -1305,13 +1406,15 @@ function review(root, ctx) {
       list = memberList(state.members);
     } else if (tab === 'content') {
       const waiting = rows('content'), auto = rows('auto');
-      list = `${waiting ? `${bulk}<div class="work-list">${waiting}</div>` : empty(REVIEW_EMPTY.content)}
-        ${auto ? `<h3 class="review-subhead">自动审核中 · ${queue('auto').length}<small>完成后会自动转入「核验」或回到这里，也可以提前人工审核</small></h3><div class="work-list is-muted">${auto}</div>` : ''}`;
+      list = `${waiting ? `${bulk}<div class="work-list">${waiting}</div>${pagination(queue('content'), 'content')}` : empty(REVIEW_EMPTY.content)}
+        ${auto ? `<h3 class="review-subhead">自动审核中 · ${queue('auto').length}<small>完成后会自动转入「核验」或回到这里，也可以提前人工审核</small></h3><div class="work-list is-muted">${auto}</div>${pagination(queue('auto'), 'auto')}` : ''}`;
     } else if (tab === 'done') {
       const chips = `<div class="chips review-filters">${Object.entries(DONE_FILTERS).map(([id, text]) => `<button class="chip${id === state.filter ? ' on' : ''}" type="button" data-filter="${id}" aria-pressed="${id === state.filter}"><span>${text}</span> · ${filterCount(id)}</button>`).join('')}</div>`;
-      list = `${chips}${rows('done') ? `${bulk}<div class="work-list">${rows('done')}</div>` : empty(state.filter === 'all' ? '还没有核验过的作品' : `没有${DONE_FILTERS[state.filter]}的作品`)}`;
+      const shown = rows('done');
+      list = `${chips}${shown ? `${bulk}<div class="work-list">${shown}</div>${pagination(queue('done'))}` : empty(state.filter === 'all' ? '还没有核验过的作品' : `没有${DONE_FILTERS[state.filter]}的作品`)}`;
     } else {
-      list = rows(tab) ? `${bulk}<div class="work-list">${rows(tab)}</div>` : empty(REVIEW_EMPTY[tab]);
+      const shown = rows(tab);
+      list = shown ? `${bulk}<div class="work-list">${shown}</div>${pagination(queue(tab))}` : empty(REVIEW_EMPTY[tab]);
     }
     const link = ([id, text], counted) => `<a href="#/review/${id}"${id === tab ? ' aria-current="page"' : ''}>${text}${counted && state.works !== null ? `<span>${tabCount(id)}</span>` : ''}</a>`;
     root.innerHTML = `${ctx.pageStart({ ...ACCOUNT, section: 'me', heading: '审核', nav: accountNav(ctx, 'review'),
@@ -1322,12 +1425,13 @@ function review(root, ctx) {
         ${Object.keys(manage).length ? `<div class="seg review-tabs"><span class="seg-caption">管理</span>${Object.entries(manage).map((entry) => link(entry, false)).join('')}</div>` : ''}</nav>` })}
       <section class="submission-section">
         <p class="submission-summary">${REVIEW_SUMMARY[tab]}</p>
-        ${state.error ? `<p class="form-error">${esc(state.error)}</p>` : ''}
-        ${state.works === null ? '<p class="muted">正在载入…</p>' : list}
+        ${state.error ? `<div class="review-load-error"><p class="form-error" role="alert">${esc(state.error)}</p><button type="button" class="btn sm" data-review-retry>重试加载</button></div>` : ''}
+        ${state.works === null ? state.error ? '' : '<p class="muted">正在载入…</p>' : list}
       </section>
     ${ctx.pageEnd()}`;
     setPageTitle(['审核', ctx.DATA.title]);
     syncBulk();
+    rememberPreferences();
   }
   // Updates the batch bar in place, so ticking boxes keeps the scroll position.
   function syncBulk() {
@@ -1339,17 +1443,25 @@ function review(root, ctx) {
     all.indeterminate = n > 0 && n < total;
     const unit = BULK[state.tab]?.unit ?? '件';
     const faces = Boolean(bar.querySelector('[data-bulk-face]'));
-    bar.querySelector('[data-bulk-count]').textContent = `${n ? `已选 ${n} ${unit}` : `全选（${total} ${unit}）`}${faces && (n > 200 || total > 200) ? ' · 每批最多 200 件，请缩小选择范围' : ''}`;
+    bar.querySelector('[data-bulk-count]').textContent = `${n ? `已选 ${n} ${unit}` : `全选当前页（${total} ${unit}）`}${faces && (n > 200 || total > 200) ? ' · 每批最多 200 件，请缩小选择范围' : ''}`;
     $$('[data-bulk], [data-bulk-face]', bar).forEach((button) => { button.disabled = !n || faces && n > 200; });
   }
   // After a decision in a queue, the oldest remaining work of that queue opens right away.
   const nextIn = (bucket, doneKey) => () => {
+    if (!active || owner !== accountKey()) return '';
     const next = queue(bucket).find((w) => pickId(w) !== doneKey && canDecide(w));
     if (next) { (bucket === 'content' ? openHeld : open)(next, bucket); return ''; }
     return bucket === 'content' ? ' · 内容队列已清空' : ' · 核验队列已清空';
   };
-  const open = (work, bucket) => openReview(ctx, work, { questions: state.questions ?? [], onDecided: bucket === 'unverified' ? nextIn(bucket, pickId(work)) : undefined });
-  const openHeld = (work, bucket) => openContent(ctx, work, { questions: state.questions ?? [], onDecided: bucket === 'content' ? nextIn(bucket, pickId(work)) : undefined });
+  function changedWork(work) {
+    if (!active || owner !== accountKey()) return;
+    cancelLoad();
+    const current = state.works?.find((item) => pickId(item) === pickId(work));
+    if (current) Object.assign(current, work);
+    draw();
+  }
+  const open = (work, bucket) => openReview(ctx, work, { questions: state.questions ?? [], onChanged: changedWork, onDecided: bucket === 'unverified' ? nextIn(bucket, pickId(work)) : undefined });
+  const openHeld = (work, bucket) => openContent(ctx, work, { questions: state.questions ?? [], onChanged: changedWork, onDecided: bucket === 'content' ? nextIn(bucket, pickId(work)) : undefined });
   // One face switch for a row, or for every selected row of the decided list (all or none).
   let switchingFaces = false;
   async function switchFaces(action, works) {
@@ -1360,7 +1472,16 @@ function review(root, ctx) {
     try {
       if (works.length > 1 && !(await confirmDialog({ title: `${label} ${works.length} 件？`, message: works.map((w) => `「${w.title}」`).join('、'), confirm: label }))) return;
       if (works.length > 1) await api('admin/works/batch-face-settings', { method: 'POST', body: { works: works.map(({ task, id }) => ({ task, id })), ...faces } });
-      else await setFaces(works[0].task, works[0].id, faces);
+      else {
+        const { work } = await setFaces(works[0].task, works[0].id, faces);
+        if (owner === accountKey()) {
+          Object.assign(works[0], work);
+          updateRememberedReviewWork(works[0]);
+        }
+      }
+      if (owner !== accountKey()) return;
+      cancelLoad();
+      if (!active) { await refreshPlatform('review'); return; }
       state.picked.clear();
       toast(works.length > 1 ? `${works.length} 件${done}` : `${done}：${works[0].title}`);
       await refreshPlatform('review');
@@ -1368,8 +1489,10 @@ function review(root, ctx) {
       toast(error.message);
     } finally {
       switchingFaces = false;
-      syncBulk();
-      $$('[data-face]', root).forEach((button) => { button.disabled = false; });
+      if (active && owner === accountKey()) {
+        syncBulk();
+        $$('[data-face]', root).forEach((button) => { button.disabled = false; });
+      }
     }
   }
   // One decision for every selected item of the current queue. The server decides each item on
@@ -1440,7 +1563,12 @@ function review(root, ctx) {
         return;
       }
       sheet.close();
+      if (!active || owner !== accountKey()) {
+        if (owner === accountKey()) await refreshPlatform(tab === 'questions' ? 'question' : 'review');
+        return;
+      }
       const failed = results.filter((r) => !r.ok);
+      cancelLoad();
       const resultKey = (r) => (tab === 'questions' ? r.id : `${r.task}/${r.id}`);
       state.picked = new Set(failed.map(resultKey));
       const succeeded = results.length - failed.length;
@@ -1469,17 +1597,20 @@ function review(root, ctx) {
     if (!q) return false;
     const path = `questions/${encodeURIComponent(q.id)}`;
     try {
-      if (edit && !(await editQuestion(q, (state.works ?? []).filter((w) => w.task === q.id)))) return true;
-      if (decide && !(await decideQuestion(q, decide.dataset.qDecide))) return true;
+      if (edit && !(await editQuestion(q, (state.works ?? []).filter((w) => w.task === q.id), () => active))) return true;
+      if (decide && !(await decideQuestion(q, decide.dataset.qDecide, () => active))) return true;
       if (remove) {
         if (!(await confirmDialog({ title: '删除这道题？', message: `「${q.title}」会从题库中移除并写入审核记录${q.works ? `，${q.works} 件作品随之删除` : ''}。已有投票的题目不能删除。`, confirm: '删除', danger: true }))) return true;
+        if (!active || owner !== accountKey()) return true;
         await api(path, { method: 'DELETE' });
-        toast('题目已删除');
+        if (active && owner === accountKey()) toast('题目已删除');
       }
     } catch (err) {
-      toast(err.message);
+      if (active && owner === accountKey()) toast(err.message);
       return true;
     }
+    if (owner !== accountKey()) return true;
+    cancelLoad();
     await refreshPlatform('question');
     return true;
   }
@@ -1524,14 +1655,31 @@ function review(root, ctx) {
     const managed = e.target.closest('[data-managed-search]');
     if (managed) {
       state.managed.query = managed.value.trim();
-      return updateManaged();
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(updateManaged, 150);
+      return;
     }
     const search = e.target.closest('[data-catalog-search]');
     if (!search) return;
     state.catalog.query = search.value.trim();
-    updateCatalog();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(updateCatalog, 150);
   };
   root.onclick = async (e) => {
+    if (e.target.closest('[data-review-retry]')) {
+      state.error = '';
+      draw();
+      return load(false, true);
+    }
+    const paging = e.target.closest('[data-review-page]');
+    if (paging) {
+      clearTimeout(searchTimer);
+      state.pages[paging.dataset.reviewPage] = Number(paging.dataset.page);
+      state.picked.clear();
+      draw();
+      ctx.settleImages();
+      return;
+    }
     const managedFilter = e.target.closest('[data-managed-filter]');
     if (managedFilter) {
       state.managed.filter = managedFilter.dataset.managedFilter;
@@ -1539,6 +1687,7 @@ function review(root, ctx) {
     }
     if (e.target.closest('[data-managed-reset]')) {
       Object.assign(state.managed, { filter: 'all', query: '', task: '', arena: 'all' });
+      state.pages.works = 1;
       state.picked.clear();
       return draw();
     }
@@ -1561,7 +1710,8 @@ function review(root, ctx) {
     if (manageWork) {
       const w = state.works?.find((item) => pickId(item) === manageWork.dataset.manageWork);
       if (w) openWorkManagement(ctx, w, { questions: state.questions ?? [], audit: state.audit, createEditor: reviewEditor,
-        onReview: () => open(w), onContent: () => openHeld(w) });
+        onReview: () => { if (active && owner === accountKey()) open(w); }, onContent: () => { if (active && owner === accountKey()) openHeld(w); },
+        onChanged: changedWork, onRemoved: cancelLoad });
       return;
     }
     const bulk = e.target.closest('[data-bulk]');
@@ -1569,6 +1719,7 @@ function review(root, ctx) {
     const filter = e.target.closest('[data-filter]');
     if (filter) {
       state.filter = filter.dataset.filter;
+      state.pages.done = 1;
       state.picked.clear();
       return draw();
     }
@@ -1579,6 +1730,7 @@ function review(root, ctx) {
     }
     if (e.target.closest('[data-catalog-reset]')) {
       Object.assign(state.catalog, { filter: 'all', query: '', category: '', domain: '' });
+      state.pages.catalog = 1;
       return draw();
     }
     const bulkFace = e.target.closest('[data-bulk-face]');
@@ -1597,9 +1749,15 @@ function review(root, ctx) {
     // A sample reviewed inside its question card does not pull the next queued work.
     if (button.dataset.review !== undefined) open(work, bucket);
     else if (button.dataset.content !== undefined) openHeld(work, button.closest('.review-question') ? null : bucket);
-    else await removeWork(work, { admin: true });
+    else await removeWork(work, { admin: true, onChanged: cancelLoad });
   };
   draw();
   const loading = load(true);
-  return { ready: state.works === null ? loading : null, onPlatformChange: () => load(), destroy() { active = false; request++; root.onchange = null; root.oninput = null; } };
+  return { review: true, ready: state.works === null ? loading : null,
+    onPlatformChange(reason) {
+      if (['activity', 'session', 'session-ready', 'stale'].includes(reason)) { computed.clear(); return; }
+      if (reason === 'reconnect' && !state.error && state.works !== null) return;
+      return load(false, true);
+    },
+    destroy() { rememberPreferences(); active = false; cancelLoad(); clearTimeout(searchTimer); root.onchange = null; root.oninput = null; } };
 }

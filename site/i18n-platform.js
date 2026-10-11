@@ -1,5 +1,12 @@
 // Exact interface phrases. User content and audit text are excluded at their DOM boundaries.
 const phrases = Object.fromEntries(`
+列表分页|List pagination
+上一页|Previous
+下一页|Next
+全选当前页|Select this page
+全选当前页可管理的作品|Select manageable works on this page
+重试加载|Retry loading
+审核列表加载超时，请重试。|The review list timed out. Please retry.
 账户|Account
 账号|Account
 用户名|Username
@@ -593,6 +600,9 @@ const legal = Object.fromEntries(`
 `.trim().split('\n').map((line) => line.split('|')));
 
 const dynamic = Object.fromEntries(`
+第 {value} / {value2} 页 · 共 {value3} 项|Page {value} / {value2} · {value3} items
+全选当前页（{value} 件）|Select this page ({value} works)
+全选当前页（{value} 道）|Select this page ({value} questions)
 {value} 分 {value2} 秒后重发|Resend in {value} minutes {value2} seconds
 {value} 秒后重发|Resend in {value} seconds
 当前网络发送请求较多。请在 {value} 分 {value2} 秒后重试。|Too many email requests from this network. Try again in {value} minutes {value2} seconds.

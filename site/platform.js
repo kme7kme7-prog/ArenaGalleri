@@ -64,6 +64,7 @@ let sessionConnection = null;
 let activityConnection = null;
 let legacy = false;
 let accountGeneration = 0;
+export const accountVersion = () => accountGeneration;
 let activityGeneration = 0;
 let activityNeedsRefresh = true;
 let publicWorks = [];
@@ -78,6 +79,7 @@ function clearPrivate() {
   workAccess = [];
   platform.activityReady = false;
   remembered.clear();
+  rememberedReads.clear();
   overlayWorks();
 }
 function invalidateActivity() {
@@ -287,6 +289,7 @@ export class ApiError extends Error {
 }
 
 export async function api(path, { method = 'GET', body, signal } = {}) {
+  const generation = accountGeneration;
   let response;
   try {
     response = await fetchApi(path, {
@@ -299,13 +302,16 @@ export async function api(path, { method = 'GET', body, signal } = {}) {
     if (error.name === 'AbortError') throw error;
     throw new ApiError(0, '网络连接失败，请稍后再试');
   }
-  const data = await response.json().catch(() => ({}));
+  const data = await response.json().catch((error) => {
+    if (error.name === 'AbortError') throw error;
+    return {};
+  });
   if (response.headers.get('X-Datapack-Stale') === '1' && !platform.stale) {
     platform.stale = true;
     emit('stale');
   }
   if (!response.ok) {
-    if (response.status === 401 && platform.user) {
+    if (response.status === 401 && platform.user && generation === accountGeneration) {
       acceptUser(null);
       sessionConnection = null;
       platform.sessionConnecting = false;
@@ -331,20 +337,31 @@ export async function api(path, { method = 'GET', body, signal } = {}) {
     : path === 'admin/questions' ? 'questions'
     : path === 'arena/matches' ? 'match'
       : /^arena\/matches\/[^/]+\/vote$/.test(path) ? 'reveal'
-      : path === 'works' || /\/review$/.test(path) ? 'work' : null;
+      : path === 'works' || /^works\/[^/]+\/[^/]+\/(?:review|moderation(?:\/retry)?)$/.test(path)
+        || /^admin\/works\/[^/]+\/[^/]+\/(?:meta|face-settings)$/.test(path) ? 'work' : null;
   return resolveApiMedia(data, endpoint);
 }
 
 // The last answer to each read a page makes on arrival, per account: going back to the page draws
 // it at once, and the page refreshes it behind the scenes.
 const remembered = new Map();
+const rememberedReads = new Map();
 const memoryKey = (path) => `${platform.user?.id ?? ''} ${path}`;
 export const recall = (path) => remembered.get(memoryKey(path));
+export function updateRememberedReviewWork(work) {
+  const key = memoryKey('review');
+  rememberedReads.set(key, (rememberedReads.get(key) ?? 0) + 1);
+  const data = remembered.get(key);
+  if (!data) return;
+  remembered.set(key, { ...data, works: data.works.map((item) => item.task === work.task && item.id === work.id ? { ...item, ...work } : item) });
+}
 export async function apiRemembered(path, options) {
   const key = memoryKey(path);
   const generation = accountGeneration;
+  const read = (rememberedReads.get(key) ?? 0) + 1;
+  rememberedReads.set(key, read);
   const data = await api(path, options);
-  if (generation === accountGeneration) remembered.set(key, data);
+  if (generation === accountGeneration && read === rememberedReads.get(key)) remembered.set(key, data);
   return data;
 }
 

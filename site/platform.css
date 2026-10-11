@@ -1032,3 +1032,7 @@ dialog.sheet.work-manage-sheet { width: min(1040px, calc(100% - 40px)); overflow
 
 .sheet-head h2 { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .sheet-head-tools { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+
+.review-pagination { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; margin: 20px 0; font-size: 13px; color: var(--muted); }
+.review-load-error { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.review-load-error .form-error { margin: 0; }

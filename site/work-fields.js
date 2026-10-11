@@ -25,7 +25,10 @@ let workInputId = 0;
 
 // How many works on the site use each model, harness and effort, and when a model's first
 // work arrived (the registry has no release dates). Suggestions put common and new ones first.
+let usageSnapshot;
+let usageStats;
 function usage(ctx) {
+  if (usageSnapshot === ctx.DATA.tasks) return usageStats;
   const count = (map, key) => key && map.set(key, (map.get(key) ?? 0) + 1);
   const models = new Map(), harnesses = new Map(), efforts = new Map(), since = new Map();
   for (const r of ctx.DATA.tasks.flatMap((t) => t.results)) {
@@ -36,7 +39,9 @@ function usage(ctx) {
     count(harnesses, ctx.harnessOf(r)?.name);
     count(efforts, String(r.effort ?? '').trim().toLowerCase());
   }
-  return { models, harnesses, efforts, since };
+  usageSnapshot = ctx.DATA.tasks;
+  usageStats = { models, harnesses, efforts, since };
+  return usageStats;
 }
 const used = (map, key) => ` data-count="${map.get(key) ?? 0}"`;
 
