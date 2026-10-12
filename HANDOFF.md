@@ -1,3 +1,12 @@
+## 仓库同步与旧工作树清理（2026-10-12）
+
+- 用户要求四个项目全部处理干净，授权本轮提交、推送及已说明的旧工作树清理；执行者 wsnxxxs，无子代理。Gallery 起点 main=origin/main 7beaaab，业务源码不变。
+- Gallery 的 unify-pool-defaults 旧临时 worktree 仅剩 Git 标记和空目录，确认 HEAD 5d859ef 已在 main 历史后移除；正常工作树、作品缓存、配置和生成物保留。
+- check75/0、test47/47、严格 intake176件/0错/8既有提示。未运行 build 或浏览器验收：本仓只有交接归档变化，无页面或消费包修改；没有部署。
+- 其余三仓同步分别记录在各仓本轮归档。旧后端审核副本与另外四个空工作树完整文件、Git index、分阶段二进制补丁和 SHA 清单保存在本机 C:/Users/Ryan/.codex/backups/arena-cleanup-20261012；未把陈旧副本覆盖最新主线。
+- 收尾目标为四仓 main 已提交并推送、所有保留 worktree 无未提交/未跟踪文件；历史已合并分支和正常工作树保留。推送后以 Git 远端核对为准。
+- [本轮归档](docs/archive/2026-10-12-repository-cleanup-wsnxxxs.md)。
+
 # HANDOFF.md · 当前状态
 
 ## 审核加载与刷新发布（2026-10-12，已上线）
