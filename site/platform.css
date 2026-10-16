@@ -336,6 +336,11 @@ dialog.sheet.auth-sheet, .auth-overlay .sheet.auth-sheet { width: min(380px, cal
 .facts dd { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
 
 /* ---- leaderboard ---- */
+.board-nav-groups { display: grid; gap: 24px; margin: 27px 0; }
+.board-nav-title { margin: 0 12px 8px; color: var(--muted); font: 500 12px/1.5 var(--sans); letter-spacing: .06em; }
+.board-nav-group .side-nav { margin: 0; }
+.board-nav-group .side-link:disabled { opacity: 1; color: var(--muted); cursor: default; }
+.board-nav-group .side-link:disabled:hover { background: none; }
 .board-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .board-meta { margin: 0; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 .board-filters { display: flex; flex-wrap: wrap; gap: 8px; }

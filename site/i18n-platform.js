@@ -75,6 +75,19 @@ const phrases = Object.fromEntries(`
 题库|Questions
 盲评|Blind review
 排行榜|Leaderboard
+全量榜|Full rankings
+精选榜|Curated rankings
+精选前端排行|Curated frontend ranking
+合并 36 道精选题目的真实盲评：设计 10 道、三维 26 道。只展示在这些题目中已收录且非暂定的模型。|Real blind comparisons across 36 selected tasks: 10 design and 26 3D tasks. Only registered, non-provisional models within this scope are ranked.
+精选前端只合并已选的 36 道题：设计 10 道、三维 26 道。只计同题比较，不平均各题分数。|Curated frontend combines comparisons from 36 selected tasks: 10 design and 26 3D tasks. Comparisons stay within each task; task scores are not averaged.
+入榜|Qualification
+来源筛选后，仍须为已收录且非暂定的模型才能入榜。|After source filtering, models must still be registered and non-provisional to qualify.
+入榜资格按模型判断，单独配置比较不足 30 次时仍标为暂定。|Qualification is assessed per model. Individual configurations with fewer than 30 comparisons remain provisional.
+先以这些题目重算「按模型」榜，只允许已收录且非暂定的模型入榜；「按配置」沿用相同的模型资格。来源筛选后也按筛选内的模型比较数判断。有效对手的比较仍参与计分。|Model rankings are recalculated within these tasks. Only registered, non-provisional models qualify, including in configuration view. Source filters also apply to model qualification. Valid comparisons against all opponents remain in the fit.
+目前还没有符合精选榜入榜条件的模型|No models currently meet the curated ranking requirements
+后端尚未支持精选榜，请更新后端后重试|The backend does not support curated rankings yet. Update it and retry.
+前端|Frontend
+文字|Text
 发起题目|Create question
 审核|Review
 登录后查看你发起的题目与上传的作品。|Sign in to view your questions and uploaded works.
