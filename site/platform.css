@@ -119,6 +119,113 @@ dialog.sheet.auth-sheet, .auth-overlay .sheet.auth-sheet { width: min(380px, cal
 .auth-switch { margin: 14px 0 0; color: var(--muted); font-size: 13px; text-align: center; }
 .auth-switch button { padding: 0 2px; border: 0; background: none; color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 
+/* The sign-in artwork uses the existing paper, ink and theme accent. */
+.auth-entry {
+  --auth-paper: #f5f4f0;
+  --auth-ink: #1c1b19;
+  --auth-on-accent: var(--auth-paper);
+}
+:root[data-theme="dark"] .auth-entry { --auth-on-accent: var(--auth-ink); }
+.auth-overlay .sheet.auth-entry {
+  position: relative; overflow: visible; max-height: none;
+  width: min(810px, calc(100% - 80px)); border-radius: 18px;
+}
+.auth-entry-scroll { display: grid; grid-template-columns: minmax(0, 0.86fr) minmax(0, 1fr); max-height: calc(100dvh - 48px); overflow: auto; border-radius: inherit; }
+.auth-entry:focus { outline: none; }
+.auth-brand {
+  display: flex; flex-direction: column; justify-content: space-between; min-height: 492px;
+  padding: 28px; overflow: hidden; background: var(--accent); color: var(--auth-on-accent);
+}
+.auth-brand-name { display: flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 650; letter-spacing: 0.02em; }
+.auth-brand-name .logo { width: 26px; height: 26px; }
+.auth-brand-name .logo-bg { fill: var(--auth-on-accent); }
+.auth-brand-name .logo-fg, .auth-brand-name .logo-ac { fill: var(--accent); }
+.auth-mascot { position: absolute; z-index: 1; top: 50%; left: 18px; display: block; width: calc(46.24% - 36px); transform: translateY(-50%); overflow: visible; pointer-events: none; }
+.auth-mascot-shadow { fill: var(--auth-ink); opacity: 0.12; transition: cy 0.45s var(--ease), rx 0.45s var(--ease); }
+.auth-mascot-face { fill: var(--auth-ink); transition: x 0.45s var(--ease), y 0.45s var(--ease), width 0.45s var(--ease), height 0.45s var(--ease), rx 0.45s var(--ease); }
+.auth-mascot-head { transform-origin: 180px 160px; transition: transform 0.55s cubic-bezier(0.22, 1.4, 0.36, 1); }
+.auth-mascot-brow { stroke: var(--auth-paper); stroke-width: 24; transform-origin: 180px 122px; transition: transform 0.45s var(--ease); }
+.auth-mascot-gaze { transition: transform 0.5s cubic-bezier(0.22, 1.4, 0.36, 1); }
+.auth-mascot-eye { stroke: var(--auth-paper); stroke-width: 20; transform-box: fill-box; transform-origin: center; transition: stroke-width 0.25s; }
+.auth-mascot-eye-accent { stroke: var(--accent); }
+.auth-mascot-stroke-a, .auth-mascot-stroke-b { transform-box: fill-box; transform-origin: center; transition: transform 0.45s cubic-bezier(0.22, 1.4, 0.36, 1), opacity 0.18s; }
+.auth-mascot-stroke-b { opacity: 0; }
+.auth-mascot-blink { transform-origin: 180px 184px; animation: auth-mascot-blink 6.5s infinite; }
+.auth-mascot[data-state="idle"] .auth-mascot-head { animation: auth-mascot-idle 7s ease-in-out infinite; }
+.auth-mascot[data-state="username"] .auth-mascot-head { transform: translate(4px, -4px) rotate(-6deg); }
+.auth-mascot[data-state="username"] .auth-mascot-gaze { transform: translate(14px, -12px); }
+.auth-mascot[data-state="username"] .auth-mascot-brow { transform: translateY(-5px) rotate(-3deg); }
+.auth-mascot[data-state="password"] .auth-mascot-head { animation: auth-mascot-shy 0.65s var(--ease) both; }
+.auth-mascot[data-state="password"] .auth-mascot-face { x: 44px; y: 68px; width: 272px; height: 184px; rx: 64px; }
+.auth-mascot[data-state="password"] .auth-mascot-shadow { cy: 279px; rx: 88px; }
+.auth-mascot[data-state="password"] .auth-mascot-brow { transform: translateY(16px) scaleX(0.94); }
+.auth-mascot[data-state="password"] .auth-mascot-blink { animation: none; }
+.auth-mascot[data-state="password"] .auth-mascot-eye { stroke-width: 12; }
+.auth-mascot[data-state="password"] .auth-mascot-stroke-a { transform: rotate(45deg) scaleX(0.85); }
+.auth-mascot[data-state="password"] .auth-mascot-stroke-b { opacity: 1; transform: rotate(-45deg) scaleX(0.85); }
+@keyframes auth-mascot-blink { 0%, 93%, 97%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.12); } }
+@keyframes auth-mascot-idle { 0%, 100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-5px) rotate(1deg); } }
+@keyframes auth-mascot-shy { 0% { transform: rotate(-5deg); } 35% { transform: translateY(3px) rotate(4deg); } 70% { transform: rotate(-2deg); } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .auth-mascot * { animation: none !important; transition: none !important; }
+}
+.auth-brand-copy { margin: 0; font: 500 24px/1.55 var(--serif); letter-spacing: 0.025em; }
+.auth-brand-copy span { display: block; }
+.auth-entry .sheet-in { align-self: center; min-width: 0; padding: 34px 38px; }
+.auth-entry .sheet-head { align-items: center; margin-bottom: 28px; }
+.auth-entry .sheet-head h2 { padding-top: 0; font: 600 24px/1.35 var(--sans); letter-spacing: 0; }
+.auth-entry .sheet-head-tools { gap: 6px; }
+.auth-entry .sheet-head-tools .icon-btn, .auth-entry .locale-toggle { background: transparent; }
+.auth-entry .sheet-head-tools .icon-btn { width: 32px; height: 32px; }
+.auth-entry .locale-toggle { min-height: 32px; padding-inline: 7px; font-size: 11px; }
+.auth-entry .field { gap: 8px; margin-bottom: 20px; }
+.auth-entry .field-label { color: var(--ink-2); font-size: 12.5px; }
+.auth-entry .input {
+  min-height: 44px; padding: 7px 12px; border-color: var(--line); border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-2) 45%, var(--surface)); font-size: 13.5px;
+  transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
+}
+.auth-entry .input:focus {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line-2)); outline: none;
+  background: var(--raised); box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.auth-entry .auth-password-field { display: grid; grid-template-columns: 1fr auto; column-gap: 12px; }
+.auth-password-field > .field-label { grid-area: 1 / 1; }
+.auth-password-field > .input { grid-area: 2 / 1 / auto / -1; }
+.auth-entry .auth-forgot { grid-area: 1 / 2; align-self: center; margin: 0; color: var(--ink-2); font-size: 12px; }
+.auth-entry .auth-forgot:hover { color: var(--accent); }
+.auth-entry .auth-turnstile:not([hidden]) { margin-bottom: 12px; }
+.auth-entry .auth-turnstile-status:not(:empty) { margin: 8px 0 16px; color: var(--ink-2); font-size: 12px; line-height: 1.5; }
+.auth-entry .auth-form .btn.full {
+  min-height: 44px; margin-top: 4px; border-color: var(--accent); background: var(--accent);
+  color: var(--auth-on-accent); font-size: 13px; font-weight: 650;
+}
+.auth-entry .auth-form .btn.full:hover { filter: brightness(1.08); }
+.auth-entry .auth-switch { margin-top: 18px; color: var(--ink-2); font-size: 12.5px; }
+.auth-entry .auth-switch button { margin-left: 5px; color: var(--accent); }
+.auth-entry .auth-legal { color: var(--ink-2); }
+@media (max-width: 720px) {
+  .auth-overlay:has(.auth-entry) { padding-block: 76px 16px; }
+  .auth-overlay .sheet.auth-entry { width: min(400px, calc(100% - 24px)); border-radius: 18px; }
+  .auth-entry-scroll { display: block; max-height: calc(100dvh - 104px); }
+  .auth-brand { position: relative; min-height: 30px; padding: 6px 18px; justify-content: center; }
+  .auth-brand-name { position: relative; z-index: 1; width: max-content; max-width: 65%; gap: 7px; font-size: 13px; line-height: 18px; }
+  .auth-brand-name .logo { width: 18px; height: 18px; }
+  .auth-mascot { width: 138px; left: auto; right: 8px; top: -84px; transform: none; }
+  .auth-mascot[data-state="username"] .auth-mascot-head { transform: translate(-2px, 3px) rotate(4deg); }
+  .auth-mascot[data-state="username"] .auth-mascot-gaze { transform: translate(-10px, 14px); }
+  .auth-mascot[data-state="username"] .auth-mascot-brow { transform: translateY(2px) rotate(2deg); }
+  .auth-mascot-shadow { display: none; }
+  .auth-brand-copy { display: none; }
+  .auth-entry .sheet-in { padding: 28px 28px 30px; }
+  .auth-entry .sheet-head { margin-bottom: 26px; }
+  .auth-entry .sheet-head h2 { font-size: 22px; }
+}
+@media (max-width: 380px) {
+  .auth-entry .auth-mascot { width: 120px; right: 4px; top: -75px; }
+  .auth-entry .sheet-in { padding: 24px 20px 26px; }
+}
+
 /* ---- review status ---- */
 .status {
   display: inline-flex; align-items: center; gap: 4px; padding: 0 7px 0 5px; border: 1px solid var(--line-2); border-radius: 999px;

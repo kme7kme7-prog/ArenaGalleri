@@ -712,13 +712,12 @@ export function openAuth({ mode = 'login', reason = '' } = {}) {
     };
     const sheet = openAuthDialog({
       title: mode === 'login' ? '登录' : '注册',
-      className: 'auth-sheet',
+      className: 'auth-sheet auth-entry',
       onClose: () => { clearWidget(); resolve(user); },
       body: `<form id="auth-form" class="auth-form" autocomplete="on" novalidate>
         ${reason ? `<p class="auth-reason">${esc(reason)}</p>` : ''}
         <label class="field" for="auth-username"><span class="field-label">用户名</span><input id="auth-username" class="input" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="24" required></label>
-        <label class="field" for="auth-password"><span class="field-label">密码</span><input id="auth-password" class="input" name="password" type="password" autocomplete="${mode === 'login' ? 'current-password' : 'new-password'}" maxlength="128" required></label>
-        <button class="auth-forgot" type="button" data-forgot>忘记密码？</button>
+        <div class="field auth-password-field"><label class="field-label" for="auth-password">密码</label><input id="auth-password" class="input" name="password" type="password" autocomplete="${mode === 'login' ? 'current-password' : 'new-password'}" maxlength="128" required><button class="auth-forgot" type="button" data-forgot>忘记密码？</button></div>
         <div data-register hidden>${EMAIL_FIELD}</div>
         <div class="auth-turnstile" hidden></div>
         <p class="auth-turnstile-status" role="status"></p>

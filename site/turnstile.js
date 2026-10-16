@@ -27,17 +27,21 @@ export function mountTurnstile(container, siteKey, onState) {
   let removed = false;
   let widgetId;
   let language;
+  let size;
   let generation = 0;
+  const widgetSize = () => container.clientWidth > 0 && container.clientWidth < 300 ? 'compact' : 'flexible';
   function render() {
     const activeGeneration = ++generation;
     token = '';
     if (widgetId) turnstile.remove(widgetId);
     widgetId = undefined;
     language = locale() === 'en' ? 'en' : 'zh-CN';
+    size = widgetSize();
     const active = () => !removed && activeGeneration === generation;
     widgetId = turnstile.render(container, {
       sitekey: siteKey,
-      size: 'flexible',
+      size,
+      theme: globalThis.document?.documentElement?.dataset.theme === 'dark' ? 'dark' : 'light',
       language,
       callback(value) { if (active()) { token = value; onState(''); } },
       'expired-callback'() {
@@ -61,6 +65,13 @@ export function mountTurnstile(container, siteKey, onState) {
     try { render(); } catch (error) { onState(error.message); }
   }
   render();
+  // Flexible widgets need at least 300px; narrow forms use Cloudflare's compact layout.
+  const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
+    if (removed || size === widgetSize()) return;
+    onState('');
+    try { render(); } catch (error) { onState(error.message); }
+  }) : null;
+  resize?.observe(container);
   globalThis.window?.addEventListener('localechange', changeLanguage);
   return {
     get token() { return token; },
@@ -70,6 +81,7 @@ export function mountTurnstile(container, siteKey, onState) {
       removed = true;
       generation++;
       token = '';
+      resize?.disconnect();
       globalThis.window?.removeEventListener('localechange', changeLanguage);
       if (widgetId) turnstile.remove(widgetId);
     },

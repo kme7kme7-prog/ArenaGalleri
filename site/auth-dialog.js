@@ -1,7 +1,13 @@
 import { languageButton } from './i18n.js';
-import { $, esc, icon } from './ui.js';
+import { $, esc, icon, LOGO } from './ui.js';
+import { authMascot, bindAuthMascot } from './auth-mascot.js';
 
 let nextTitle = 0;
+
+const authBrand = `<aside class="auth-brand" aria-hidden="true">
+  <div class="auth-brand-name">${LOGO}<span>亿模亿样</span></div>
+  <p class="auth-brand-copy"><span>同一份提示词，</span><span>看见不同的答案。</span></p>
+</aside>`;
 
 // Keep authentication outside the native top layer so password-manager menus can work.
 export function openAuthDialog({ title, body, className = '', onClose }) {
@@ -15,10 +21,12 @@ export function openAuthDialog({ title, body, className = '', onClose }) {
   panel.setAttribute('aria-modal', 'true');
   panel.setAttribute('aria-labelledby', titleId);
   panel.tabIndex = -1;
-  panel.innerHTML = `<div class="sheet-in">
+  const content = `<div class="sheet-in">
     <header class="sheet-head"><h2 id="${titleId}">${esc(title)}</h2><div class="sheet-head-tools">${languageButton()}<button class="icon-btn" type="button" data-sheet-close aria-label="关闭">${icon('close')}</button></div></header>
     <div class="sheet-body">${body}</div>
   </div>`;
+  panel.innerHTML = panel.classList.contains('auth-entry')
+    ? `${authMascot}<div class="auth-entry-scroll">${authBrand}${content}</div>` : content;
   const previous = [...document.querySelectorAll('.auth-overlay')].at(-1);
   // Only our own page and previous sheet become inert; extension nodes stay interactive.
   const background = [$('#app'), $('#lightbox'), previous].filter(Boolean)
@@ -26,6 +34,7 @@ export function openAuthDialog({ title, body, className = '', onClose }) {
   background.forEach(({ el }) => { el.inert = true; });
   overlay.append(panel);
   document.body.append(overlay);
+  bindAuthMascot(panel);
   const isTop = () => [...document.querySelectorAll('.auth-overlay')].at(-1) === overlay;
   const close = () => {
     if (!panel.isConnected || !isTop()) return;

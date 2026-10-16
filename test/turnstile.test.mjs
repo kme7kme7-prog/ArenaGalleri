@@ -82,6 +82,56 @@ test('Turnstile clears expired or rejected tokens and removes its widget', async
   }
 });
 
+test('Turnstile uses the site theme and switches size only across its minimum width', () => {
+  const originalDocument = globalThis.document;
+  const originalTurnstile = globalThis.turnstile;
+  const originalObserver = globalThis.ResizeObserver;
+  const configurations = [];
+  const removed = [];
+  let resized;
+  let disconnected = false;
+  const container = { clientWidth: 246 };
+  globalThis.document = { documentElement: { dataset: { theme: 'dark' } } };
+  globalThis.ResizeObserver = class {
+    constructor(callback) { resized = callback; }
+    observe(element) { assert.equal(element, container); }
+    disconnect() { disconnected = true; }
+  };
+  globalThis.turnstile = {
+    render(_container, options) { configurations.push(options); return `widget-${configurations.length}`; },
+    remove(id) { removed.push(id); },
+  };
+  try {
+    const widget = mountTurnstile(container, 'test-key', () => {});
+    assert.equal(configurations[0].size, 'compact');
+    assert.equal(configurations[0].theme, 'dark');
+    configurations[0].callback('narrow-token');
+    container.clientWidth = 280;
+    resized();
+    assert.equal(configurations.length, 1);
+    assert.equal(widget.token, 'narrow-token');
+    container.clientWidth = 300;
+    globalThis.document.documentElement.dataset.theme = 'light';
+    resized();
+    assert.equal(configurations[1].size, 'flexible');
+    assert.equal(configurations[1].theme, 'light');
+    assert.equal(widget.token, '');
+    configurations[0].callback('stale-token');
+    assert.equal(widget.token, '');
+    widget.remove();
+    assert.deepEqual(removed, ['widget-1', 'widget-2']);
+    assert.equal(disconnected, true);
+    container.clientWidth = 240;
+    resized();
+    assert.equal(configurations.length, 2);
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.turnstile = originalTurnstile;
+    if (originalObserver === undefined) delete globalThis.ResizeObserver;
+    else globalThis.ResizeObserver = originalObserver;
+  }
+});
+
 test('Turnstile follows locale changes and ignores callbacks from replaced or destroyed widgets', async () => {
   const originalTurnstile = globalThis.turnstile;
   const originalWindow = globalThis.window;
