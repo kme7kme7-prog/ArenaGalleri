@@ -1,5 +1,9 @@
 // Exact interface phrases. User content and audit text are excluded at their DOM boundaries.
 const phrases = Object.fromEntries(`
+每 10 分钟更新一次|Updates every 10 minutes
+最近计算|Last calculated
+更新|Updates
+每 10 分钟计算一次，新投票将在下一次更新时计入。|Rankings are calculated every 10 minutes. New votes appear in the next update.
 列表分页|List pagination
 上一页|Previous
 下一页|Next

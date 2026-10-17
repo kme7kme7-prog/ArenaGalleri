@@ -1,7 +1,7 @@
 import { setPageTitle } from './i18n.js';
 // Leaderboard: the full page (#/leaderboard[/<category>|/<task>][/<domain>], or #/leaderboard/<domain>)
 // and the panel on each task page.
-import { $, brandMark, esc, icon, pad, store, vendorLine } from './ui.js';
+import { $, brandMark, esc, formatTime, icon, pad, store, vendorLine } from './ui.js';
 import { apiRemembered, platform, recall } from './platform.js';
 import { domainsIn, domainList, domainsOf, tracksOf, votedTask } from './categories.js';
 import { textMatches } from './match.js';
@@ -11,18 +11,26 @@ const UNITS = { config: '按配置', model: '按模型' };
 const THIN = { tasks: 2, votes: 50 };
 
 export function watchBoardRefresh(reload) {
-  let pending = false;
-  const refresh = async () => {
-    if (document.visibilityState === 'hidden' || pending) return;
-    pending = true;
-    try { await reload(); } finally { pending = false; }
+  let pending = false, stopped = false, timer, nextAt;
+  const schedule = (data) => {
+    if (stopped) return;
+    const next = Date.parse(data?.nextUpdateAt);
+    nextAt = Number.isFinite(next) ? Math.max(Date.now() + 1000, next) : Date.now() + 10 * 60_000;
+    clearTimeout(timer);
+    timer = setTimeout(refresh, nextAt - Date.now());
   };
-  const timer = setInterval(refresh, 60_000);
+  const refresh = async () => {
+    if (stopped || document.visibilityState === 'hidden' || pending || Date.now() < nextAt) return;
+    pending = true;
+    try { schedule(await reload()); } catch { schedule(); } finally { pending = false; }
+  };
+  schedule();
   document.addEventListener('visibilitychange', refresh);
   window.addEventListener('focus', refresh);
   window.addEventListener('online', refresh);
-  return { refresh, destroy() {
-    clearInterval(timer);
+  return { refresh, update: schedule, destroy() {
+    stopped = true;
+    clearTimeout(timer);
     document.removeEventListener('visibilitychange', refresh);
     window.removeEventListener('focus', refresh);
     window.removeEventListener('online', refresh);
@@ -48,6 +56,7 @@ export const boardNotes = (open = false, curated = false) => `<details class="bo
     <div><dt>单位</dt><dd>「按配置」把同一模型的不同推理档位分开计分；「按模型」把它们合并。</dd></div>
     <div><dt>来源筛选</dt><dd>按 Harness 或服务商筛选时，只统计两件作品在投票当时都满足条件的比较；计分单位不变。服务商分为官方、非官方，未填写的为「未注明」；只填了「其他」的 Harness 和未记录来源的较早投票按「未注明」统计。</dd></div>
     <div><dt>不计分</dt><dd>表情互动与浏览次数都不影响榜单。</dd></div>
+    <div><dt>更新</dt><dd>每 10 分钟计算一次，新投票将在下一次更新时计入。</dd></div>
   </dl>
 </details>`;
 
@@ -87,6 +96,7 @@ export function mountBoard(container, ctx) {
     const head = (filterable
       ? `<div class="collection-toolbar">${search}<div class="toolbar-actions">${typeof ctx.toolbar === 'function' ? ctx.toolbar() : ctx.toolbar ?? ''}${filterSelect('harness', 'Harness', ctx.HARNESSES)}${filterSelect('provider', '服务商', ctx.PROVIDERS)}${unitControl}</div></div>${data.filters ? '<p class="muted">仅统计两件作品来源都符合筛选的比较。</p>' : ''}`
       : `<div class="board-head"><p class="board-meta">${meta}</p>${unitControl}</div>`)
+      + `<p class="board-meta"><span>每 10 分钟更新一次</span>${data.updatedAt ? ` · <span>最近计算</span> <time datetime="${esc(data.updatedAt)}" data-i18n-time="${esc(data.updatedAt)}">${esc(formatTime(data.updatedAt))}</time>` : ''}</p>`
       + (ctx.board && unit === 'config' ? '<p class="muted">入榜资格按模型判断，单独配置比较不足 30 次时仍标为暂定。</p>' : '')
       + (unsupported ? '<p class="muted">后端暂不支持这项筛选，下面是未筛选的榜单。</p>' : '')
       + (thin ? `<p class="muted">样本不足：「${esc(ctx.domain)}」目前只有 ${totals.tasks ?? 0} 道题、${totals.votes} 次有效比较参与计分，名次可能随新票大幅变动，仅供参考。</p>` : '');
@@ -166,6 +176,8 @@ export function mountBoard(container, ctx) {
       const data = await apiRemembered(path, { signal: controller.signal });
       if (destroyed) return;
       if (JSON.stringify(data) !== JSON.stringify(known)) draw(data);
+      ctx.onLoad?.(data);
+      return data;
     } catch (error) {
       if (error.name === 'AbortError' || destroyed || fromMemory) return;
       container.innerHTML = `<p class="muted">榜单暂时无法载入：${esc(error.message)}</p>`;
@@ -264,6 +276,7 @@ export function mount(root, ctx) {
       ${boardNotes(false, curated)}
     </section>
   ${ctx.pageEnd()}`;
+  let live;
   const board = mountBoard($('[data-board]', root), {
     ...ctx,
     task,
@@ -273,6 +286,7 @@ export function mount(root, ctx) {
     tracks: task || track || domain || curated ? null : tracks,
     toolbar: () => domainSelect + taskSelect(),
     emptyTitle: curated ? '目前还没有符合精选榜入榜条件的模型' : domain ? `${domain}榜单还在等第一批盲评` : track && !task ? `${track.label}榜单还在等第一批盲评` : undefined,
+    onLoad: (data) => live?.update(data),
     onData: (data) => {
       const stats = $('[data-stats]', root);
       if (stats) stats.innerHTML = `<div><dt>有效比较</dt><dd>${pad(data.totals.votes)}</dd></div><div><dt>参与者</dt><dd>${pad(data.totals.voters)}</dd></div><div><dt>${data.by === 'model' ? '上榜模型' : '上榜配置'}</dt><dd>${pad(data.rows.length)}</dd></div>`;
@@ -287,7 +301,7 @@ export function mount(root, ctx) {
   const onInput = (e) => { if (e.target.matches('[data-board-search]')) board.search(e.target.value); };
   root.addEventListener('change', onChange);
   root.addEventListener('input', onInput);
-  const live = curated ? watchBoardRefresh(() => board.reload()) : null;
+  live = watchBoardRefresh(() => board.reload());
   setPageTitle(['榜单', { text: scopeTitle, original: Boolean(task) }, ctx.DATA.title]);
   return {
     ready: board.ready,
@@ -295,9 +309,9 @@ export function mount(root, ctx) {
       if (reason === 'activity' || reason === 'identity') {
         const select = $('[data-board-task]', root);
         if (select) select.innerHTML = boardTaskOptions(listed, select.value, platform.activityReady, platform.arena);
-        return live?.refresh();
+        return live.refresh();
       }
-      if (!['session', 'session-ready'].includes(reason)) return board.reload();
+      if (!['session', 'session-ready'].includes(reason)) return live.refresh();
     },
     destroy: () => {
       live?.destroy();

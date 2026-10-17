@@ -1,3 +1,29 @@
+## 排行榜十分钟更新（2026-10-17，已授权发布）
+
+- 用户要求排行榜十分钟计算一次。后端公开快照按范围/单位/来源共享600秒，新投票不触发公开重算；到期访问按需更新，并发合并。内部盲评排名和totals保持实时，审核撤下/更正与换包仍失效公开快照。普通/精选/题目/来源筛选均适用，独立后台已配套实现。
+- Gallery全页榜单按nextUpdateAt定时，期限内focus/online/统计事件不额外拉取，隐藏暂停、离开清理；显示十分钟更新及最近计算时间，中英回切保持。前端兼容旧API不等同旧后端已兑现计算频率。
+- check78/0、test51/51、local-source build176件/76site、严格intake0错/8既有提示。后台本机及保留现场差异的Linux候选均check126/0、test359/359。合成48票完整页面确认模型切换、时间/说明中英、控制台0错误/警告；未手机或真实生产十分钟验收。
+- 用户已明确授权提交、推送并上线；当前GitHub身份wsnxxxs，邮箱269096463+wsnxxxs@users.noreply.github.com，每仓一条英文提交。先推送main，再增量发布后台三运行文件和Gallery两模块/入口/版本，保留现场差异、数据及runtime；无迁移。[实现归档](docs/archive/2026-10-17-leaderboard-ten-minute-refresh.md)。本条写于发布前，实际提交、备份与公网验证结果保存于忽略output/leaderboard-ten-minute-20261017/release/，不提前宣称上线成功。
+
+## 最新代码与VPS优化检查（2026-10-17，仅检查，未修复）
+
+- 用户提供SSH访问并要求先获取最新代码。四仓fetch后均HEAD/origin-main为0/0；Gallery快进至25ce716，数据源码快进两条，另两仓本来最新。上游登录交接及本地调查记录已完整合并保留，临时stash已清除；未commit/push/部署或激活包。
+- VPS本机activity也慢至24.62秒，作品HTML/CSS分别1.98/3.51秒。4核CPU两次vmstat接近满载；截图SwiftShader GPU一次采样312%+Node78%，稍后GPU0%/Node111.5%，不是永久GPU失控结论。独立capture服务inactive，主Node带截图子进程、无限CPU配额。
+- root私有一致数据库副本、现场源码与nice19隔离profile确认：activity约2.73万realpath/2.75万readFile，目录冷构建约1.68万realpath/1.83万readFile；重复文件系统读取、题目投影/SQLite查询为实际热点。副本没有完整媒体，耗时不作为生产收益承诺。现场4运行文件与最新主线仍有真实功能差异，不能整仓覆盖。
+- 优先建议：独立限制截图CPU，复用请求内包/题目信息，去掉同步重复投影，合并公共统计计算，再补对局与iframe失败恢复及折叠脚本阻塞优化。具体证据/限制见[检查归档](docs/archive/2026-10-17-vps-timeout-optimization-review.md)。Gallery check78/0、test51/51；后台check124/0，Mac临时目录规范化后test357/357。仅文档与私有检查生成物变化，未生产登录/投票/审核、服务重启或业务修复。
+
+## 盲评作品持续加载补充调查（2026-10-17，仅调查，未修复）
+
+- 用户明确问题发生在进入盲评后的作品加载，前轮入口activity诊断不能替代这一阶段。匿名两轮抽取分别7.15/3.81秒，台灯两侧HTML5–6秒；一侧JS10.76秒、仅3.6KB的CSS7.07秒，慢点也存在于作品内容链路。独立请求不可相加当浏览器总时间；两件台灯直接浏览器实载均成功，无error/warn，未全量或实际双iframe验收。
+- 源码确认抽取对局无默认请求超时；外层loader只等iframe load，25秒只提示慢且在抽取完成后才计时。head注入fold普通同步脚本，作品资源使用每轮新令牌域和no-store，重复进入仍需多次加载。现场门禁重复读取、排名计算和排队各占多少仍需VPS剖析；本轮未改业务代码或部署。
+- 为隔离入口阻塞，本轮生产创建2条可过期匿名matches，未调用vote或写投票、账号、投稿、审核。完整事实与建议见[补充归档](docs/archive/2026-10-17-arena-work-loading-investigation.md)，前轮文档保留。响应头/摘要在忽略output/arena-timeout-investigation-20261017/work-loading。
+
+## 盲评访问超时调查（2026-10-17，仅调查，未修复）
+
+- 匿名公网与浏览器已复现 `#/arena` 连接超时。五次 activity 为11.65秒、>25秒、22.18秒、23.87秒、19.78秒；同期session约1.1–2.7秒。前端activity截止15秒且就绪前不挂载盲评，直接解释本轮失败；不将小样本当长期失败率。
+- catalog热响应Server-Timing为0.18ms；另一次携ETag读取最终304但耗时10.05秒，后端报告冷构建8007.97ms。统计全题/作品重复投影及包快照同步刷新是源码重点嫌疑，目录冷重建也是明确慢点；生产CPU/I/O、慢SQL和各段占比尚未获取，不能把本地HEAD等同现场全部组合代码。
+- 只新增[调查归档](docs/archive/2026-10-17-arena-timeout-investigation.md)，未改业务源码、生产数据/配置、commit/push/部署。Gallery check76/0、test49/49；未build/intake（无源码/数据变化）。后续优先现场分段计时、减少重复读取及合并公开统计计算；仅放宽超时不能消除慢请求。响应头和摘要在忽略目录output/arena-timeout-investigation-20261017。
+
 ## 登录界面发布（2026-10-16，Atmeplz，用户已验收并授权）
 
 - 用户确认当前版本可以，明确要求提交GitHub并更新VPS。本轮将此前连续迭代的登录界面作为一条英文提交发布，身份已核对为GitHub Atmeplz / 224206292+Atmeplz@users.noreply.github.com；发布必须取已推送main的内容。

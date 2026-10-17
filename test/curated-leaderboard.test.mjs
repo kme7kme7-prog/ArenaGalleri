@@ -32,39 +32,51 @@ test('curated view requests its scope and refuses an old backend returning the f
   }
 });
 
-test('live curated rankings refresh while visible, coalesce reads, and stop after leaving', async () => {
+test('rankings wait for the server update time, coalesce reads, and stop after leaving', async () => {
   const original = { document: globalThis.document, window: globalThis.window,
-    addEventListener: globalThis.addEventListener, setInterval: globalThis.setInterval, clearInterval: globalThis.clearInterval };
+    addEventListener: globalThis.addEventListener, setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout };
+  const originalNow = Date.now;
   globalThis.document = Object.assign(new EventTarget(), { baseURI: 'https://gallery.test/', visibilityState: 'visible' });
   globalThis.window = new EventTarget();
   globalThis.addEventListener = globalThis.window.addEventListener.bind(globalThis.window);
-  let tick, cleared = false, calls = 0, finish;
-  globalThis.setInterval = (callback, delay) => { tick = callback; assert.equal(delay, 60_000); return 42; };
-  globalThis.clearInterval = (timer) => { assert.equal(timer, 42); cleared = true; };
+  let tick, delay, calls = 0, finish, now = 0, armed = false;
+  Date.now = () => now;
+  globalThis.setTimeout = (callback, ms) => { tick = callback; delay = ms; armed = true; return 42; };
+  globalThis.clearTimeout = () => { armed = false; };
   let live;
   try {
     const { watchBoardRefresh } = await import('../site/leaderboard.js');
     live = watchBoardRefresh(() => { calls++; return new Promise((resolve) => { finish = resolve; }); });
+    assert.equal(delay, 600_000);
+    globalThis.window.dispatchEvent(new Event('focus'));
+    globalThis.window.dispatchEvent(new Event('online'));
+    assert.equal(calls, 0, 'focus and network events do not turn the board into a live feed');
+    live.update({ nextUpdateAt: new Date(120_000).toISOString() });
+    assert.equal(delay, 120_000, 'join the shared snapshot deadline instead of starting a new ten-minute window');
+    now = 120_000;
     const first = tick();
     globalThis.window.dispatchEvent(new Event('focus'));
     await tick();
     assert.equal(calls, 1, 'do not overlap a slow refresh');
     finish(); await first;
+    assert.equal(delay, 600_000, 'older servers use the ten-minute fallback');
     globalThis.document.visibilityState = 'hidden';
+    now += 600_000;
     await tick();
     globalThis.window.dispatchEvent(new Event('online'));
     assert.equal(calls, 1, 'hidden tabs do not poll');
     globalThis.document.visibilityState = 'visible';
     globalThis.document.dispatchEvent(new Event('visibilitychange'));
     assert.equal(calls, 2);
-    finish(); await Promise.resolve();
     live.destroy();
-    assert.ok(cleared);
+    finish(); await Promise.resolve(); await Promise.resolve();
+    assert.equal(armed, false, 'a pending refresh cannot restart the timer after leaving');
     globalThis.window.dispatchEvent(new Event('focus'));
     globalThis.document.dispatchEvent(new Event('visibilitychange'));
     assert.equal(calls, 2, 'leaving removes listeners and the timer');
   } finally {
-    if (!cleared) live?.destroy();
+    live?.destroy();
+    Date.now = originalNow;
     Object.assign(globalThis, original);
   }
 });
