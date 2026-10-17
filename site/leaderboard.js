@@ -9,6 +9,12 @@ import { textMatches } from './match.js';
 const UNITS = { config: '按配置', model: '按模型' };
 // A domain board below either line is shown, but flagged as too thin to rank on.
 const THIN = { tasks: 2, votes: 50 };
+const MIN_WORKS = 5;
+
+export function visibleBoardEntries(data, showSmallSamples = false) {
+  const visible = (row) => showSmallSamples || row.works >= MIN_WORKS;
+  return { rows: data.rows.filter(visible), unranked: data.unranked.filter(visible) };
+}
 
 export function watchBoardRefresh(reload) {
   let pending = false, stopped = false, timer, nextAt;
@@ -54,6 +60,7 @@ export const boardNotes = (open = false, curated = false) => `<details class="bo
     <div><dt>领域</dt><dd>选择领域时只统计属于该领域的题目，可以和类型叠加；一道题属于两个领域时，它的比较在两边都完整计入。领域内少于 ${THIN.tasks} 道题有比较、或有效比较少于 ${THIN.votes} 次时标为「样本不足」，名次仅供参考。</dd></div>`}
     <div><dt>计入</dt><dd>只统计登录用户对两件已验证作品的选择；同一用户对同一对作品只计一次，跳过不计。同一配置（按模型时为同一模型）的两件作品之间的比较不参与计分，也不计入有效比较数。作品被标记存疑或删除后，相关投票自动移出，恢复后重新计入。</dd></div>
     <div><dt>单位</dt><dd>「按配置」把同一模型的不同推理档位分开计分；「按模型」把它们合并。</dd></div>
+    <div><dt>显示</dt><dd>默认隐藏当前榜单作品少于 5 件的条目，可勾选显示。评分和名次保留，「暂定」仍按比较次数标记。</dd></div>
     <div><dt>来源筛选</dt><dd>按 Harness 或服务商筛选时，只统计两件作品在投票当时都满足条件的比较；计分单位不变。服务商分为官方、非官方，未填写的为「未注明」；只填了「其他」的 Harness 和未记录来源的较早投票按「未注明」统计。</dd></div>
     <div><dt>不计分</dt><dd>表情互动与浏览次数都不影响榜单。</dd></div>
     <div><dt>更新</dt><dd>每 10 分钟计算一次，新投票将在下一次更新时计入。</dd></div>
@@ -66,6 +73,8 @@ const tone = (at) => `color-mix(in srgb, var(--ink) ${Math.round(at)}%, var(--li
 
 export function mountBoard(container, ctx) {
   let unit = store.get('board-unit') === 'model' ? 'model' : 'config';
+  let showSmallSamples = store.get('board-show-small-samples') === 'true';
+  let currentData = null;
   let controller = null;
   let destroyed = false;
   let query = '';
@@ -86,7 +95,9 @@ export function mountBoard(container, ctx) {
     .map((track) => `<span data-board-standing>${esc(`${track.label}第 ${data.standings[track.name][row.key]}`)}</span>`);
 
   function table(data) {
-    const { rows, unranked, totals } = data;
+    const { rows, unranked } = visibleBoardEntries(data, showSmallSamples);
+    const { totals } = data;
+    const hiddenCount = data.rows.length + data.unranked.length - rows.length - unranked.length;
     const unsupported = (filterActive() && !data.filters) || (ctx.category && data.category === undefined) || (ctx.domain && data.domain === undefined);
     const thin = ctx.domain && data.domain !== undefined && rows.length && ((totals.tasks ?? 0) < THIN.tasks || totals.votes < THIN.votes);
     const meta = `${totals.votes} 次有效比较 · ${totals.voters} 位参与者 · ${rows.length} 个${unit === 'model' ? '模型' : '配置'}有评分${data.filters ? ' · 仅统计两件作品来源都符合筛选的比较' : ''}`;
@@ -97,9 +108,13 @@ export function mountBoard(container, ctx) {
       ? `<div class="collection-toolbar">${search}<div class="toolbar-actions">${typeof ctx.toolbar === 'function' ? ctx.toolbar() : ctx.toolbar ?? ''}${filterSelect('harness', 'Harness', ctx.HARNESSES)}${filterSelect('provider', '服务商', ctx.PROVIDERS)}${unitControl}</div></div>${data.filters ? '<p class="muted">仅统计两件作品来源都符合筛选的比较。</p>' : ''}`
       : `<div class="board-head"><p class="board-meta">${meta}</p>${unitControl}</div>`)
       + `<p class="board-meta"><span>每 10 分钟更新一次</span>${data.updatedAt ? ` · <span>最近计算</span> <time datetime="${esc(data.updatedAt)}" data-i18n-time="${esc(data.updatedAt)}">${esc(formatTime(data.updatedAt))}</time>` : ''}</p>`
+      + `<div class="board-display"><label class="board-sample-toggle"><input type="checkbox" data-board-small${showSmallSamples ? ' checked' : ''}><span>显示作品少于 5 件的条目</span></label>${hiddenCount ? `<span class="board-meta">已隐藏 ${hiddenCount} 个作品不足 5 件的条目</span>` : ''}</div>`
       + (ctx.board && unit === 'config' ? '<p class="muted">入榜资格按模型判断，单独配置比较不足 30 次时仍标为暂定。</p>' : '')
       + (unsupported ? '<p class="muted">后端暂不支持这项筛选，下面是未筛选的榜单。</p>' : '')
       + (thin ? `<p class="muted">样本不足：「${esc(ctx.domain)}」目前只有 ${totals.tasks ?? 0} 道题、${totals.votes} 次有效比较参与计分，名次可能随新票大幅变动，仅供参考。</p>` : '');
+    if (!rows.length && data.rows.length) {
+      return `${head}<div class="board-empty"><p class="board-empty-title">当前没有作品数达到 5 件的条目</p><p>勾选「显示作品少于 5 件的条目」可查看已有评分，暂定标记仍保留。</p></div>`;
+    }
     if (!rows.length && data.filters) {
       return `${head}<div class="board-empty">
         <p class="board-empty-title">${ctx.board ? '目前还没有符合精选榜入榜条件的模型' : '这个筛选下还没有可计分的比较'}</p>
@@ -155,10 +170,13 @@ export function mountBoard(container, ctx) {
       throw new Error('后端尚未支持精选榜，请更新后端后重试');
     // A fresh board can land while the reader types; the search keeps its focus.
     const typing = document.activeElement?.matches('[data-board-search]');
+    const togglingSamples = document.activeElement?.matches('[data-board-small]');
     container.innerHTML = table(data) + (ctx.embedded ? boardNotes() : '');
     if (typing) $('[data-board-search]', container)?.focus();
+    if (togglingSamples) $('[data-board-small]', container)?.focus();
     applyQuery();
-    ctx.onData?.(data);
+    currentData = data;
+    ctx.onData?.(data, { visibleRows: visibleBoardEntries(data, showSmallSamples).rows.length });
     drawn = true;
   }
   // A board seen before draws at once from memory; the fresh one replaces it only if it differs.
@@ -194,6 +212,12 @@ export function mountBoard(container, ctx) {
     load();
   };
   const onChange = (e) => {
+    if (e.target.matches('[data-board-small]')) {
+      showSmallSamples = e.target.checked;
+      store.set('board-show-small-samples', String(showSmallSamples));
+      if (currentData) draw(currentData);
+      return;
+    }
     const select = e.target.closest('[data-board-filter]');
     if (!select) return;
     filters[select.dataset.boardFilter] = select.value;
@@ -287,9 +311,9 @@ export function mount(root, ctx) {
     toolbar: () => domainSelect + taskSelect(),
     emptyTitle: curated ? '目前还没有符合精选榜入榜条件的模型' : domain ? `${domain}榜单还在等第一批盲评` : track && !task ? `${track.label}榜单还在等第一批盲评` : undefined,
     onLoad: (data) => live?.update(data),
-    onData: (data) => {
+    onData: (data, { visibleRows }) => {
       const stats = $('[data-stats]', root);
-      if (stats) stats.innerHTML = `<div><dt>有效比较</dt><dd>${pad(data.totals.votes)}</dd></div><div><dt>参与者</dt><dd>${pad(data.totals.voters)}</dd></div><div><dt>${data.by === 'model' ? '上榜模型' : '上榜配置'}</dt><dd>${pad(data.rows.length)}</dd></div>`;
+      if (stats) stats.innerHTML = `<div><dt>有效比较</dt><dd>${pad(data.totals.votes)}</dd></div><div><dt>参与者</dt><dd>${pad(data.totals.voters)}</dd></div><div><dt>${data.by === 'model' ? '上榜模型' : '上榜配置'}</dt><dd>${pad(visibleRows)}</dd></div>`;
     },
   });
   const onChange = (e) => {

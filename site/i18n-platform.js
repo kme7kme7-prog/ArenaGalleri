@@ -2,6 +2,11 @@
 const phrases = Object.fromEntries(`
 每 10 分钟更新一次|Updates every 10 minutes
 最近计算|Last calculated
+显示作品少于 5 件的条目|Show entries with fewer than 5 works
+已隐藏 {value} 个作品不足 5 件的条目|Hidden {value} entries with fewer than 5 works
+当前没有作品数达到 5 件的条目|No entries currently have at least 5 works
+勾选「显示作品少于 5 件的条目」可查看已有评分，暂定标记仍保留。|Select “Show entries with fewer than 5 works” to view existing ratings. Provisional labels are retained.
+默认隐藏当前榜单作品少于 5 件的条目，可勾选显示。评分和名次保留，「暂定」仍按比较次数标记。|Entries with fewer than 5 works in the current ranking are hidden by default. Select the option to show them. Scores and ranks are retained; provisional labels still depend on comparison counts.
 更新|Updates
 每 10 分钟计算一次，新投票将在下一次更新时计入。|Rankings are calculated every 10 minutes. New votes appear in the next update.
 列表分页|List pagination

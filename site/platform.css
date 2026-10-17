@@ -451,6 +451,9 @@ dialog.sheet.auth-sheet, .auth-overlay .sheet.auth-sheet { width: min(380px, cal
 .board-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .board-meta { margin: 0; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 .board-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.board-display { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin: 12px 0; }
+.board-sample-toggle { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13px; cursor: pointer; }
+.board-sample-toggle input { width: 15px; height: 15px; margin: 0; flex: none; accent-color: var(--ink); }
 .board-wrap { overflow-x: auto; border-top: 1px solid var(--ink); }
 table.board { width: 100%; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
 .board th { padding: 12px 10px; border-bottom: 1px solid var(--line); color: var(--muted); font: 500 11.5px var(--sans); letter-spacing: 0.04em; text-align: right; white-space: nowrap; }
