@@ -8,6 +8,7 @@ import { aigcLabel } from './legal.js';
 import { domainsOf, matchesQuery, tracksOf, votedTask } from './categories.js';
 import { linkReferences, referenceSheet } from './references.js';
 import { languageButton, setPageTitle } from './i18n.js';
+import { loadPair, watchFrameLoad } from './arena-loading.js';
 
 const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-pointer-lock allow-downloads';
 const VERDICT = { a: '你认为 A 更好', b: '你认为 B 更好', tie: '你认为不分伯仲', skip: '你跳过了这一组' };
@@ -173,7 +174,8 @@ function match(root, ctx, first, scope) {
   let task = first;
   const state = { random: Boolean(scope), scope: scope ?? ctx.DATA.tasks.filter(isOpen), pin: pinned(), tally: { win: 0, tie: 0, loss: 0 }, place: '', done: new Set(), unavailable: false, prefetch: null, match: null, result: null, ready: {}, seen: {}, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', round: 0, counted: 0, busy: false, prompt: false, slow: false, error: null };
   const mobile = () => matchMedia('(max-width: 860px)').matches;
-  const timers = new Set();
+  const timers = new Set(), frameLoads = new Map();
+  let activeDraw = null, drawGeneration = 0;
   const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); };
 
   document.body.classList.add('is-viewer');
@@ -261,7 +263,7 @@ function match(root, ctx, first, scope) {
   function status() {
     if (!state.match) return '正在抽取一组作品…';
     if (!(state.ready.a && state.ready.b)) {
-      const parts = ['a', 'b'].map((side) => `${letter(side)} ${state.ready[side] ? '已就绪' : '载入中'}`).join(' · ');
+      const parts = ['a', 'b'].map((side) => `${letter(side)} ${state.ready[side] ? '已就绪' : state.loadErrors?.[side] ? '载入超时' : '载入中'}`).join(' · ');
       return state.slow ? `载入较慢（${parts}）：可以继续等待，或跳过这一组` : `等待两件作品载入 · ${parts}`;
     }
     if (mobile() && !(state.seen.a && state.seen.b)) return `请先切换到作品 ${state.seen.a ? 'B' : 'A'} 看一看`;
@@ -408,20 +410,31 @@ function match(root, ctx, first, scope) {
     node.innerHTML = `<iframe src="${esc(src)}" title="匿名作品 ${letter(side)}" sandbox="${SANDBOX}" allow="fullscreen; autoplay" allowfullscreen referrerpolicy="no-referrer"></iframe>
       ${loader(side, `作品 ${letter(side)} 正在载入`)}`;
     const iframe = $('iframe', node);
-    iframe.addEventListener('load', () => {
-      if (!node.isConnected) return;
-      const gone = () => $('.loader', node).classList.add('gone');
-      state.ready[side] = true;
-      syncControls(side);
-      later(gone, 300);
-      update();
-    }, { once: true });
+    frameLoads.set(side, watchFrameLoad(iframe, {
+      onLoad() {
+        if (!alive || !node.isConnected || currentFrame(side) !== iframe) return;
+        state.ready[side] = true;
+        delete state.loadErrors[side];
+        syncControls(side);
+        later(() => $('.loader', node)?.classList.add('gone'), 300);
+        update();
+      },
+      onSlow() {
+        if (!alive || !node.isConnected || currentFrame(side) !== iframe) return;
+        state.loadErrors[side] = true;
+        state.slow = true;
+        $('.loader', node).innerHTML = `<span>作品 ${letter(side)} 尚未完成载入</span><span>可以重新载入这一侧，或继续等待。</span><button class="btn" data-a="reload" data-side="${side}">重新载入作品 ${letter(side)}</button>`;
+        update();
+      },
+    }));
     return node;
   }
 
   function frame(side) {
     const body = $(`[data-body="${side}"]`, el);
+    frameLoads.get(side)?.();
     state.ready[side] = false;
+    delete state.loadErrors[side];
     delete state.controls[side];
     body.replaceChildren(layer(state.match[side], side));
   }
@@ -499,6 +512,14 @@ function match(root, ctx, first, scope) {
   function showError(error) {
     state.error = error;
     state.controls = {};
+    if (!error.code || error.code === 'match-timeout' || error.status >= 500 || [408, 429].includes(error.status)) {
+      for (const body of $$('[data-body]', el)) body.innerHTML = `<div class="arena-layer"><div class="board-empty arena-empty">
+        <p class="board-empty-title">${esc(error.message)}</p><p>可以重试抽取，或返回盲评题库。</p>
+        <div class="board-empty-actions"><button class="btn primary" data-a="retry-pair">重新抽取</button><a class="btn" href="#/arena">返回盲评题库</a></div>
+      </div></div>`;
+      drawBar();
+      return;
+    }
     $('.arena-layout', el).hidden = true;
     drawMode();
     const others = ctx.DATA.tasks.filter((t) => t !== task && isOpen(t) && !state.done.has(t.id));
@@ -515,11 +536,12 @@ function match(root, ctx, first, scope) {
   // The pair after one on `from`. Random rounds change task after the first pair; a task the reader has
   // run out of drops out of the range. A task whose pairs all hold a recently revealed work is passed over
   // while other tasks are left, then drawn from all the same (the server falls back without `avoidCooling`).
-  async function draw(from, previous, random, pick) {
+  async function draw(from, previous, random, pick, signal) {
     const cooling = new Set();
     let avoid = random;
     let t = from;
     for (;;) {
+      signal.throwIfAborted();
       if (pick) {
         t = pickTask(from, cooling);
         if (!t && avoid && cooling.size) {
@@ -530,8 +552,11 @@ function match(root, ctx, first, scope) {
         if (!t) throw Object.assign(new Error('这个范围里的组合你都评过了'), { code: 'exhausted' });
       }
       try {
-        return { task: t, match: await api('arena/matches', { method: 'POST', body: { task: t.id, previous: t === from ? previous : undefined, avoidCooling: avoid || undefined, pin: state.pin?.key } }) };
+        const match = await api('arena/matches', { method: 'POST', signal, body: { task: t.id, previous: t === from ? previous : undefined, avoidCooling: avoid || undefined, pin: state.pin?.key } });
+        signal.throwIfAborted();
+        return { task: t, match };
       } catch (error) {
+        signal.throwIfAborted();
         if (!random || !['exhausted', 'insufficient', 'cooling', 'pinned-absent'].includes(error.code)) throw error;
         if (error.code === 'cooling') cooling.add(t.id);
         else {
@@ -547,35 +572,48 @@ function match(root, ctx, first, scope) {
   // after the current frames have been removed; hidden works can keep rendering.
   function prefetch() {
     if (state.prefetch || state.error || !state.match) return;
-    const ahead = { user: platform.user?.id ?? null };
-    ahead.promise = draw(task, state.match.id, state.random, state.random).then((drawn) => {
-      Object.assign(ahead, drawn);
-    }, () => { /* drawn again, and any error shown, when the reader moves on */ });
+    const ahead = loadPair((signal) => draw(task, state.match.id, state.random, state.random, signal));
+    ahead.user = platform.user?.id ?? null;
+    ahead.promise = ahead.promise.then((drawn) => {
+      Object.assign(ahead, drawn, { settled: true });
+    }, (error) => { ahead.error = error; ahead.settled = true; });
     state.prefetch = ahead;
   }
 
   function dropPrefetch() {
+    state.prefetch?.cancel();
     state.prefetch = null;
   }
 
   async function next() {
     if (state.busy || state.error) return;
     state.busy = true;
+    const generation = ++drawGeneration;
+    frameLoads.forEach((stop) => stop());
+    frameLoads.clear();
     const previous = state.match?.id;
     const earlier = task;
     const ahead = state.prefetch;
     state.prefetch = null;
     $('.arena-switched', el)?.remove();
     // Every pair starts side by side at an even split, so the last pair's layout favours neither.
-    Object.assign(state, { match: null, result: null, unsealed: false, ready: {}, seen: { a: true }, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', slow: false });
+    Object.assign(state, { match: null, result: null, unsealed: false, ready: {}, loadErrors: {}, seen: { a: true }, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', slow: false });
     drawSplit();
     for (const body of $$('[data-body]', el)) {
       body.innerHTML = `<div class="arena-layer">${loader(body.dataset.body, '正在抽取一组作品')}</div>`;
     }
     update();
     try {
-      if (ahead) await ahead.promise;
-      const drawn = ahead?.match ? ahead : await draw(earlier, previous, state.random, state.random && state.round > 0);
+      if (ahead) {
+        const settled = ahead.settled;
+        activeDraw = ahead;
+        await ahead.promise;
+        if (!settled && ahead.error) throw ahead.error;
+      }
+      if (!alive || generation !== drawGeneration) return;
+      activeDraw = ahead?.match ? ahead : Object.assign(loadPair((signal) => draw(earlier, previous, state.random, state.random && state.round > 0, signal)), { user: platform.user?.id ?? null });
+      const drawn = ahead?.match ? ahead : await activeDraw.promise;
+      if (!alive || generation !== drawGeneration) return;
       if (drawn.task !== task) setTask(drawn.task);
       state.match = drawn.match;
       if (state.round > 0 && task !== earlier) noteSwitch();
@@ -585,8 +623,11 @@ function match(root, ctx, first, scope) {
       const current = state.match;
       later(() => { if (state.match === current && !(state.ready.a && state.ready.b)) { state.slow = true; update(); } }, 25000);
     } catch (error) {
+      if (!alive || generation !== drawGeneration || error.name === 'AbortError') return;
       state.busy = false;
       return showError(error);
+    } finally {
+      if (generation === drawGeneration) activeDraw = null;
     }
     state.busy = false;
     update();
@@ -632,6 +673,7 @@ function match(root, ctx, first, scope) {
     if (!action) return;
     const kind = action.dataset.a;
     if (kind === 'next') next();
+    else if (kind === 'retry-pair' && state.error) { state.error = null; next(); }
     else if (kind === 'prompt') togglePrompt();
     else if (kind === 'open-prompt') togglePrompt(true);
     else if (kind === 'mode') setMode(action.dataset.mode === 'random');
@@ -759,6 +801,14 @@ function match(root, ctx, first, scope) {
     fullscreen: true,
     onPlatformChange() {
       if (state.prefetch && state.prefetch.user !== (platform.user?.id ?? null)) dropPrefetch();
+      if (activeDraw && activeDraw.user !== (platform.user?.id ?? null)) {
+        drawGeneration++;
+        activeDraw.cancel();
+        activeDraw = null;
+        state.busy = false;
+        state.pin = pinned();
+        showError(new Error('登录状态已变化，请重新抽取'));
+      }
       if (!state.error) update();
     },
     destroy() {
@@ -766,6 +816,11 @@ function match(root, ctx, first, scope) {
       removeEventListener('message', onFold);
       removeEventListener('resize', onResize);
       alive = false;
+      drawGeneration++;
+      activeDraw?.cancel();
+      dropPrefetch();
+      frameLoads.forEach((stop) => stop());
+      frameLoads.clear();
       notice?.close();
       timers.forEach(clearTimeout);
       document.body.classList.remove('is-viewer');

@@ -96,6 +96,13 @@ const messages = {
   '在展厅中打开 {name}': 'Open {name} in the gallery',
   '正在抽取一组作品…': 'Drawing a pair…',
   '正在抽取一组作品': 'Drawing a pair',
+  '登录状态已变化，请重新抽取': 'Your sign-in state changed. Please draw a new pair.',
+  '抽取作品超时，请重试': 'Drawing a pair timed out. Please try again.',
+  '可以重试抽取，或返回盲评题库。': 'Try drawing again, or return to the blind-review questions.',
+  '重新抽取': 'Draw again',
+  '返回盲评题库': 'Back to blind-review questions',
+  '作品 {side} 尚未完成载入': 'Work {side} has not finished loading',
+  '可以重新载入这一侧，或继续等待。': 'Reload this side, or keep waiting.',
   '请先切换到作品 {side} 看一看': 'Switch to work {side} and explore it first',
   '账号未绑定邮箱：可以体验，但这一组的选择不会计入榜单': 'Your email is not verified. You can try this pair, but your choice will not count.',
   '体验过两件作品后，选出你更认可的一件': 'Explore both works, then choose your favorite',
@@ -232,9 +239,10 @@ const messages = {
 };
 
 // The loading state is composed from two fixed UI labels; keep both reversible.
-for (const a of ['已就绪', '载入中']) for (const b of ['已就绪', '载入中']) {
+const loadingLabels = { '已就绪': 'ready', '载入中': 'loading', '载入超时': 'timed out' };
+for (const a of Object.keys(loadingLabels)) for (const b of Object.keys(loadingLabels)) {
   const status = `A ${a} · B ${b}`;
-  const translated = `A ${a === '已就绪' ? 'ready' : 'loading'} · B ${b === '已就绪' ? 'ready' : 'loading'}`;
+  const translated = `A ${loadingLabels[a]} · B ${loadingLabels[b]}`;
   messages[`等待两件作品载入 · ${status}`] = `Waiting for both works · ${translated}`;
   messages[`载入较慢（${status}）：可以继续等待，或跳过这一组`] = `Loading is taking longer (${translated}). Keep waiting or skip this pair.`;
 }
