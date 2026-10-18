@@ -2,9 +2,10 @@ import gallery from './i18n-gallery.js';
 import platform from './i18n-platform.js';
 import authoring from './i18n-authoring.js';
 import experience from './i18n-experience.js';
+import levels from './i18n-levels.js';
 
 const normalize = (text) => text.trim().replace(/\s+/g, ' ');
-const catalog = Object.fromEntries(Object.entries({ ...gallery, ...platform, ...authoring, ...experience }).map(([source, english]) => [normalize(source), english]));
+const catalog = Object.fromEntries(Object.entries({ ...gallery, ...platform, ...authoring, ...experience, ...levels }).map(([source, english]) => [normalize(source), english]));
 const generatedUiSources = new Map();
 const reverseCatalog = Object.fromEntries(Object.entries(catalog).map(([source, english]) => [english, source]));
 const KEY = 'gallery-locale';
@@ -33,7 +34,7 @@ const patterns = Object.entries(catalog).filter(([key]) => /\{[A-Za-z][A-Za-z0-9
 });
 const interpolate = (text, vars) => text.replace(/\{([A-Za-z][A-Za-z0-9]*)\}/g, (whole, name) => vars[name] ?? whole);
 // Only nouns in authored English templates are inflected; captured original content is untouched.
-const singularNouns = { answers: 'answer', providers: 'provider', vendors: 'vendor', models: 'model', works: 'work', files: 'file', questions: 'question', votes: 'vote', participants: 'participant', seconds: 'second', minutes: 'minute', hours: 'hour', days: 'day', images: 'image', characters: 'character', configurations: 'configuration', comparisons: 'comparison', pairs: 'pair', results: 'result', groups: 'group', entries: 'entry', wins: 'win', ties: 'tie', losses: 'loss', people: 'person', items: 'item', uploads: 'upload', submissions: 'submission', screenshots: 'screenshot', references: 'reference', members: 'member', reviews: 'review' };
+const singularNouns = { answers: 'answer', attempts: 'attempt', providers: 'provider', vendors: 'vendor', models: 'model', works: 'work', files: 'file', questions: 'question', votes: 'vote', participants: 'participant', seconds: 'second', minutes: 'minute', hours: 'hour', days: 'day', images: 'image', characters: 'character', configurations: 'configuration', comparisons: 'comparison', pairs: 'pair', results: 'result', groups: 'group', entries: 'entry', wins: 'win', ties: 'tie', losses: 'loss', people: 'person', items: 'item', uploads: 'upload', submissions: 'submission', screenshots: 'screenshot', references: 'reference', members: 'member', reviews: 'review' };
 const countedNoun = new RegExp(`\\{([A-Za-z][A-Za-z0-9]*)\\}((?: [a-z-]+){0,3}) (${Object.keys(singularNouns).join('|')})\\b`, 'g');
 const englishPlural = new Intl.PluralRules('en');
 function englishMessage(template, vars) {

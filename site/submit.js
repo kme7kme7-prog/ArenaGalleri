@@ -4,7 +4,8 @@
 // After submitting, one stage track shows where the work is and follows it while it waits.
 import { $, $$, esc, formatBytes, formatTime, icon } from './ui.js';
 import { setPageTitle } from './i18n.js';
-import { api, isStaff, needsEmail, platform, refreshPlatform, toast } from './platform.js';
+import { api, can, isStaff, needsEmail, platform, refreshPlatform, toast } from './platform.js';
+import { levelGate } from './level-gate.js';
 import { createUploadRequest, resolveApiMedia } from './platform-api.js';
 import { onWorkFieldChange, readWorkFields, workFieldsHtml } from './work-fields.js';
 import { TEMPLATE_LABELS, templatesOf } from './categories.js';
@@ -81,6 +82,14 @@ export function mount(root, ctx) {
       crumbs: task ? [ctx.LIBRARY, { text: task.title, original: true, href: ctx.taskHref(task) }, { text: '上传作品' }] : [ctx.LIBRARY, { text: '上传作品' }] })}
       <section class="account-empty">${icon('grid')}<h2>${!task ? '请从题目内上传作品' : task.promptPending ? '提示词原文尚未公开' : '这道题暂时关闭了投稿'}</h2><p>${!task ? '在题库中打开一道题，点击「上传作品」。' : task.promptPending ? '待题目补充完整提示词后即可上传。' : '管理员重新开放后即可上传。'}</p><a class="btn primary" href="${task ? ctx.taskHref(task) : '#/questions'}">${task ? '返回题目' : '浏览题库'}</a></section>${ctx.pageEnd()}`;
     return {};
+  }
+  // Below Lv1 the form gives way to the way to the qualification test.
+  if (platform.user && !can('canSubmitWork')) {
+    root.innerHTML = `${ctx.pageStart({ title: '上传作品', section: 'questions', heading: '交一份你的答案', description: '每份作品都对应一道明确的题目。',
+      crumbs: [ctx.LIBRARY, { text: task.title, original: true, href: ctx.taskHref(task) }, { text: '上传作品' }] })}
+      <section class="block wrap"><div data-gate></div></section>${ctx.pageEnd()}`;
+    const stop = levelGate($('[data-gate]', root), 'work');
+    return { destroy: stop };
   }
   return uploadFlow(root, ctx, { task });
 }

@@ -6,7 +6,8 @@
 // #/new/<id> reopens the author's rejected question in the same form to resubmit it.
 import { $, $$, esc, formatDate, icon, pad } from './ui.js';
 import { setPageTitle } from './i18n.js';
-import { api, confirmDialog, moderationBadge, openDialog, platform, refreshPlatform, requireUser, reviewVerdict, toast } from './platform.js';
+import { api, can, confirmDialog, moderationBadge, openDialog, platform, refreshPlatform, requireUser, reviewVerdict, toast } from './platform.js';
+import { levelGate } from './level-gate.js';
 import { contentStage, moderated, stageTrack, uploadFlow } from './submit.js';
 import { TEMPLATE_LABELS, categoryLabel, categoryOf } from './categories.js';
 import { categoryField, domainField, syncDomains } from './question-fields.js';
@@ -29,43 +30,17 @@ export function mount(root, ctx) {
   // Resubmitting: the rejected question as last submitted, its sample results and whether to drop them.
   const resubmitId = ctx.param;
   let original = null, samples = [], removeSamples = false;
-  let eligibility = platform.me?.questionEligibility ?? null, eligibilityDialog = null, checking = false;
-  const rule = '单独提交题目需完成 100 次有效盲评，或上传 10 件作品，满足任一即可。附带示例结果可直接发起。';
-  function progress() {
-    return `<div class="question-progress">${[
-      ['有效盲评', eligibility.votes, eligibility.requiredVotes, '次'],
-      ['已上传作品', eligibility.uploads, eligibility.requiredUploads, '件'],
-    ].map(([label, value, target, unit]) => `<div class="question-progress-item"><div><b>${label}</b><span><strong>${value}</strong> / ${target} ${unit}</span></div><progress value="${Math.min(value, target)}" max="${target}" aria-label="${label}"></progress><small>${value >= target ? '已达标' : `还差 ${target - value} ${unit}`}</small></div>`).join('<span class="question-progress-or">或</span>')}</div>`;
-  }
-  function updateEligibility() {
-    const host = $('[data-question-eligibility]', root);
-    if (!host) return;
-    host.innerHTML = `<div class="question-eligibility-head"><b>${eligibility?.allowed ? '已可单独提交题目' : '附带示例，即可发起题目'}</b>${platform.user ? '<button type="button" class="link" data-check-eligibility>刷新进度</button>' : ''}</div><p>${eligibility?.exempt ? '管理员可直接发起题目。' : rule}</p>${eligibility && !eligibility.exempt ? progress() : ''}<p class="fine">有效盲评只统计成功计票，跳过不计；作品按已提交且未删除的数量计算，待审核也计入，试上传不计。</p><p class="form-error" role="alert" data-eligibility-error></p>`;
-  }
-  function showEligibilityDialog() {
-    if (!active || eligibilityDialog || !eligibility || eligibility.allowed) return;
-    eligibilityDialog = openDialog({ title: '附上一份示例，就能发起题目', className: 'question-eligibility-sheet',
-      body: `<p class="sheet-text">${rule}</p>${progress()}<p class="fine">跳过和未计票的盲评不计入；待审核作品计入上传数，已删除作品和试上传不计。</p><div class="question-eligibility-actions"><button class="btn primary question-sample-action" type="button" data-sheet-close>继续填写并附上示例</button><a class="btn" href="#/arena/random">${icon('split')}去盲评</a><a class="btn" href="#/questions">${icon('upload')}去上传作品</a></div><p class="fine">上传作品请先在题库选题。关闭提示后，本页已填写的内容会保留。</p>`,
-      onClose: () => { eligibilityDialog = null; },
-    });
-    eligibilityDialog.el.addEventListener('click', (event) => { if (event.target.closest('a')) eligibilityDialog?.close(); });
-  }
-  async function checkEligibility(showDialog = true) {
-    const userId = platform.user?.id;
-    if (!userId) return false;
-    const { eligibility: current } = await api('questions/eligibility');
-    if (!active || platform.user?.id !== userId) return false;
-    eligibility = current;
-    updateEligibility();
-    if (showDialog && !current.allowed) showEligibilityDialog();
-    return current.allowed;
-  }
-  async function refreshEligibility() {
-    if (checking) return;
-    checking = true;
-    try { await checkEligibility(); }
-    catch (err) { const error = $('[data-eligibility-error]', root); if (error) error.textContent = err.message; }
-    finally { checking = false; }
+  // A member below Lv1 reads the way to the qualification test where the form would be.
+  let stopGate = null;
+  const gated = () => !original && Boolean(platform.user) && !can('canSubmitQuestion');
+  function showGate() {
+    showing = 'gate';
+    stopGate?.();
+    root.innerHTML = `${ctx.pageStart({ title: '发起题目', section: 'new', heading: '让每份答案，从同一题开始',
+      description: '写清要测试的能力，提供完整提示词；也可以附上一份模型结果展示它的效果。' })}
+      <section class="block wrap publish-layout"><div data-gate></div></section>${ctx.pageEnd()}`;
+    setPageTitle(['发起题目', ctx.DATA.title]);
+    stopGate = levelGate($('[data-gate]', root), 'question');
   }
   // Reference images upload as they are picked and outlive a return to the form.
   const promptArea = () => $('.publish-form [name="prompt"]', root);
@@ -141,6 +116,7 @@ export function mount(root, ctx) {
   const changedMark = (name) => (original ? `<span class="badge" data-changed="${name}" hidden>已修改</span>` : '');
 
   function showForm() {
+    if (gated()) return showGate();
     showing = 'form';
     root.innerHTML = `${ctx.pageStart(original ? resubmitPage() : { title: '发起题目', section: 'new', heading: '让每份答案，从同一题开始',
       description: '写清要测试的能力，提供完整提示词；也可以附上一份模型结果展示它的效果。', meta: sideSteps(0) })}
@@ -149,7 +125,7 @@ export function mount(root, ctx) {
           <div data-sample-kept></div>
           ${original ? `${reviewVerdict(original.moderation)}<p class="fine">下面是你上次提交的内容，改过的项会标出「已修改」。</p>`
             : `<div class="notice publish-auth" data-publish-auth${platform.user ? ' hidden' : ''}>${icon('user')}<p>登录后查看发起资格，已填写的内容会保留。</p><button class="btn sm" type="button" data-auth="login">登录 / 注册</button></div>
-          <section class="question-eligibility" data-question-eligibility aria-label="发起题目资格"></section>`}
+          <div data-form-gate></div>`}
           <label class="field"><span class="field-label">题目标题 *${changedMark('title')}</span><input class="input" name="title" required maxlength="70" placeholder="例如：体素中国古典建筑群" value="${esc(question.title)}"></label>
           <label class="field"><span class="field-label">测试简述 *${changedMark('summary')}</span><textarea class="input" name="summary" required maxlength="400" rows="3" placeholder="需要完成什么？能测出模型的哪些能力？">${esc(question.summary)}</textarea></label>
           ${categoryField(question.category)}
@@ -185,9 +161,7 @@ export function mount(root, ctx) {
       $('[data-formats]', form).innerHTML = formatField();
       error.textContent = '';
     };
-    updateEligibility();
     root.onclick = (event) => {
-      if (event.target.closest('[data-check-eligibility]')) void refreshEligibility();
       if (event.target.closest('[data-act="to-sample"]')) form.requestSubmit($('button[value="sample"]', form));
       if (event.target.closest('[data-act="toggle-samples"]')) { removeSamples = !removeSamples; $('[data-samples]', form).outerHTML = sampleField(); }
     };
@@ -199,7 +173,6 @@ export function mount(root, ctx) {
       checking = true;
       try {
         if (!(await requireUser('登录后即可附带示例发起题目')) || !active) return false;
-        if (!original && mode !== 'sample' && !(await checkEligibility())) return false;
       } catch (err) { error.textContent = err.message; return false; }
       finally { checking = false; }
       const data = new FormData(form);
@@ -244,7 +217,12 @@ export function mount(root, ctx) {
         return true;
       } catch (err) {
         error.textContent = err.message;
-        if (err.code === 'question_ineligible') void refreshEligibility();
+        if (err.code === 'level_required') {
+          // Demoted while writing: the block replaces the form's top, what was typed stays.
+          stopGate?.();
+          const host = $('[data-form-gate]', root);
+          if (host) { stopGate = levelGate(host, 'question'); host.scrollIntoView({ block: 'center' }); }
+        }
         buttons.forEach((button) => { button.disabled = false; });
         return false;
       }
@@ -426,10 +404,7 @@ export function mount(root, ctx) {
   }
 
   if (resubmitId) void loadResubmit();
-  else {
-    showForm();
-    if (platform.user) void refreshEligibility();
-  }
+  else showForm();
   return {
     onPlatformChange(reason) {
       if (resubmitId) {
@@ -447,17 +422,13 @@ export function mount(root, ctx) {
           syncKept();
         }
       }
-      if (reason === 'session') {
-        eligibilityDialog?.close();
-        eligibility = platform.me?.questionEligibility ?? null;
-        updateEligibility();
-        if (platform.user && showing === 'form') void refreshEligibility();
-      }
+      // Passing the test (or a demotion) swaps the block and the form.
+      if (reason === 'session' && ['form', 'gate'].includes(showing) && gated() !== (showing === 'gate')) showForm();
     },
     destroy() {
       active = false;
       removeEventListener('popstate', onPopState);
-      eligibilityDialog?.close();
+      stopGate?.();
       flow?.destroy();
       refs?.destroy();
       root.oninput = null;

@@ -2,7 +2,7 @@ import { setPageTitle } from './i18n.js';
 // Personal center (#/me), and the admin review queue (#/review[/<tab>]).
 import { $, $$, brandMark, esc, formatBytes, formatDate, formatTime, icon, img } from './ui.js';
 import { memberChips, memberList, memberResults, membersState, openMember } from './member-management.js';
-import { accountVersion, api, apiRemembered, arenaText, autoRejected, avatarFace, byStaff, canDecide, confirmDialog, injected, isSenior, isStaff, moderationBadge, openBindEmail, openDialog, platform, QUESTION_LABELS, recall, refreshPlatform, requireUser, reviewCount, reviewVerdict, riskLabels, ROLE_LABELS, setFaces, statusBadge, toast, updateRememberedReviewWork } from './platform.js';
+import { accountVersion, api, apiRemembered, arenaText, autoRejected, avatarFace, byStaff, canDecide, levelBadge, levelOf, confirmDialog, injected, isSenior, isStaff, moderationBadge, openBindEmail, openDialog, platform, QUESTION_LABELS, recall, refreshPlatform, requireUser, reviewCount, reviewVerdict, riskLabels, ROLE_LABELS, setFaces, statusBadge, toast, updateRememberedReviewWork } from './platform.js';
 import { effortOptions, onWorkFieldChange, readWorkFields, workFieldsHtml } from './work-fields.js';
 import { openWorkManagement } from './work-management.js';
 import { CATEGORIES, categoryLabel, domainsOf, matchesQuery } from './categories.js';
@@ -348,6 +348,22 @@ function activityCalendar(activity) {
   </div></div>`;
 }
 
+// What the account's level means for it: counting, and the way up for a Lv0 member.
+function levelLine(user) {
+  const level = levelOf(user);
+  const since = user.levelSince ? `<time data-i18n-date="${esc(user.levelSince)}">${esc(formatDate(user.levelSince))}</time>` : '';
+  const badge = `<span class="sr">等级 ${level}</span>${levelBadge(level)}`;
+  if (level === 0) {
+    const doing = platform.qualification;
+    return `<p class="profile-level">${badge} · <span>你的选择计入大众榜。通过资格考试可升为 Lv1：可以发起题目，选择也计入精选榜。</span> <a class="btn sm" href="#/exam">${doing ? `继续考试 ${doing.activeAnswered}/${doing.questionCount}` : '去考试'}${icon('right')}</a></p>`;
+  }
+  if (level === 1) {
+    const how = user.levelSource === 'exam' ? `<span>通过资格考试</span>` : user.levelSource === 'admin' ? '<span>由管理员设为 Lv1</span>' : '';
+    return `<p class="profile-level">${badge}${how ? ` · ${since ? `${since} ` : ''}${how}` : ''} · <span>选择计入大众榜与精选榜</span></p>`;
+  }
+  return `<p class="profile-level">${badge}</p>`;
+}
+
 function profileOverview(state) {
   const user = platform.user;
   const name = user.nickname || user.name;
@@ -363,12 +379,13 @@ function profileOverview(state) {
         <p class="form-error" data-profile-error role="alert" hidden></p>
       </form>` : `<p class="profile-name"><b data-i18n-ignore>${esc(name)}</b><button class="btn sm ghost" type="button" data-edit-name>编辑昵称</button></p>`}
       <p class="profile-account"><span>登录账号</span> <span data-i18n-ignore>${esc(user.name)}</span>${state.joinedAt ? ` · <span>加入</span> ${dateHtml(state.joinedAt)}` : ''}</p>
+      ${levelLine(user)}
     </div><button class="link profile-logout" type="button" data-logout>退出登录</button>
   </section>
   <section class="profile-bindings" aria-labelledby="bindings-title">
     <div class="profile-section-head"><h2 id="bindings-title">账号绑定</h2><p>注册时绑定，用于找回密码与账号安全验证，可随时更换</p></div>
     <div class="binding-list">
-      <div class="binding-row"><span class="binding-icon">${icon('mail')}</span><div class="binding-main"><b>邮箱</b><span>${state.email === undefined ? '正在载入…' : state.email ? esc(maskEmail(state.email)) : '未绑定 · 绑定后才能上传、发起题目和投票'}</span></div>
+      <div class="binding-row"><span class="binding-icon">${icon('mail')}</span><div class="binding-main"><b>邮箱</b><span>${state.email === undefined ? '正在载入…' : state.email ? esc(maskEmail(state.email)) : '未绑定 · 绑定后才能上传和发起题目'}</span></div>
         <button class="btn sm" type="button" data-bind="email"${state.email === undefined ? ' disabled' : ''}>${state.email ? '更换' : '绑定'}</button></div>
     </div>
   </section>

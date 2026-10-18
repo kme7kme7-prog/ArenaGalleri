@@ -27,6 +27,7 @@ export const platform = {
   featured: {},
   totals: { votes: 0, voters: 0, entries: 0 },
   me: null,
+  qualification: null,
   review: null,
   sessionReady: false,
   sessionConnecting: false,
@@ -73,7 +74,7 @@ const cooling = (error) => Date.now() < (error?.retryAt ?? 0);
 function clearPrivate() {
   accountGeneration++;
   invalidateActivity();
-  platform.me = platform.review = null;
+  platform.me = platform.review = platform.qualification = null;
   platform.reactions = { counts: {}, mine: {} };
   platform.arenaModels = [];
   workAccess = [];
@@ -96,8 +97,13 @@ function overlayWorks() {
     return own ? { ...w, mine: own.mine, ...(own.arena ? { arena: own.arena } : {}) } : { ...w };
   });
 }
+// `me` carries the vote and quota counters; the level gate and any exam in progress ride beside it.
+function acceptMe(data) {
+  platform.me = data.me ? { ...data.me, ...(data.questionEligibility ? { questionEligibility: data.questionEligibility } : {}) } : null;
+  platform.qualification = data.qualification ?? null;
+}
 function acceptUser(user) {
-  if ((user?.id ?? null) !== (platform.user?.id ?? null) || user?.role !== platform.user?.role) clearPrivate();
+  if ((user?.id ?? null) !== (platform.user?.id ?? null) || user?.role !== platform.user?.role || levelOf(user) !== levelOf(platform.user)) clearPrivate();
   platform.user = user ?? null;
 }
 function connectionFailure(error) {
@@ -186,9 +192,9 @@ function loadSession(request, catalogConnection, refreshActivity = false) {
       if (generation !== accountGeneration) return false;
       if (!compatibleBuild(frontendBuildInfo, data) || !Object.hasOwn(data, 'user')
         || (data.user !== null && !data.user?.id)) throw new Error('Invalid platform response');
-      const identityChanged = (data.user?.id ?? null) !== (platform.user?.id ?? null) || data.user?.role !== platform.user?.role;
+      const identityChanged = (data.user?.id ?? null) !== (platform.user?.id ?? null) || data.user?.role !== platform.user?.role || levelOf(data.user) !== levelOf(platform.user);
       acceptUser(data.user);
-      platform.me = data.me ?? null;
+      acceptMe(data);
       if (Object.hasOwn(data, 'review')) platform.review = data.review;
       platform.sessionReady = true;
       platform.sessionError = null;
@@ -231,9 +237,9 @@ async function readPlatform(buildInfo, request, bootstrap = false) {
     const data = await responseData(response);
     if (!acceptCatalog(data, buildInfo)) return false;
     if (bootstrap && generation === accountGeneration) {
-      const identityChanged = (data.user?.id ?? null) !== (platform.user?.id ?? null) || data.user?.role !== platform.user?.role;
+      const identityChanged = (data.user?.id ?? null) !== (platform.user?.id ?? null) || data.user?.role !== platform.user?.role || levelOf(data.user) !== levelOf(platform.user);
       acceptUser(data.user);
-      platform.me = data.me ?? null;
+      acceptMe(data);
       platform.review = data.review ?? null;
       platform.sessionReady = true;
       platform.sessionError = null;
@@ -280,11 +286,12 @@ export function startPlatformRecovery() {
 }
 
 export class ApiError extends Error {
-  constructor(status, message, code, retryAfter = 0) {
+  constructor(status, message, code, retryAfter = 0, data = {}) {
     super(message);
     this.status = status;
     this.code = code;
     this.retryAfter = retryAfter;
+    this.data = data;
   }
 }
 
@@ -322,7 +329,7 @@ export async function api(path, { method = 'GET', body, signal } = {}) {
       else void loadActivity();
     }
     throw new ApiError(response.status, data.error ?? `请求失败（${response.status}）`, data.code,
-      Number(data.retryAfter ?? response.headers.get('Retry-After')) || 0);
+      Number(data.retryAfter ?? response.headers.get('Retry-After')) || 0, data);
   }
   if (['auth/login', 'auth/register', 'auth/logout'].includes(path)) {
     clearPrivate();
@@ -438,6 +445,14 @@ export const autoRejected = (moderation) => moderation?.status === 'rejected' &&
 export const injected = (moderation) => Boolean(moderation?.categories?.includes('prompt-injection'));
 // Three tiers: senior admins run the site; moderators review and verify works only, never their own.
 export const ROLE_LABELS = { admin: '高级管理员', moderator: '普通管理员', user: '成员' };
+// Levels: 0 member, 1 certified member, 2 moderator, 3 senior admin. Older servers send only a role.
+export const LEVEL_NAMES = ['成员', '认证成员', '普通管理员', '高级管理员'];
+export const levelOf = (user = platform.user) => (!user ? null : Number.isInteger(user.level) ? user.level : user.role === 'admin' ? 3 : user.role === 'moderator' ? 2 : 0);
+// "Lv1" in the mono badge, then the name: levels belong to the ink palette, never the red pen.
+export const levelBadge = (level, { name = true } = {}) => `<span class="badge level" aria-hidden="true">Lv${level}</span>${name ? `<span class="level-name">${LEVEL_NAMES[level]}</span>` : ''}`;
+export const levelText = (level) => `Lv${level} ${LEVEL_NAMES[level]}`;
+// What the server lets this account do; an older server without capabilities leaves levels to the role.
+export const can = (name, user = platform.user) => Boolean(user && (user.capabilities ? user.capabilities[name] : name === 'canTakeQualificationExam' ? levelOf(user) === 0 : true));
 export const isStaff = (user = platform.user) => user?.role === 'admin' || user?.role === 'moderator';
 export const isSenior = (user = platform.user) => user?.role === 'admin';
 export const canDecide = (w) => platform.sessionReady && (isSenior() || (isStaff() && w.mine === false));
@@ -818,7 +833,7 @@ export function openAuth({ mode = 'login', reason = '' } = {}) {
         await refreshPlatform('session');
         sheet.close();
         toast(mode === 'register' ? `账号已创建，欢迎你，${user.nickname || user.name}`
-          : needsEmail() ? '欢迎回来。账号还未绑定邮箱，上传和投票前需要先绑定' : `欢迎回来，${user.nickname || user.name}`);
+          : needsEmail() ? '欢迎回来。账号还未绑定邮箱，上传和发起题目前需要先绑定' : `欢迎回来，${user.nickname || user.name}`);
       } catch (error) {
         $('.form-error', form).textContent = error.message;
         submit.disabled = false;
@@ -839,7 +854,7 @@ export async function requireUser(reason) {
   }
   const user = platform.user ?? await openAuth({ reason });
   if (!user || !needsEmail()) return user;
-  return (await openBindEmail({ reason: '账号需要先绑定邮箱，才能上传、发起题目和投票。' })) ? platform.user : null;
+  return (await openBindEmail({ reason: '账号需要先绑定邮箱，才能上传和发起题目。' })) ? platform.user : null;
 }
 
 async function logout() {
@@ -890,9 +905,10 @@ function menuHtml() {
     return `${nav}<div class="menu-group"><button role="menuitem" data-auth="login">${icon('user')}登录</button><button role="menuitem" data-auth="register">${icon('plus')}注册账号</button></div>`;
   }
   const name = user.nickname || user.name;
-  return `${nav}<div class="menu-user"><span class="avatar" aria-hidden="true">${avatarFace(user.avatar, name)}</span><span><b data-i18n-ignore>${esc(name)}</b><small><span>${ROLE_LABELS[user.role] ?? '成员'}</span> · <span>已评 ${platform.me?.votes ?? 0} 组</span></small></span></div>
+  return `${nav}<div class="menu-user"><span class="avatar" aria-hidden="true">${avatarFace(user.avatar, name)}</span><span><b data-i18n-ignore>${esc(name)}</b><small><span class="sr">等级 ${levelOf(user)}</span>${levelBadge(levelOf(user))} · <span>已评 ${platform.me?.votes ?? 0} 组</span></small></span></div>
     <div class="menu-group">
       <a href="#/me" role="menuitem">${icon('user')}个人中心</a>
+      ${levelOf(user) === 0 ? `<a href="#/exam" role="menuitem">${icon('check')}资格考试<small class="menu-hint">${platform.qualification ? `进行中 ${platform.qualification.activeAnswered}/${platform.qualification.questionCount}` : '→ Lv1'}</small></a>` : ''}
       ${isStaff(user) ? `<a href="#/review" role="menuitem">${icon('shield')}审核${reviewCount() ? `<span class="count">${reviewCount()}</span>` : ''}</a>` : ''}
       <button role="menuitem" data-logout>${icon('logout')}退出登录</button>
     </div>`;

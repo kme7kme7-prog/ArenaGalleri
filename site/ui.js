@@ -30,6 +30,7 @@ const ICONS = {
   full: '<path d="M4.5 9V4.5H9M19.5 9V4.5H15M4.5 15v4.5H9M19.5 15v4.5H15"/>',
   plus: '<path d="M12 6v12M6 12h12"/>',
   check: '<path d="m6 12.5 4 4 8-9"/>',
+  bookmark: '<path d="M7 4.5h10v15l-5-3.5-5 3.5z"/>',
   image: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m20.5 15.5-4.5-4.5-8.5 8"/>',
   code: '<path d="m8.5 8-4 4 4 4M15.5 8l4 4-4 4"/>',
   reload: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4.2h-4.2"/>',

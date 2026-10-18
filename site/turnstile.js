@@ -21,7 +21,7 @@ export function loadTurnstile() {
   return scriptTask;
 }
 
-export function mountTurnstile(container, siteKey, onState) {
+export function mountTurnstile(container, siteKey, onState, action) {
   const turnstile = globalThis.turnstile;
   let token = '';
   let removed = false;
@@ -40,6 +40,7 @@ export function mountTurnstile(container, siteKey, onState) {
     const active = () => !removed && activeGeneration === generation;
     widgetId = turnstile.render(container, {
       sitekey: siteKey,
+      ...(action ? { action } : {}),
       size,
       theme: globalThis.document?.documentElement?.dataset.theme === 'dark' ? 'dark' : 'light',
       language,

@@ -86,14 +86,10 @@ const phrases = Object.fromEntries(`
 排行榜|Leaderboard
 全量榜|Full rankings
 精选榜|Curated rankings
-精选前端排行|Curated frontend ranking
-合并 36 道精选题目的真实盲评：设计 10 道、三维 26 道。只展示在这些题目中已收录且非暂定的模型。|Real blind comparisons across 36 selected tasks: 10 design and 26 3D tasks. Only registered, non-provisional models within this scope are ranked.
-精选前端只合并已选的 36 道题：设计 10 道、三维 26 道。只计同题比较，不平均各题分数。|Curated frontend combines comparisons from 36 selected tasks: 10 design and 26 3D tasks. Comparisons stay within each task; task scores are not averaged.
 入榜|Qualification
 来源筛选后，仍须为已收录且非暂定的模型才能入榜。|After source filtering, models must still be registered and non-provisional to qualify.
 入榜资格按模型判断，单独配置比较不足 30 次时仍标为暂定。|Qualification is assessed per model. Individual configurations with fewer than 30 comparisons remain provisional.
 先以这些题目重算「按模型」榜，只允许已收录且非暂定的模型入榜；「按配置」沿用相同的模型资格。来源筛选后也按筛选内的模型比较数判断。有效对手的比较仍参与计分。|Model rankings are recalculated within these tasks. Only registered, non-provisional models qualify, including in configuration view. Source filters also apply to model qualification. Valid comparisons against all opponents remain in the fit.
-目前还没有符合精选榜入榜条件的模型|No models currently meet the curated ranking requirements
 后端尚未支持精选榜，请更新后端后重试|The backend does not support curated rankings yet. Update it and retry.
 前端|Frontend
 文字|Text
@@ -593,6 +589,8 @@ const legal = Object.fromEntries(`
 登录后浏览器会保存一个只供服务器读取的会话 Cookie，有效期 30 天，退出登录即失效。|After sign-in, your browser stores a session cookie readable only by the server. It lasts 30 days and expires when you sign out.
 访问与安全信息。|Access and security information.
 为防止刷票、滥用与攻击，服务器会临时处理你的 IP 地址以限制访问频率。访问统计与猜题防重复只保存 IP 经每日更换的随机盐单向哈希后的值，不保存原始 IP。服务器运行日志会记录 IP、时间与请求地址。|The server temporarily processes your IP address to rate-limit access and prevent manipulation, abuse and attacks. Visit statistics and duplicate-guess prevention store only one-way IP hashes using a random salt changed daily, not raw IP addresses. Server logs record IP addresses, times and request URLs.
+盲评提交。|Blind review submissions.
+提交盲评投票时，为防止刷票，我们会记录你的 IP 地址与浏览器标识（User-Agent）。原始 IP 保留 180 天，之后仅保留网段。|When you submit a blind review vote, we record your IP address and browser identifier (User-Agent) to prevent vote stuffing. Raw IP addresses are kept for 180 days, after which only the network segment is kept.
 本地偏好。|Local preferences.
 主题、排序方式等界面偏好只保存在你的浏览器中，不会上传。|Preferences such as theme and sorting are stored only in your browser and are not uploaded.
 我们不使用广告追踪或第三方统计分析工具。|We do not use advertising trackers or third-party analytics tools.

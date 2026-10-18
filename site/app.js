@@ -9,11 +9,12 @@ import { initI18n, languageButton, setPageTitle } from './i18n.js';
 //   #/arena[/<task>]          blind comparison            (platform)
 //   #/leaderboard[/<task>]    leaderboard                 (platform)
 //   #/new                    publish a question          (platform)
+//   #/exam                   qualification test          (platform)
 //   #/submit/<task>           upload to this task         (platform)
 //   #/me · #/review           personal center · review queue (platform)
 //   #/terms · #/privacy       terms of use and disclaimer · privacy policy
 import { $, $$, LOGO, brandMark, byName, esc, ext, formatBytes, formatDate, icon, img, pad, store, syncThemeUi, themeButton, versionedMedia } from './ui.js';
-import { STATUS, accountControl, api, arenaScope, arenaText, avatarFace, bySite, catalogState, connectPlatform, isStaff, onPlatformChange, platform, reactionBar, refreshAccountControls, refreshPlatform, requestPlatform, setFaces, startPlatformRecovery, statusBadge, toast } from './platform.js';
+import { STATUS, accountControl, api, arenaScope, arenaText, avatarFace, bySite, catalogState, connectPlatform, can, isStaff, onPlatformChange, platform, reactionBar, refreshAccountControls, refreshPlatform, requestPlatform, setFaces, startPlatformRecovery, statusBadge, toast } from './platform.js';
 import { mount as renderLanding } from './home.js';
 import { CONTACT, aigcLabel, beianLink, mount as renderLegal } from './legal.js';
 import { effortRank, representatives, standard, taskCover } from './featured.js';
@@ -779,7 +780,7 @@ function renderTask(t) {
     ${aiJudged(t) ? act('judge', '', icon('reason'), 'AI 评分', '暂未开放', '推理题由 AI 评分，不参与盲评和排行榜')
       : !platform.activityReady ? act('judge', '', AB, '参与盲评', platform.activityError ? '统计暂未载入 <button class="link" type="button" data-platform-reconnect>重新连接</button>' : '统计加载中…')
       : (pool?.entries ?? 0) >= 2 ? act('judge', `#/arena/${esc(t.id)}`, AB, '参与盲评', `可盲评 ${pool.works} 件`) : act('judge', '', AB, '参与盲评', '作品不足', '至少需要两个模型配置的作品进入盲评池')}
-    ${t.acceptsUploads ? act('upload', `#/submit/${esc(t.id)}`, icon('upload'), '上传作品', '交一份你的答案') : act('upload', '', icon('upload'), '暂不接受投稿', t.promptPending ? '提示词原文尚未公开' : '这道题暂时关闭了投稿')}
+    ${t.acceptsUploads ? act('upload', `#/submit/${esc(t.id)}`, icon('upload'), '上传作品', platform.user && !can('canSubmitWork') ? '需要 Lv1 认证成员' : '交一份你的答案') : act('upload', '', icon('upload'), '暂不接受投稿', t.promptPending ? '提示词原文尚未公开' : '这道题暂时关闭了投稿')}
   </div>` : '';
 
   root.innerHTML = `${header([LIBRARY, { text: t.title, original: true }], false, 'questions')}<div class="app-layout task-layout">
@@ -1521,9 +1522,9 @@ function notFound(msg) {
 }
 
 // Platform pages live in their own modules and need the server; task ids never use these names.
-const PLATFORM_PAGES = { arena: './arena.js', leaderboard: './leaderboard.js', new: './publish.js', submit: './submit.js', me: './account.js', review: './account.js' };
-const PAGE_TITLES = { arena: '盲评', leaderboard: '榜单', new: '发起题目', submit: '上传作品', me: '个人中心', review: '审核' };
-const PAGE_SECTIONS = { arena: 'arena', leaderboard: 'leaderboard', new: 'new', submit: 'questions', me: 'me', review: 'me' };
+const PLATFORM_PAGES = { arena: './arena.js', leaderboard: './leaderboard.js', new: './publish.js', exam: './exam.js', submit: './submit.js', me: './account.js', review: './account.js' };
+const PAGE_TITLES = { arena: '盲评', leaderboard: '榜单', new: '发起题目', exam: '资格考试', submit: '上传作品', me: '个人中心', review: '审核' };
+const PAGE_SECTIONS = { arena: 'arena', leaderboard: 'leaderboard', new: 'new', exam: 'new', submit: 'questions', me: 'me', review: 'me' };
 function platformOffline(name) {
   const missing = catalogState() === 'static';
   const needsActivity = name === 'arena';

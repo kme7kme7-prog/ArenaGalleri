@@ -1,3 +1,10 @@
+## 成员分级与精选榜前端（2026-10-19，本地完成，未提交/部署）
+
+- 前端按 Lv0–Lv3 重做：等级与资格考试（`site/exam.js`、`site/level-gate.js`）、盲评 5s/3s 服务端计时与两侧 `aob:work-ready` 就绪、大众榜/精选榜（`site/curated.js`）、人机验证挂件带 `action`；后台精选/标准对/投票风控页在 arenaofbias-server/admin。
+- 验证：check 85/0、test 56/56；真实后端联调与四轮 review 修复均已复测。未部署、未接真实 Cloudflare。
+- 遗留：Invalid Date（重提页审核时间）、`home.js:115` 定时器、竞技场站隐私页「盲评提交」未同步；`.local/tier-redesign/` 演示环境不入库。
+- 详情见 [docs/archive/2026-10-19-member-levels-curated-wsnxxxs.md](docs/archive/2026-10-19-member-levels-curated-wsnxxxs.md)；产品规则见 docs/PRODUCT.md。
+
 ## 排行榜默认隐藏不足五件作品的条目（2026-10-17，验证完成，准备发布）
 
 - 用户要求继续优化，并让模型榜/配置榜默认隐藏作品数小于5的条目、可选择显示且保留暂定。按当前榜单row.works判断，5件保留；普通/精选/类型/领域/题目及题目嵌入统一生效，未计分列表同规则。默认未选，读者选择持久保存；开关只重绘，不重拉API、不改分数/原名次或暂定判定。

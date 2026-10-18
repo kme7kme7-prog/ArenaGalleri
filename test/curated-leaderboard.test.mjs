@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-test('curated view requests its scope and refuses an old backend returning the full board', async () => {
+test('curated view requests its scope and refuses an old backend returning the public board', async () => {
   const original = { document: globalThis.document, window: globalThis.window, addEventListener: globalThis.addEventListener, fetch: globalThis.fetch, config: globalThis.SAME_PROMPT_CONFIG };
   let requested;
   globalThis.document = Object.assign(new EventTarget(), { baseURI: 'https://gallery.test/', activeElement: null });
@@ -17,9 +17,10 @@ test('curated view requests its scope and refuses an old backend returning the f
   let board;
   try {
     const { mountBoard } = await import('../site/leaderboard.js');
-    board = mountBoard(container, { board: 'frontend', onData() { assert.fail('an unscoped board must never be presented'); } });
+    board = mountBoard(container, { curated: true, sectionId: 'web', onData() { assert.fail('an unscoped board must never be presented'); } });
     await board.ready;
-    assert.equal(requested.searchParams.get('board'), 'frontend');
+    assert.equal(requested.searchParams.get('audience'), 'curated');
+    assert.equal(requested.searchParams.get('sectionId'), 'web');
     assert.match(container.innerHTML, /后端尚未支持精选榜/);
     assert.doesNotMatch(container.innerHTML, /Full board sentinel/);
   } finally {

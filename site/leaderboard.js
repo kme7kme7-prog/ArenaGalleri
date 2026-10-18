@@ -1,8 +1,9 @@
 import { setPageTitle } from './i18n.js';
 // Leaderboard: the full page (#/leaderboard[/<category>|/<task>][/<domain>], or #/leaderboard/<domain>)
 // and the panel on each task page.
-import { $, brandMark, esc, formatTime, icon, pad, store, vendorLine } from './ui.js';
-import { apiRemembered, platform, recall } from './platform.js';
+import { $, brandMark, esc, formatDate, formatTime, icon, pad, store, vendorLine } from './ui.js';
+import { apiRemembered, arenaScope, levelOf, platform, recall } from './platform.js';
+import { curatedInfo, curatedKnown } from './curated.js';
 import { domainsIn, domainList, domainsOf, tracksOf, votedTask } from './categories.js';
 import { textMatches } from './match.js';
 
@@ -49,16 +50,19 @@ export function boardTaskOptions(tasks, selected, activityReady, arena) {
     return `<option data-i18n-ignore data-i18n-option-original="${esc(t.title)}" data-i18n-option-suffix="${esc(note)}" value="${esc(t.id)}"${t.id === selected ? ' selected' : ''}${!activityReady || ready || t.id === selected ? '' : ' disabled'}>${esc(t.title)}${note}</option>`;
   }).join('')}`;
 }
-export const boardNotes = (open = false, curated = false) => `<details class="board-notes"${open ? ' open' : ''}>
+// curated: { since, threshold } when the page shows a curated board, else null.
+export const boardNotes = (open = false, curated = null) => `<details class="board-notes"${open ? ' open' : ''}>
   <summary>计分方法${icon('next')}</summary>
   <dl>
     <div><dt>比较</dt><dd>盲评每次展示同一道题的两件作品，左右随机、身份隐藏，投票之后才揭晓模型。</dd></div>
     <div><dt>计分</dt><dd>Bradley–Terry 模型根据全部有效比较，估计每个配置被偏好的强度，「不分伯仲」计为双方各得半场。分数折算到 Elo 刻度：1000 为平均水平，高出 400 分约等于被偏好的机会高十倍。结果与投票先后顺序无关。</dd></div>
     <div><dt>区间</dt><dd>分数后的 ± 与横条表示约 95% 的不确定范围，横条颜色越接近朱红，在本榜的位置越高；比较少于 ${platform.site?.limits.provisionalGames ?? 30} 次的配置标为「暂定」。</dd></div>
-    ${curated ? `<div><dt>范围</dt><dd>精选前端只合并已选的 36 道题：设计 10 道、三维 26 道。只计同题比较，不平均各题分数。</dd></div>
-    <div><dt>入榜</dt><dd>先以这些题目重算「按模型」榜，只允许已收录且非暂定的模型入榜；「按配置」沿用相同的模型资格。来源筛选后也按筛选内的模型比较数判断。有效对手的比较仍参与计分。</dd></div>` : `<div><dt>范围</dt><dd>「综合」合并全部题目的比较；各类型（文本 / 设计 / 三维）只统计该类题目，选择具体题目时只统计这道题。比较本身始终发生在同一道题之内。票数多的类型对综合影响更大，所以综合榜在厂商之后列出各类型名次。</dd></div>
-    <div><dt>领域</dt><dd>选择领域时只统计属于该领域的题目，可以和类型叠加；一道题属于两个领域时，它的比较在两边都完整计入。领域内少于 ${THIN.tasks} 道题有比较、或有效比较少于 ${THIN.votes} 次时标为「样本不足」，名次仅供参考。</dd></div>`}
-    <div><dt>计入</dt><dd>只统计登录用户对两件已验证作品的选择；同一用户对同一对作品只计一次，跳过不计。同一配置（按模型时为同一模型）的两件作品之间的比较不参与计分，也不计入有效比较数。作品被标记存疑或删除后，相关投票自动移出，恢复后重新计入。</dd></div>
+    ${curated ? `<div><dt>范围</dt><dd>精选总榜合并全部精选题，各分区只合并本分区的题，各自重新计算，不截取总榜。只计同题比较，不平均各题分数。题目加入、移出或换分区后，下一次计算（10 分钟内）生效。</dd></div>
+    <div><dt>计入</dt><dd>${curated.since ? `只统计 ${formatDate(curated.since)} 之后、投票当时为 Lv1 及以上的成员的选择` : '只统计投票当时为 Lv1 及以上的成员的选择'}；Lv0 和访客的选择只进大众榜。同一用户对同一对作品只计一次，跳过不计。同一配置（按模型时为同一模型）的两件作品之间的比较不参与计分，也不计入有效比较数。作品被标记存疑或删除后，相关投票自动移出，恢复后重新计入。</dd></div>
+    <div><dt>入榜</dt><dd>模型在本榜范围内有效比较满 ${curated.threshold} 次才入榜（总榜和每个分区分别判断，不借用大众榜的比较数）；按配置沿用模型资格。</dd></div>
+    <div><dt>与大众榜</dt><dd>两张榜用的是同一批盲评，计票范围不同。Lv1+ 在精选题上的一票同时计入两张榜。</dd></div>` : `<div><dt>范围</dt><dd>「综合」合并全部题目的比较；各类型（文本 / 设计 / 三维）只统计该类题目，选择具体题目时只统计这道题。比较本身始终发生在同一道题之内。票数多的类型对综合影响更大，所以综合榜在厂商之后列出各类型名次。</dd></div>
+    <div><dt>领域</dt><dd>选择领域时只统计属于该领域的题目，可以和类型叠加；一道题属于两个领域时，它的比较在两边都完整计入。领域内少于 ${THIN.tasks} 道题有比较、或有效比较少于 ${THIN.votes} 次时标为「样本不足」，名次仅供参考。</dd></div>
+    <div><dt>计入</dt><dd>统计全部计票的选择，包括 Lv0 成员、未绑定邮箱的账号和未登录的访客（访客按浏览器区分）；同一用户对同一对作品只计一次，跳过不计。同一配置（按模型时为同一模型）的两件作品之间的比较不参与计分，也不计入有效比较数。作品被标记存疑或删除后，相关投票自动移出，恢复后重新计入。</dd></div>`}
     <div><dt>单位</dt><dd>「按配置」把同一模型的不同推理档位分开计分；「按模型」把它们合并。</dd></div>
     <div><dt>显示</dt><dd>默认隐藏当前榜单作品少于 5 件的条目，可勾选显示。评分和名次保留，「暂定」仍按比较次数标记。</dd></div>
     <div><dt>来源筛选</dt><dd>按 Harness 或服务商筛选时，只统计两件作品在投票当时都满足条件的比较；计分单位不变。服务商分为官方、非官方，未填写的为「未注明」；只填了「其他」的 Harness 和未记录来源的较早投票按「未注明」统计。</dd></div>
@@ -94,6 +98,26 @@ export function mountBoard(container, ctx) {
     .filter((track) => data.standings?.[track.name]?.[row.key])
     .map((track) => `<span data-board-standing>${esc(`${track.label}第 ${data.standings[track.name][row.key]}`)}</span>`);
 
+  // A curated board fills from nothing, so its empty states say where it stands and where to go next.
+  function curatedEmpty(data) {
+    const taskIds = data.scope?.taskIds ?? [];
+    const votes = data.totals?.votes ?? 0;
+    const since = data.scope?.countingStartedAt ?? ctx.info?.countingStartedAt;
+    const level = levelOf();
+    const go = level >= 1 ? '<button class="btn primary sm" type="button" data-curated-arena>去盲评精选题</button><a class="btn sm" href="#/leaderboard">查看大众榜</a>'
+      : level === 0 ? '<a class="btn primary sm" href="#/exam">参加资格考试</a><a class="btn sm" href="#/arena">去盲评（计入大众榜）</a>'
+        : '<button class="btn primary sm" type="button" data-auth="login">登录</button><a class="btn sm" href="#/leaderboard">查看大众榜</a>';
+    if (!taskIds.length) {
+      return ctx.sectionId
+        ? '<div class="board-empty"><p class="board-empty-title">这个分区还没有题目</p><p>管理员把题目放进这个分区后才开始计票。</p><div class="board-empty-actions"><a class="btn sm" href="#/leaderboard/curated">查看精选总榜</a></div></div>'
+        : '<div class="board-empty"><p class="board-empty-title">还没有精选题目</p><p>管理员挑选题目后，精选榜才开始计票。</p><div class="board-empty-actions"><a class="btn sm" href="#/leaderboard">查看大众榜</a></div></div>';
+    }
+    const counts = `${taskIds.length} 道精选题 · ${votes} 次有效比较${since ? ` · ${formatDate(since)} 起` : ''}`;
+    return votes
+      ? `<div class="board-empty"><p class="board-empty-title">精选榜收集中</p><p>已有 ${votes} 次有效比较，${data.scope?.provisionalModels ?? 0} 个模型正在积累，满 ${data.scope?.provisionalGames ?? 30} 次比较后上榜。</p><p class="board-meta">${counts}</p><div class="board-empty-actions">${go}</div></div>`
+      : `<div class="board-empty"><p class="board-empty-title">精选榜从零开始</p><p>这里只统计 Lv1 及以上成员在精选题上的选择，和大众榜分开计票。模型在本榜比较满 ${data.scope?.provisionalGames ?? 30} 次后上榜，在那之前不给出没有依据的名次。</p><p class="board-meta">${counts}</p><div class="board-empty-actions">${go}</div></div>`;
+  }
+
   function table(data) {
     const { rows, unranked } = visibleBoardEntries(data, showSmallSamples);
     const { totals } = data;
@@ -109,7 +133,8 @@ export function mountBoard(container, ctx) {
       : `<div class="board-head"><p class="board-meta">${meta}</p>${unitControl}</div>`)
       + `<p class="board-meta"><span>每 10 分钟更新一次</span>${data.updatedAt ? ` · <span>最近计算</span> <time datetime="${esc(data.updatedAt)}" data-i18n-time="${esc(data.updatedAt)}">${esc(formatTime(data.updatedAt))}</time>` : ''}</p>`
       + `<div class="board-display"><label class="board-sample-toggle"><input type="checkbox" data-board-small${showSmallSamples ? ' checked' : ''}><span>显示作品少于 5 件的条目</span></label>${hiddenCount ? `<span class="board-meta">已隐藏 ${hiddenCount} 个作品不足 5 件的条目</span>` : ''}</div>`
-      + (ctx.board && unit === 'config' ? '<p class="muted">入榜资格按模型判断，单独配置比较不足 30 次时仍标为暂定。</p>' : '')
+      + (ctx.curated && unit === 'config' ? '<p class="muted">入榜资格按模型判断，单独配置比较不足 30 次时仍标为暂定。</p>' : '')
+      + (ctx.curated && rows.length && totals.votes < 50 ? `<p class="muted">精选榜刚开始计票：目前 ${totals.votes} 次有效比较，名次可能随新票大幅变动。</p>` : '')
       + (unsupported ? '<p class="muted">后端暂不支持这项筛选，下面是未筛选的榜单。</p>' : '')
       + (thin ? `<p class="muted">样本不足：「${esc(ctx.domain)}」目前只有 ${totals.tasks ?? 0} 道题、${totals.votes} 次有效比较参与计分，名次可能随新票大幅变动，仅供参考。</p>` : '');
     if (!rows.length && data.rows.length) {
@@ -117,10 +142,11 @@ export function mountBoard(container, ctx) {
     }
     if (!rows.length && data.filters) {
       return `${head}<div class="board-empty">
-        <p class="board-empty-title">${ctx.board ? '目前还没有符合精选榜入榜条件的模型' : '这个筛选下还没有可计分的比较'}</p>
-        <p>${ctx.board ? '来源筛选后，仍须为已收录且非暂定的模型才能入榜。' : `只有两件作品在投票时来源都符合筛选的比较才计入。${unranked.length ? `符合条件的${unit === 'model' ? '模型' : '配置'}有 ${unranked.length} 个。` : ''}`}</p>
+        <p class="board-empty-title">这个筛选下还没有可计分的比较</p>
+        <p>只有两件作品在投票时来源都符合筛选的比较才计入。${unranked.length ? `符合条件的${unit === 'model' ? '模型' : '配置'}有 ${unranked.length} 个。` : ''}</p>
       </div>`;
     }
+    if (!rows.length && ctx.curated) return `${head}${curatedEmpty(data)}`;
     if (!rows.length) {
       return `${head}<div class="board-empty">
         <p class="board-empty-title">${esc(ctx.emptyTitle ?? '榜单还在等第一批盲评')}</p>
@@ -166,8 +192,7 @@ export function mountBoard(container, ctx) {
 
   let drawn = false;
   function draw(data) {
-    if (ctx.board && (data.board !== ctx.board || data.scope?.qualification !== 'registered-nonprovisional-model'))
-      throw new Error('后端尚未支持精选榜，请更新后端后重试');
+    if (ctx.curated && data.audience !== 'curated') throw new Error('后端尚未支持精选榜，请更新后端后重试');
     // A fresh board can land while the reader types; the search keeps its focus.
     const typing = document.activeElement?.matches('[data-board-search]');
     const togglingSamples = document.activeElement?.matches('[data-board-small]');
@@ -183,7 +208,7 @@ export function mountBoard(container, ctx) {
   async function load() {
     controller?.abort();
     controller = new AbortController();
-    const params = new URLSearchParams({ by: unit, ...(ctx.board ? { board: ctx.board } : ctx.task ? { task: ctx.task.id } : { ...(ctx.category ? { category: ctx.category } : {}), ...(ctx.domain ? { domain: ctx.domain } : {}) }) });
+    const params = new URLSearchParams({ by: unit, ...(ctx.curated ? { audience: 'curated', ...(ctx.sectionId ? { sectionId: ctx.sectionId } : {}) } : ctx.task ? { task: ctx.task.id } : { ...(ctx.category ? { category: ctx.category } : {}), ...(ctx.domain ? { domain: ctx.domain } : {}) }) });
     if (filterable) for (const [field, value] of Object.entries(filters)) if (value) params.set(field, value);
     const path = `leaderboard?${params}`;
     const known = recall(path);
@@ -205,6 +230,11 @@ export function mountBoard(container, ctx) {
   }
 
   const onClick = (e) => {
+    if (e.target.closest('[data-curated-arena]')) {
+      arenaScope.set(currentData?.scope?.taskIds ?? []);
+      location.hash = '#/arena/random';
+      return;
+    }
     const button = e.target.closest('[data-board-unit]');
     if (!button || button.dataset.boardUnit === unit) return;
     unit = button.dataset.boardUnit;
@@ -245,27 +275,27 @@ export function mountBoard(container, ctx) {
 
 // The page's views are 综合 plus one per voted category; a task narrows its category's view.
 // A domain narrows 综合 or a category (never a task) and rides as the last part of the address.
+// The curated rankings sit beside them: #/leaderboard/curated (overall) and .../curated/<sectionId>.
 // AI-graded questions are not ranked here.
 export function mount(root, ctx) {
   const tasks = ctx.DATA.tasks.filter(votedTask);
   const tracks = tracksOf(tasks);
   const [first = null, second = null] = location.hash.replace(/^#\/?/, '').split('#')[0].split('/').filter(Boolean).map(decodeURIComponent).slice(1);
-  const curated = first === 'curated' && second === 'frontend';
-  const task = first ? tasks.find((t) => t.id === first) ?? null : null;
-  const track = task ? tracks.find((x) => x.name === task.category) ?? null : first ? tracks.find((x) => x.slug === first) ?? null : null;
+  const curated = first === 'curated';
+  if (curated && second === 'frontend') {
+    location.replace('#/leaderboard/curated');
+    return {};
+  }
+  const sectionId = curated ? second : null;
+  const task = !curated && first ? tasks.find((t) => t.id === first) ?? null : null;
+  const track = curated ? null : task ? tracks.find((x) => x.name === task.category) ?? null : first ? tracks.find((x) => x.slug === first) ?? null : null;
   const hasDomain = (name) => tasks.some((t) => domainsOf(t).includes(name));
-  const domain = task ? null : !track && hasDomain(first) ? first : track && hasDomain(second) ? second : null;
-  if (first && !task && !track && !domain && !curated) {
+  const domain = curated || task ? null : !track && hasDomain(first) ? first : track && hasDomain(second) ? second : null;
+  if (first && !curated && !task && !track && !domain) {
     location.replace('#/leaderboard');
     return {};
   }
   const base = track ? `#/leaderboard/${encodeURIComponent(track.slug)}` : '#/leaderboard';
-  const scopeTitle = curated ? '精选前端排行' : task?.title ?? (domain ? `${track ? `${track.label} · ` : ''}${domain}排行` : track ? `${track.label}排行` : '综合排行');
-  const crumbs = [{ text: '排行榜', ...(task || track || domain || curated ? { href: '#/leaderboard' } : {}) }];
-  if (curated) crumbs.push({ text: '精选榜' }, { text: '前端' });
-  if (track) crumbs.push(task || domain ? { text: track.label, href: base } : { text: track.label });
-  if (domain) crumbs.push({ text: domain });
-  if (task) crumbs.push({ text: task.title, original: true });
   // Tasks of the current category (and domain), in the task page's select idiom: the option text carries the count.
   const listed = track ? track.tasks.filter((t) => !domain || domainsOf(t).includes(domain)) : [];
   const taskSelect = () => track ? `<label class="result-sort">题目<select data-board-task aria-label="按题目查看">${boardTaskOptions(listed, task?.id, platform.activityReady, platform.arena)}</select></label>` : '';
@@ -275,71 +305,120 @@ export function mount(root, ctx) {
       ${domains.map((d) => `<option value="${esc(d.name)}"${d.name === domain ? ' selected' : ''}>${esc(d.name)}（${d.tasks.length} 题）</option>`).join('')}
     </select></label>` : '';
 
-  root.innerHTML = `${ctx.pageStart({ title: '排行榜', section: 'leaderboard', heading: scopeTitle, headingOriginal: Boolean(task), crumbs,
-    description: curated ? '合并 36 道精选题目的真实盲评：设计 10 道、三维 26 道。只展示在这些题目中已收录且非暂定的模型。' : '由真实盲评投票计算。分数反映作品在同题比较中被偏好的程度，区间越窄，结论越可靠。',
-    meta: `<dl class="side-stats" data-stats>
-          <div><dt>有效比较</dt><dd>${!curated && platform.activityReady ? pad(platform.totals.votes) : '—'}</dd></div>
-          <div><dt>参与者</dt><dd>${!curated && platform.activityReady ? pad(platform.totals.voters) : '—'}</dd></div>
-        </dl>`,
-    nav: `<div class="board-nav-groups">
-      <section class="board-nav-group">
-        <h2 class="board-nav-title">全量榜</h2>
-        ${ctx.sideNav('全量榜', [['#/leaderboard', 'rank', '综合', !track && !task && !domain && !curated, tasks.length],
-          ...tracks.map((x) => [`#/leaderboard/${encodeURIComponent(x.slug)}`, x.glyph, x.label, x === track, x.tasks.length])])}
-      </section>
-      <section class="board-nav-group">
-        <h2 class="board-nav-title">精选榜</h2>
-        <nav class="side-nav section-nav" aria-label="精选榜">
-          <a class="side-link" href="#/leaderboard/curated/frontend"${curated ? ' aria-current="page"' : ''}>${icon('desktop')}前端<span class="nav-count">36</span></a>
-          <button class="side-link" type="button" disabled>${icon('text')}文字</button>
-        </nav>
-      </section>
-    </div>` })}
-    <section class="block wrap">
-      <div data-board><p class="muted">正在载入榜单…</p></div>
-      ${boardNotes(false, curated)}
-    </section>
-  ${ctx.pageEnd()}`;
-  let live;
-  const board = mountBoard($('[data-board]', root), {
-    ...ctx,
-    task,
-    board: curated ? 'frontend' : null,
-    category: task ? null : track?.name ?? null,
-    domain,
-    tracks: task || track || domain || curated ? null : tracks,
-    toolbar: () => domainSelect + taskSelect(),
-    emptyTitle: curated ? '目前还没有符合精选榜入榜条件的模型' : domain ? `${domain}榜单还在等第一批盲评` : track && !task ? `${track.label}榜单还在等第一批盲评` : undefined,
-    onLoad: (data) => live?.update(data),
-    onData: (data, { visibleRows }) => {
-      const stats = $('[data-stats]', root);
-      if (stats) stats.innerHTML = `<div><dt>有效比较</dt><dd>${pad(data.totals.votes)}</dd></div><div><dt>参与者</dt><dd>${pad(data.totals.voters)}</dd></div><div><dt>${data.by === 'model' ? '上榜模型' : '上榜配置'}</dt><dd>${pad(visibleRows)}</dd></div>`;
-    },
-  });
+  // The curated group is drawn from what the server says; sections without questions stay out of public view.
+  const curatedNav = (info) => {
+    const sections = (info?.sections ?? []).filter((section) => section.questionCount > 0);
+    const total = (info?.sections ?? []).reduce((sum, section) => sum + (section.questionCount ?? 0), 0);
+    const link = (href, glyph, text, current, count) => `<a class="side-link" href="${esc(href)}"${current ? ' aria-current="page"' : ''}>${icon(glyph)}<span data-i18n-ignore>${esc(text)}</span><span class="nav-count">${count}</span></a>`;
+    if (info && !total) return `<nav class="side-nav section-nav" aria-label="精选榜"><button class="side-link" type="button" disabled>${icon('rank')}总榜 · 暂无精选题</button></nav>`;
+    return `<nav class="side-nav section-nav" aria-label="精选榜">${info ? [
+      `<a class="side-link" href="#/leaderboard/curated"${curated && !sectionId ? ' aria-current="page"' : ''}>${icon('rank')}总榜<span class="nav-count">${total}</span></a>`,
+      ...sections.map((section) => link(`#/leaderboard/curated/${encodeURIComponent(section.id)}`, 'bookmark', section.name, section.id === sectionId, section.questionCount)),
+    ].join('') : `<a class="side-link" href="#/leaderboard/curated"${curated && !sectionId ? ' aria-current="page"' : ''}>${icon('rank')}总榜</a>`}</nav>`;
+  };
+  const stat = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
+
+  let board = null, live = null, destroyed = false, drawn = null;
   const onChange = (e) => {
     const select = e.target.closest('[data-board-task]');
     if (select) location.hash = select.value ? `#/leaderboard/${encodeURIComponent(select.value)}` : domain ? `${base}/${encodeURIComponent(domain)}` : base;
     const scope = e.target.closest('[data-board-domain]');
     if (scope) location.hash = scope.value ? `${base}/${encodeURIComponent(scope.value)}` : base;
   };
-  const onInput = (e) => { if (e.target.matches('[data-board-search]')) board.search(e.target.value); };
+  const onInput = (e) => { if (e.target.matches('[data-board-search]')) board?.search(e.target.value); };
   root.addEventListener('change', onChange);
   root.addEventListener('input', onInput);
-  live = watchBoardRefresh(() => board.reload());
-  setPageTitle(['榜单', { text: scopeTitle, original: Boolean(task) }, ctx.DATA.title]);
+
+  // Draw the page. A curated view needs the structure first (names, counts, since-date); the others only
+  // refresh the curated group of the side nav once it arrives.
+  function render(info) {
+    live?.destroy();
+    board?.destroy();
+    const section = sectionId ? info?.sections.find((x) => x.id === sectionId) ?? null : null;
+    const scopeTitle = curated ? (sectionId ? `精选 · ${section?.name ?? ''}` : '精选总榜')
+      : task?.title ?? (domain ? `${track ? `${track.label} · ` : ''}${domain}排行` : track ? `${track.label}排行` : '综合排行');
+    const crumbs = [{ text: '排行榜', ...(task || track || domain || curated ? { href: '#/leaderboard' } : {}) }];
+    if (curated) crumbs.push(sectionId ? { text: '精选榜', href: '#/leaderboard/curated' } : { text: '精选榜' }, ...(sectionId ? [{ text: section?.name ?? '', original: true }] : []));
+    if (track) crumbs.push(task || domain ? { text: track.label, href: base } : { text: track.label });
+    if (domain) crumbs.push({ text: domain });
+    if (task) crumbs.push({ text: task.title, original: true });
+    const since = info?.countingStartedAt;
+    const description = !curated ? '由全部计票的盲评选择计算。分数反映作品在同题比较中被偏好的程度，区间越窄，结论越可靠。'
+      : sectionId ? `精选总榜中「${section?.name ?? ''}」分区的 ${section?.questionCount ?? 0} 道题，单独计算名次。`
+        : `只统计 Lv1 及以上成员（通过资格考试）在精选题上的选择，题目由管理员挑选。和大众榜分开计票${since ? `，${formatDate(since)} 起从零累计` : ''}。`;
+    root.innerHTML = `${ctx.pageStart({ title: '排行榜', section: 'leaderboard', heading: scopeTitle, headingOriginal: Boolean(task), crumbs, description,
+      meta: `<dl class="side-stats" data-stats>
+          ${stat('有效比较', !curated && platform.activityReady ? pad(platform.totals.votes) : '—')}
+          ${stat('参与者', !curated && platform.activityReady ? pad(platform.totals.voters) : '—')}
+        </dl>`,
+      nav: `<div class="board-nav-groups">
+      <section class="board-nav-group">
+        <h2 class="board-nav-title">大众榜</h2>
+        ${ctx.sideNav('大众榜', [['#/leaderboard', 'rank', '综合', !curated && !track && !task && !domain, tasks.length],
+          ...tracks.map((x) => [`#/leaderboard/${encodeURIComponent(x.slug)}`, x.glyph, x.label, x === track, x.tasks.length])])}
+      </section>
+      <section class="board-nav-group" data-curated-nav>
+        <h2 class="board-nav-title">精选榜</h2>
+        ${curatedNav(info)}
+      </section>
+    </div>` })}
+    <section class="block wrap">
+      <div data-board><p class="muted">正在载入榜单…</p></div>
+      ${boardNotes(false, curated ? { since, threshold: 30 } : null)}
+    </section>
+  ${ctx.pageEnd()}`;
+    drawn = info;
+    if (curated && !info) return;
+    board = mountBoard($('[data-board]', root), {
+      ...ctx,
+      task,
+      curated,
+      sectionId,
+      info,
+      category: task ? null : track?.name ?? null,
+      domain,
+      tracks: task || track || domain || curated ? null : tracks,
+      toolbar: () => domainSelect + taskSelect(),
+      emptyTitle: domain ? `${domain}榜单还在等第一批盲评` : track && !task ? `${track.label}榜单还在等第一批盲评` : undefined,
+      onLoad: (data) => live?.update(data),
+      onData: (data, { visibleRows }) => {
+        const stats = $('[data-stats]', root);
+        if (stats) stats.innerHTML = stat('有效比较', pad(data.totals.votes)) + stat('参与者', pad(data.totals.voters)) + stat(data.by === 'model' ? '上榜模型' : '上榜配置', pad(visibleRows));
+      },
+    });
+    live = watchBoardRefresh(() => board.reload());
+    return board.ready;
+  }
+  setPageTitle(['榜单', curated ? (sectionId ? '精选榜' : '精选总榜') : { text: task?.title ?? (domain ? `${track ? `${track.label} · ` : ''}${domain}排行` : track ? `${track.label}排行` : '综合排行'), original: Boolean(task) }, ctx.DATA.title]);
+  const known = curatedKnown();
+  let ready = render(known);
+  const loaded = curatedInfo().then((info) => {
+    if (destroyed) return;
+    if (sectionId && !info.sections.some((section) => section.id === sectionId && section.questionCount >= 0)) {
+      location.replace('#/leaderboard/curated');
+      return;
+    }
+    // Curated views depend on the structure; others only refresh the curated group.
+    if (curated && !known) return render(info);
+    if (curated && JSON.stringify(info.sections) !== JSON.stringify(known.sections)) return render(info);
+    const group = $('[data-curated-nav]', root);
+    if (group) group.innerHTML = `<h2 class="board-nav-title">精选榜</h2>${curatedNav(info)}`;
+  }, () => { if (curated && !destroyed && !drawn) { $('[data-board]', root).innerHTML = '<p class="muted">精选榜暂时无法载入，请稍后重试。</p>'; } });
+  if (curated && !known) ready = loaded;
   return {
-    ready: board.ready,
+    ready,
     onPlatformChange: (reason) => {
       if (reason === 'activity' || reason === 'identity') {
         const select = $('[data-board-task]', root);
         if (select) select.innerHTML = boardTaskOptions(listed, select.value, platform.activityReady, platform.arena);
-        return live.refresh();
+        return live?.refresh();
       }
-      if (!['session', 'session-ready'].includes(reason)) return live.refresh();
+      if (!['session', 'session-ready'].includes(reason)) return live?.refresh();
     },
     destroy: () => {
+      destroyed = true;
       live?.destroy();
-      board.destroy();
+      board?.destroy();
       root.removeEventListener('change', onChange);
       root.removeEventListener('input', onInput);
     },

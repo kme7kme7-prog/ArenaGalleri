@@ -3,12 +3,14 @@
 // The server picks every pair and hands out opaque frame addresses; nothing on this page
 // knows which work is which until the vote comes back with the reveal.
 import { $, $$, brandMark, esc, icon, pad, themeButton } from './ui.js';
-import { api, arenaScope, isSenior, isStaff, needsEmail, openAuth, openDialog, platform, reactionBar, requireUser, toast } from './platform.js';
+import { api, arenaScope, isSenior, isStaff, levelOf, openAuth, openDialog, platform, reactionBar, requireUser, toast } from './platform.js';
 import { aigcLabel } from './legal.js';
 import { domainsOf, matchesQuery, tracksOf, votedTask } from './categories.js';
 import { linkReferences, referenceSheet } from './references.js';
 import { languageButton, setPageTitle } from './i18n.js';
-import { loadPair, watchFrameLoad } from './arena-loading.js';
+import { createHold, loadPair, watchFrameLoad } from './arena-loading.js';
+import { loadTurnstile, mountTurnstile } from './turnstile.js';
+import { curatedInfo, curatedKnown } from './curated.js';
 
 const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-pointer-lock allow-downloads';
 const VERDICT = { a: '你认为 A 更好', b: '你认为 B 更好', tie: '你认为不分伯仲', skip: '你跳过了这一组' };
@@ -16,14 +18,23 @@ const NOTICE = 'arena-login-notice';
 // Two boxes for the header layout switch; the filled ones are the works on view.
 const layoutGlyph = (a, b) => `<svg viewBox="0 0 20 14" aria-hidden="true"><rect${a > 3 ? ' class="on"' : ''} x="1" y="1" width="${a}" height="12" rx="1.5"/><rect${b > 3 ? ' class="on"' : ''} x="${a + 3}" y="1" width="${b}" height="12" rx="1.5"/></svg>`;
 const REASON = {
-  counted: '已计入榜单',
-  anonymous: '未登录，这一票没有计入榜单',
-  unbound: '账号未绑定邮箱，这一票没有计入榜单',
+  counted: '已计入大众榜',
+  countedCurated: '已计入大众榜与精选榜',
+  anonymous: '未登录：已计入大众榜',
   duplicate: '这一对作品你评过了，这次不重复计入',
   changed: '作品的核验状态刚刚变化，这一票没有计入',
   own: '其中有你上传的作品，不计入',
   skipped: '跳过的组合不计入榜单，也不揭晓',
 };
+
+// Why a person is asked to prove they are one, and what we say about it.
+const CHALLENGE = {
+  guest_entry: '开始盲评前，先确认一下你是真人。',
+  guest_interval: '未登录时每评 5 组需要确认一次。登录后就不用这么频繁了。',
+  rapid_choices: '最近几组选得很快。盲评需要先体验两件作品再做选择。你的选择已保留，确认后立即提交。',
+};
+// Said once per tab: a pick on a curated question by someone who has not passed the test.
+let curatedHinted = false;
 
 const RANDOM = 'random';
 const isOpen = (t) => (platform.arena[t.id]?.entries ?? 0) >= 2;
@@ -69,7 +80,7 @@ function lobby(root, ctx) {
     const admin = !open && isStaff();
     return `<li class="arena-task${open ? '' : ' is-closed'}"><a ${open ? `href="#/arena/${esc(t.id)}"` : admin ? `href="#/${esc(t.id)}" title="查看这道题的盲评池"` : 'aria-disabled="true"'}>
       <span class="num">No.${pad(ctx.DATA.tasks.indexOf(t) + 1)}</span>
-      <span class="arena-task-title"><b data-i18n-ignore>${esc(t.title)}</b><small>${domainsOf(t).map((domain) => `<span>${esc(domain)}</span>`).join(' · ')}${t.summary ? ` · <span data-i18n-ignore>${esc(t.summary)}</span>` : ''}</small></span>
+      <span class="arena-task-title"><b data-i18n-ignore>${esc(t.title)}</b><small>${domainsOf(t).map((domain) => `<span>${esc(domain)}</span>`).join(' · ')}${curatedKnown()?.taskIds.has(t.id) ? ' <span class="badge">精选题</span>' : ''}${t.summary ? ` · <span data-i18n-ignore>${esc(t.summary)}</span>` : ''}</small></span>
       <span class="arena-task-meta">可盲评 ${p.works} 件<br>${p.entries} 个配置</span>
       <span class="arena-task-go">${open ? `只评这题${icon('right')}` : (p.works ? `还差 ${2 - p.entries} 个配置` : '暂无作品')}</span>
     </a></li>`;
@@ -123,7 +134,7 @@ function lobby(root, ctx) {
             <div><dt>有效比较</dt><dd>${pad(platform.totals.votes)}</dd></div>
             ${platform.user ? `<div><dt>你已评</dt><dd>${pad(platform.me?.votes ?? 0)}</dd></div>` : ''}
           </dl>${open.length ? `<button class="btn primary side-cta" data-random>${icon('blind')}随机一组</button><p class="side-cta-note">${view.track || view.query.trim() ? `在当前范围的 ${scope().open.length} 道题里` : `在全部 ${open.length} 道题里`}随机抽组，每一组都可能换题。想专心评一道，点右侧的题目。</p>` : ''}
-          ${platform.user ? '' : '<p class="side-note">未登录可以体验，选择不计入榜单。<button class="link" data-auth="login">登录</button></p>'}
+          ${platform.user ? '' : '<p class="side-note">未登录也可以计票，选择计入大众榜。登录并通过资格考试后，选择同时计入精选榜。<button class="link" data-auth="login">登录</button></p>'}
           ${isSenior() && platform.arenaModels.length ? pinField() : ''}`,
       nav: `<nav class="side-nav section-nav" aria-label="盲评题型">${link('', 'grid', '全部', open.length)}${tracks.map((x) => link(x.name, x.glyph, x.label, x.tasks.filter(ready).length)).join('')}</nav>` })}
       <section class="block wrap">
@@ -133,8 +144,8 @@ function lobby(root, ctx) {
           <summary>盲评规则${icon('next')}</summary>
           <dl>
             <div><dt>匿名</dt><dd>两件作品来自同一道题、不同的模型配置。左右位置随机，作品地址也不透露身份，投票后才揭晓。揭晓过的作品会尽量在你再评 6 组或过 15 分钟后才再次出现。</dd></div>
-            <div><dt>体验</dt><dd>分别打开、操作两件作品，再选「A 更好」「B 更好」或「不分伯仲」。认出作品或页面异常时，请跳过这一组；跳过不揭晓。</dd></div>
-            <div><dt>计入</dt><dd>登录且绑定邮箱后的选择计入榜单，每对作品每人计一次。只有已验证作品参与；普通用户会回避本人投稿，普通管理员和高级管理员可以评本人投稿。</dd></div>
+            <div><dt>体验</dt><dd>分别打开、操作两件作品，再选「A 更好」「B 更好」或「不分伯仲」。两件作品都载入后，5 秒后才能投票，3 秒后才能跳过。认出作品或页面异常时，请跳过这一组；跳过不揭晓。</dd></div>
+            <div><dt>计入</dt><dd>所有选择都计入大众榜，包括未登录和未绑定邮箱的访客，每对作品每人计一次。Lv1 及以上成员在精选题上的选择同时计入精选榜。只有已验证作品参与；普通用户会回避本人投稿，普通管理员和高级管理员可以评本人投稿。</dd></div>
             <div><dt>快捷键</dt><dd><kbd>A</kbd> A 更好，<kbd>S</kbd> 不分伯仲，<kbd>D</kbd> B 更好，揭晓后 <kbd>N</kbd> 下一组。</dd></div>
           </dl>
         </details>
@@ -166,15 +177,20 @@ function lobby(root, ctx) {
   };
   setPageTitle(['盲评', ctx.DATA.title]);
   draw();
-  return { onPlatformChange: draw, destroy() { root.onclick = null; root.onchange = null; root.oninput = null; } };
+  let lobbyAlive = true;
+  if (platform.available) curatedInfo().then(() => { if (lobbyAlive) drawList(); }, () => {});
+  return { onPlatformChange: draw, destroy() { lobbyAlive = false; root.onclick = null; root.onchange = null; root.oninput = null; } };
 }
 
 // A random match (scope given) may draw each pair from a different task; `task` is the one on view.
 function match(root, ctx, first, scope) {
   let task = first;
-  const state = { random: Boolean(scope), scope: scope ?? ctx.DATA.tasks.filter(isOpen), pin: pinned(), tally: { win: 0, tie: 0, loss: 0 }, place: '', done: new Set(), unavailable: false, prefetch: null, match: null, result: null, ready: {}, seen: {}, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', round: 0, counted: 0, busy: false, prompt: false, slow: false, error: null };
+  const state = { random: Boolean(scope), scope: scope ?? ctx.DATA.tasks.filter(isOpen), pin: pinned(), tally: { win: 0, tie: 0, loss: 0 }, place: '', done: new Set(), unavailable: false, prefetch: null, match: null, result: null, ready: {}, seen: {}, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', round: 0, counted: 0, busy: false, prompt: false, slow: false, error: null, held: null, needVerify: null };
   const mobile = () => matchMedia('(max-width: 860px)').matches;
   const timers = new Set(), frameLoads = new Map();
+  // Two holds start when both works have loaded: 5 seconds before a vote, 3 before a skip.
+  const hold = createHold(() => tickGate());
+  let shownStatus = '';
   let activeDraw = null, drawGeneration = 0;
   const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); };
 
@@ -227,6 +243,7 @@ function match(root, ctx, first, scope) {
       </div></aside>
     </div>
     <footer class="vote-bar" data-bar></footer>
+    <p class="sr" role="status" aria-live="polite" data-live></p>
   </div>`;
   const el = $('.arena', root);
 
@@ -258,17 +275,76 @@ function match(root, ctx, first, scope) {
       ${unseal ? sealStrip(' is-leaving') : ''}`;
   }
 
-  const canVote = () => Boolean(state.match && !state.result && state.ready.a && state.ready.b && (!mobile() || (state.seen.a && state.seen.b)));
+  const bothReady = () => Boolean(state.ready.a && state.ready.b);
+  const viewMs = () => (state.match?.minViewSeconds ?? 5) * 1000;
+  const skipMs = () => (state.match?.minSkipSeconds ?? 3) * 1000;
+  const voteWait = () => (bothReady() ? hold.left('vote', viewMs()) : 0);
+  const skipWait = () => (bothReady() ? hold.left('skip', skipMs()) : 0);
+  const seconds = (ms) => Math.ceil(ms / 1000);
+  const canVote = () => Boolean(state.match && !state.result && !state.held && bothReady() && voteWait() <= 0 && (!mobile() || (state.seen.a && state.seen.b)));
+  // A pair that will not load can always be skipped; a loaded one only after its short look.
+  const canSkip = () => Boolean(state.match && !state.result && !state.busy && skipWait() <= 0);
+  const live = (text) => { const node = $('[data-live]', el); if (node) node.textContent = text; };
 
+  const stopGate = () => hold.stop();
+  const resetGate = () => { hold.reset(); shownStatus = ''; };
+  // The server's clock decides at the earliest; the local count never opens sooner than 5 seconds of attention.
+  function startGate() {
+    const current = state.match;
+    resetGate();
+    hold.begin();
+    live(`${seconds(viewMs())} 秒后可以投票`);
+    api(`arena/matches/${current.id}/ready`, { method: 'POST', body: {} }).then((ready) => {
+      if (state.match !== current || state.result) return;
+      const after = (iso) => performance.now() + Date.parse(iso) - Date.parse(ready.serverNow);
+      hold.mark('vote', after(ready.voteAllowedAt));
+      hold.mark('skip', after(ready.skipAllowedAt));
+      if (voteWait() > 0 || skipWait() > 0) hold.resume();
+      syncGate();
+    }).catch(() => { /* a vote sent too early is answered with match_not_ready and asks again */ });
+    update();
+  }
+  function tickGate() {
+    if (!state.match || state.result || !bothReady()) return stopGate();
+    syncGate();
+    if (voteWait() <= 0 && skipWait() <= 0) {
+      stopGate();
+      live('现在可以投票');
+    }
+  }
+  const onVisibility = () => { hold.touch(); el.classList.toggle('is-away', document.hidden); };
+  document.addEventListener('visibilitychange', onVisibility);
+
+  const skipLabel = () => (skipWait() > 0 ? `${seconds(skipWait())} 秒后可跳过` : '跳过这一组');
   function status() {
     if (!state.match) return '正在抽取一组作品…';
-    if (!(state.ready.a && state.ready.b)) {
+    if (state.held) return '你的选择已保留，确认后立即提交';
+    if (state.needVerify) return '需要完成人机验证才能提交这一票';
+    if (!bothReady()) {
       const parts = ['a', 'b'].map((side) => `${letter(side)} ${state.ready[side] ? '已就绪' : state.loadErrors?.[side] ? '载入超时' : '载入中'}`).join(' · ');
       return state.slow ? `载入较慢（${parts}）：可以继续等待，或跳过这一组` : `等待两件作品载入 · ${parts}`;
     }
-    if (mobile() && !(state.seen.a && state.seen.b)) return `请先切换到作品 ${state.seen.a ? 'B' : 'A'} 看一看`;
-    if (needsEmail()) return '账号未绑定邮箱：可以体验，但这一组的选择不会计入榜单';
-    return platform.user ? '体验过两件作品后，选出你更认可的一件' : '未登录：可以体验，但这一组的选择不会计入榜单';
+    const unseen = mobile() && !(state.seen.a && state.seen.b) ? (state.seen.a ? 'B' : 'A') : '';
+    if (voteWait() > 0) return unseen ? `${seconds(voteWait())} 秒后可投票 · 请先切换到作品 ${unseen} 看一看` : `先体验一下，${seconds(voteWait())} 秒后可以投票`;
+    if (unseen) return `请先切换到作品 ${unseen} 看一看`;
+    return platform.user ? '体验过两件作品后，选出你更认可的一件' : '未登录：选择计入大众榜，登录并通过资格考试后同时计入精选榜';
+  }
+
+  // Once a second only the words, the buttons and the line move; the bar is not rebuilt.
+  function syncGate() {
+    const bar = $('.vote-in:not(.is-result)', el);
+    if (!bar) return;
+    const text = status();
+    const node = $('[data-status]', bar);
+    if (node && shownStatus !== text) { shownStatus = text; node.textContent = text; }
+    const disabled = !(canVote() && !state.busy);
+    $$('.vote-actions [data-vote]', bar).forEach((b) => { b.disabled = disabled; });
+    const skip = $('.vote-skip', bar);
+    const label = skipLabel();
+    if (skip.disabled !== !(canSkip())) skip.disabled = !canSkip();
+    if (skip.dataset.label !== label) { skip.dataset.label = label; skip.textContent = label; }
+    const line = $('[data-gate]', bar);
+    if (line && voteWait() <= 0) line.classList.add('is-done');
   }
 
   function drawBar() {
@@ -278,25 +354,29 @@ function match(root, ctx, first, scope) {
       return;
     }
     if (state.result) {
-      const { choice, counted, reason } = state.result;
+      const { choice, counted, reason, countedFor } = state.result;
       const { win, tie, loss } = state.tally;
       const tally = state.pin && win + tie + loss ? `<span class="arena-tally"><span data-i18n-ignore>${esc(state.pin.name)}</span>：<span>${win + tie + loss} 组 · ${win} 胜 ${tie} 平 ${loss} 负</span>${state.place ? ` · <span>${state.place}</span>` : ''}</span>` : '';
+      const verdict = counted ? (countedFor?.curated ? REASON.countedCurated : platform.user ? REASON.counted : REASON.anonymous) : REASON[reason] ?? '';
       bar.innerHTML = `<div class="vote-in is-result">
-        <p class="vote-verdict"><b>${VERDICT[choice]}</b>${tally}<span><span>${REASON[counted ? 'counted' : reason] ?? ''}</span>${state.counted ? ` <span>· 本次已计入 ${state.counted} 组</span>` : ''}${!counted && reason === 'anonymous' ? ' <button class="link" data-auth="login">登录</button>' : ''}${!counted && reason === 'unbound' ? ' <button class="link" data-bind-email>绑定邮箱</button>' : ''}</span></p>
+        <p class="vote-verdict"><b>${VERDICT[choice]}</b>${tally}<span><span>${verdict}</span>${state.counted ? ` <span>· 本次已计入 ${state.counted} 组</span>` : ''}${counted && !platform.user ? ' <button class="link" data-auth="login">登录</button>' : ''}${state.result.examHint ? ' <span>· 通过资格考试后也计入精选榜</span> <a class="link" href="#/exam">去考试</a>' : ''}</span></p>
         <div class="vote-actions"><a class="btn" href="#/leaderboard/${esc(task.id)}">${icon('rank')}查看榜单</a><button class="btn primary" data-a="next">下一组<kbd>N</kbd></button></div>
       </div>`;
       return;
     }
-    const ready = canVote();
-    const disabled = ready && !state.busy ? '' : ' disabled';
+    const disabled = canVote() && !state.busy ? '' : ' disabled';
+    const held = (side) => (state.held === side ? ' is-held' : '');
+    const counting = voteWait() > 0;
+    shownStatus = status();
     bar.innerHTML = `<div class="vote-in">
-      <p class="vote-status">${status()}${!platform.user && state.match ? ' <button class="link" data-auth="login">登录</button>' : ''}${needsEmail() && state.match ? ' <button class="link" data-bind-email>绑定邮箱</button>' : ''}</p>
+      ${counting ? `<span class="vote-gate" data-gate style="--gate: ${viewMs()}ms; animation-delay: -${Math.round(hold.waited)}ms" aria-hidden="true"></span>` : ''}
+      <p class="vote-status"><span data-status>${shownStatus}</span>${!platform.user && state.match ? ' <button class="link" data-auth="login">登录</button>' : ''}${state.needVerify ? ' <button class="link" data-a="verify">继续验证</button>' : ''}</p>
       <div class="vote-actions">
-        <button class="btn vote" data-vote="a"${disabled}><kbd>A</kbd><span class="ab">A</span>更好</button>
-        <button class="btn vote" data-vote="tie"${disabled}><kbd>S</kbd>不分伯仲</button>
-        <button class="btn vote" data-vote="b"${disabled}><span class="ab">B</span>更好<kbd>D</kbd></button>
+        <button class="btn vote${held('a')}" data-vote="a"${disabled}><kbd>A</kbd><span class="ab">A</span>更好</button>
+        <button class="btn vote${held('tie')}" data-vote="tie"${disabled}><kbd>S</kbd>不分伯仲</button>
+        <button class="btn vote${held('b')}" data-vote="b"${disabled}><span class="ab">B</span>更好<kbd>D</kbd></button>
       </div>
-      <button class="link vote-skip" data-vote="skip"${state.match && !state.busy ? '' : ' disabled'}>跳过这一组</button>
+      <button class="link vote-skip" data-vote="skip" data-label="${skipLabel()}"${canSkip() ? '' : ' disabled'}>${skipLabel()}</button>
     </div>`;
   }
 
@@ -411,13 +491,14 @@ function match(root, ctx, first, scope) {
       ${loader(side, `作品 ${letter(side)} 正在载入`)}`;
     const iframe = $('iframe', node);
     frameLoads.set(side, watchFrameLoad(iframe, {
-      onLoad() {
+      onReady() {
         if (!alive || !node.isConnected || currentFrame(side) !== iframe) return;
         state.ready[side] = true;
         delete state.loadErrors[side];
         syncControls(side);
         later(() => $('.loader', node)?.classList.add('gone'), 300);
-        update();
+        if (bothReady()) startGate();
+        else update();
       },
       onSlow() {
         if (!alive || !node.isConnected || currentFrame(side) !== iframe) return;
@@ -433,6 +514,7 @@ function match(root, ctx, first, scope) {
   function frame(side) {
     const body = $(`[data-body="${side}"]`, el);
     frameLoads.get(side)?.();
+    resetGate();
     state.ready[side] = false;
     delete state.loadErrors[side];
     delete state.controls[side];
@@ -512,10 +594,11 @@ function match(root, ctx, first, scope) {
   function showError(error) {
     state.error = error;
     state.controls = {};
-    if (!error.code || error.code === 'match-timeout' || error.status >= 500 || [408, 429].includes(error.status)) {
+    if (!error.code || error.code === 'challenge-cancelled' || error.code === 'match-timeout' || error.status >= 500 || [408, 429].includes(error.status)) {
+      const cancelled = error.code === 'challenge-cancelled';
       for (const body of $$('[data-body]', el)) body.innerHTML = `<div class="arena-layer"><div class="board-empty arena-empty">
-        <p class="board-empty-title">${esc(error.message)}</p><p>可以重试抽取，或返回盲评题库。</p>
-        <div class="board-empty-actions"><button class="btn primary" data-a="retry-pair">重新抽取</button><a class="btn" href="#/arena">返回盲评题库</a></div>
+        <p class="board-empty-title">${esc(error.message)}</p><p>${cancelled ? '确认你是真人后，就可以继续盲评。' : '可以重试抽取，或返回盲评题库。'}</p>
+        <div class="board-empty-actions"><button class="btn primary" data-a="retry-pair">${cancelled ? '继续验证' : '重新抽取'}</button><a class="btn" href="#/arena">${cancelled ? '返回盲评大厅' : '返回盲评题库'}</a></div>
       </div></div>`;
       drawBar();
       return;
@@ -536,7 +619,7 @@ function match(root, ctx, first, scope) {
   // The pair after one on `from`. Random rounds change task after the first pair; a task the reader has
   // run out of drops out of the range. A task whose pairs all hold a recently revealed work is passed over
   // while other tasks are left, then drawn from all the same (the server falls back without `avoidCooling`).
-  async function draw(from, previous, random, pick, signal) {
+  async function draw(from, previous, random, pick, signal, turnstileToken) {
     const cooling = new Set();
     let avoid = random;
     let t = from;
@@ -551,8 +634,11 @@ function match(root, ctx, first, scope) {
         }
         if (!t) throw Object.assign(new Error('这个范围里的组合你都评过了'), { code: 'exhausted' });
       }
+      // A token is good for one request.
+      const token = turnstileToken;
+      turnstileToken = undefined;
       try {
-        const match = await api('arena/matches', { method: 'POST', signal, body: { task: t.id, previous: t === from ? previous : undefined, avoidCooling: avoid || undefined, pin: state.pin?.key } });
+        const match = await api('arena/matches', { method: 'POST', signal, body: { task: t.id, previous: t === from ? previous : undefined, avoidCooling: avoid || undefined, pin: state.pin?.key, ...(token ? { turnstileToken: token } : {}) } });
         signal.throwIfAborted();
         return { task: t, match };
       } catch (error) {
@@ -585,35 +671,116 @@ function match(root, ctx, first, scope) {
     state.prefetch = null;
   }
 
+  // A prompt to prove one is human. `submit(token)` sends the request again with the token; its errors the
+  // sheet understands (a refused or unreachable check) stay inside it, any other ends it with `{ error }`.
+  // Resolves `{ value }`, `{ error }`, or null when it was closed without finishing.
+  function askHuman({ challenge, submit }) {
+    return new Promise((resolve) => {
+      let widget = null, done = false, pending = false, closed = false;
+      const reason = CHALLENGE[challenge?.reason] ? challenge.reason : 'rapid_choices';
+      const sheet = openDialog({
+        title: '确认一下，你是真人',
+        className: 'challenge-sheet',
+        body: `<p class="sheet-text">${CHALLENGE[reason]}${reason === 'guest_interval' && !platform.user ? ' <button class="link" type="button" data-auth="login">登录</button>' : ''}</p>
+          <div class="challenge-widget" data-widget></div>
+          <p class="challenge-status" role="status" data-status></p>
+          <div class="sheet-actions"><a class="btn" href="#/arena" data-sheet-close>返回盲评大厅</a><button class="btn primary" type="button" data-retry hidden>重试</button></div>`,
+        onClose: () => { closed = true; widget?.remove(); if (!done) resolve(null); },
+      });
+      humanSheet = sheet;
+      const status = $('[data-status]', sheet.el), retry = $('[data-retry]', sheet.el);
+      const say = (text, problem = false) => { status.textContent = text; status.classList.toggle('is-error', problem); };
+      const again = (text) => { say(text, true); retry.hidden = false; };
+      async function go() {
+        if (pending || closed || !widget?.token) return;
+        pending = true;
+        say('正在确认…');
+        try {
+          const value = await submit(widget.token);
+          done = true;
+          status.innerHTML = `${icon('check')}已确认`;
+          status.classList.remove('is-error');
+          await new Promise((r) => setTimeout(r, 600));
+          resolve({ value });
+          sheet.close();
+        } catch (error) {
+          pending = false;
+          if (closed) return;
+          if (error.code === 'turnstile_failed' || error.code === 'turnstile_required') { say('验证没有通过，请再试一次。', true); widget.reset(); }
+          else if (error.code === 'turnstile_unavailable') { again('验证服务暂时不可用，请稍后再试。'); }
+          else if (error.status === 0) { again('网络连接中断，请检查后重试。'); }
+          else { done = true; resolve({ error }); sheet.close(); }
+        }
+      }
+      retry.addEventListener('click', () => { retry.hidden = true; say(''); if (widget) widget.reset(); else mount(); });
+      function mount() {
+        if (!challenge?.siteKey) { say('人机验证无法显示，请刷新页面后重试。', true); return; }
+        loadTurnstile().then(() => {
+          if (closed) return;
+          widget = mountTurnstile($('[data-widget]', sheet.el), challenge.siteKey, (message) => {
+            if (message) say(message, !message.includes('过期'));
+            else if (widget?.token) void go();
+            else say('');
+          }, challenge.action);
+        }).catch((error) => again(error.message));
+      }
+      mount();
+    });
+  }
+  let humanSheet = null, heldUser = null, entryToken = '';
+
   async function next() {
     if (state.busy || state.error) return;
     state.busy = true;
     const generation = ++drawGeneration;
     frameLoads.forEach((stop) => stop());
     frameLoads.clear();
+    resetGate();
     const previous = state.match?.id;
     const earlier = task;
     const ahead = state.prefetch;
     state.prefetch = null;
     $('.arena-switched', el)?.remove();
     // Every pair starts side by side at an even split, so the last pair's layout favours neither.
-    Object.assign(state, { match: null, result: null, unsealed: false, ready: {}, loadErrors: {}, seen: { a: true }, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', slow: false });
+    Object.assign(state, { match: null, result: null, unsealed: false, ready: {}, loadErrors: {}, seen: { a: true }, controls: {}, controlsShown: {}, split: 0.5, lastSplit: 0.5, side: 'a', slow: false, held: null, needVerify: null });
     drawSplit();
     for (const body of $$('[data-body]', el)) {
       body.innerHTML = `<div class="arena-layer">${loader(body.dataset.body, '正在抽取一组作品')}</div>`;
     }
     update();
     try {
+      let challenge = null;
       if (ahead) {
         const settled = ahead.settled;
         activeDraw = ahead;
         await ahead.promise;
-        if (!settled && ahead.error) throw ahead.error;
+        if (ahead.error?.code === 'turnstile_required') challenge = ahead.error.data?.challenge ?? {};
+        else if (!settled && ahead.error) throw ahead.error;
       }
       if (!alive || generation !== drawGeneration) return;
-      activeDraw = ahead?.match ? ahead : Object.assign(loadPair((signal) => draw(earlier, previous, state.random, state.random && state.round > 0, signal)), { user: platform.user?.id ?? null });
-      const drawn = ahead?.match ? ahead : await activeDraw.promise;
+      const attempt = (token) => Object.assign(loadPair((signal) => draw(earlier, previous, state.random, state.random && state.round > 0, signal, token)), { user: platform.user?.id ?? null });
+      let drawn = ahead?.match ? ahead : null;
+      if (!drawn && !challenge) {
+        activeDraw = attempt(entryToken);
+        entryToken = '';
+        try { drawn = await activeDraw.promise; } catch (error) {
+          if (error.code !== 'turnstile_required') throw error;
+          challenge = error.data?.challenge ?? {};
+        }
+      }
       if (!alive || generation !== drawGeneration) return;
+      if (!drawn) {
+        // The next pair waits for a person's check; the works stay unloaded and the choice of task stays open.
+        for (const body of $$('[data-body]', el)) body.innerHTML = `<div class="arena-layer">${loader(body.dataset.body, '完成人机验证后继续')}</div>`;
+        const user = platform.user?.id ?? null;
+        activeDraw = { user, cancel: () => humanSheet?.close() };
+        const answer = await askHuman({ challenge, submit: (token) => { activeDraw = Object.assign(attempt(token), { user }); return activeDraw.promise; } });
+        humanSheet = null;
+        if (!alive || generation !== drawGeneration) return;
+        if (answer?.error) throw answer.error;
+        if (!answer) throw Object.assign(new Error('完成人机验证才能继续盲评'), { code: 'challenge-cancelled' });
+        drawn = answer.value;
+      }
       if (drawn.task !== task) setTask(drawn.task);
       state.match = drawn.match;
       if (state.round > 0 && task !== earlier) noteSwitch();
@@ -621,7 +788,7 @@ function match(root, ctx, first, scope) {
       frame('a');
       frame('b');
       const current = state.match;
-      later(() => { if (state.match === current && !(state.ready.a && state.ready.b)) { state.slow = true; update(); } }, 25000);
+      later(() => { if (state.match === current && !bothReady()) { state.slow = true; update(); } }, 25000);
     } catch (error) {
       if (!alive || generation !== drawGeneration || error.name === 'AbortError') return;
       state.busy = false;
@@ -633,29 +800,90 @@ function match(root, ctx, first, scope) {
     update();
   }
 
-  async function vote(choice) {
-    if (state.busy || state.result || !state.match || (choice !== 'skip' && !canVote())) return;
-    state.busy = true;
-    drawBar();
-    try {
-      state.result = await api(`arena/matches/${state.match.id}/vote`, { method: 'POST', body: { choice } });
-      if (state.result.counted) {
-        state.counted++;
-        platform.totals.votes++;
-        if (platform.me) platform.me.votes++;
-      }
-      const side = state.result.pinned;
-      if (state.pin && side && choice !== 'skip') {
-        state.tally[choice === 'tie' ? 'tie' : choice === side ? 'win' : 'loss']++;
-        if (state.result.counted) place(state.pin);
-      }
-    } catch (error) {
-      toast(error.message);
-      if (error.status === 404) { state.busy = false; return next(); }
+  // What a vote leaves behind once the server has taken it.
+  function accept(result, choice) {
+    state.result = result;
+    stopGate();
+    if (result.counted) {
+      state.counted++;
+      platform.totals.votes++;
+      if (platform.me) platform.me.votes++;
     }
+    // A member who has not passed the test is told once per tab that curated questions would count them too.
+    if (result.counted && choice !== 'skip' && !result.countedFor?.curated && result.curatedEligible === false && levelOf() === 0
+      && curatedKnown()?.taskIds.has(task.id) && !curatedHinted) {
+      curatedHinted = true;
+      result.examHint = true;
+    }
+    const side = result.pinned;
+    if (state.pin && side && choice !== 'skip') {
+      state.tally[choice === 'tie' ? 'tie' : choice === side ? 'win' : 'loss']++;
+      if (result.counted) place(state.pin);
+    }
+  }
+  const postVote = (match, choice, turnstileToken) => api(`arena/matches/${match.id}/vote`, { method: 'POST', body: { choice, ...(turnstileToken ? { turnstileToken } : {}) } });
+
+  function finishVote() {
     state.busy = false;
     update();
     if (state.result) prefetch();
+  }
+
+  // The server asks for a check on this vote. The pick is kept and sent again once the person is confirmed.
+  async function verifyVote(choice, challenge) {
+    const current = state.match, user = platform.user?.id ?? null;
+    heldUser = user;
+    state.busy = true;
+    state.held = choice;
+    state.needVerify = null;
+    update();
+    const answer = await askHuman({ challenge, submit: (token) => postVote(current, choice, token) });
+    humanSheet = null;
+    state.held = null;
+    if (!alive || state.match !== current) return;
+    if (answer?.value) { accept(answer.value, choice); return finishVote(); }
+    if (answer?.error) {
+      toast(answer.error.message);
+      if (answer.error.status === 404) { state.busy = false; return next(); }
+      return finishVote();
+    }
+    if ((platform.user?.id ?? null) !== user) { state.busy = false; return showError(new Error('登录状态已变化，请重新抽取')); }
+    state.needVerify = { choice, challenge };
+    finishVote();
+  }
+
+  async function vote(choice, retried = false) {
+    if (state.busy || state.result || !state.match || (choice === 'skip' ? !canSkip() : !canVote())) return;
+    const current = state.match;
+    state.busy = true;
+    state.needVerify = null;
+    drawBar();
+    try {
+      accept(await postVote(current, choice), choice);
+    } catch (error) {
+      if (state.match !== current) return;
+      if (error.code === 'turnstile_required') return verifyVote(choice, error.data?.challenge);
+      if (error.code === 'match_not_ready') {
+        // The server never saw this pair become ready: tell it again and count the five seconds anew.
+        state.busy = false;
+        if (bothReady()) startGate();
+        else update();
+        return;
+      }
+      if (error.code === 'vote_too_early' && !retried) {
+        const wait = Math.max(1, error.retryAfter || 1) * 1000;
+        hold.mark('vote', performance.now() + wait);
+        hold.mark('skip', performance.now() + wait);
+        hold.resume();
+        state.busy = false;
+        update();
+        later(() => vote(choice, true), wait + 50);
+        return;
+      }
+      toast(error.code === 'vote_too_early' ? '请再多看一会儿再投票' : error.message);
+      if (error.status === 404) { state.busy = false; return next(); }
+    }
+    finishVote();
   }
 
   function togglePrompt(force) {
@@ -674,6 +902,7 @@ function match(root, ctx, first, scope) {
     const kind = action.dataset.a;
     if (kind === 'next') next();
     else if (kind === 'retry-pair' && state.error) { state.error = null; next(); }
+    else if (kind === 'verify' && state.needVerify && !state.busy) void verifyVote(state.needVerify.choice, state.needVerify.challenge);
     else if (kind === 'prompt') togglePrompt();
     else if (kind === 'open-prompt') togglePrompt(true);
     else if (kind === 'mode') setMode(action.dataset.mode === 'random');
@@ -699,6 +928,15 @@ function match(root, ctx, first, scope) {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.target.matches('input, textarea, select') || $('dialog[open]') || !$('#lightbox').hidden) return;
     const key = e.key.toLowerCase();
     if (key === 'a' || key === 'd' || key === 's') {
+      if (state.match && !state.result && bothReady() && voteWait() > 0) {
+        // Too early: no vote and no message, only a blink of the count.
+        const node = $('[data-status]', el);
+        node?.classList.remove('is-flash');
+        void node?.offsetWidth;
+        node?.classList.add('is-flash');
+        e.preventDefault();
+        return;
+      }
       if (!canVote() || state.busy) return;
       vote(key === 'a' ? 'a' : key === 'd' ? 'b' : 'tie');
     } else if (key === 'n' && state.result) next();
@@ -751,31 +989,47 @@ function match(root, ctx, first, scope) {
   });
   addEventListener('resize', onResize);
 
-  // A choice that will not count only tries the page out. Say so once a session, before the first
-  // pair is drawn, so signing in (or binding the email) from here starts a match that counts.
+  // Someone not signed in is counted too, in the public rankings. Say so once a session, before the first
+  // pair is drawn; when the server wants a first check, it sits in the same sheet so it is asked only once.
   let notice = null;
-  function countNotice() {
-    const unbound = needsEmail();
+  async function countNotice() {
+    const policy = await api('arena/policy').catch(() => null);
+    const check = policy?.challenge?.required && policy.challenge.siteKey ? policy.challenge : null;
+    if (!alive) return { answer: 'try' };
     return new Promise((resolve) => {
-      let answer = 'try';
+      let answer = 'try', widget = null, token = '';
       notice = openDialog({
-        title: unbound ? '绑定邮箱后才计票' : '登录后投票才计入',
+        title: '开始盲评',
         className: 'arena-login-sheet',
-        body: `<p class="sheet-text">盲评对所有人开放，区别只在于这一票算不算数。</p>
+        body: `<p class="sheet-text">未登录也可以计票。区别在于计入哪张榜。</p>
           <ul class="vote-ways">
-            <li class="is-try"><span class="vote-way-mark" aria-hidden="true"><span>体验</span></span>
-              <span><b>${unbound ? '未绑定邮箱' : '未登录'}</b><small>可以完整体验，选择不计入榜单</small></span></li>
-            <li class="is-count"><span class="vote-way-mark" aria-hidden="true"><span>计票</span></span>
-              <span><b>登录并绑定邮箱</b><small>每对作品计一票，计入模型榜单</small></span></li>
+            <li class="is-try"><span class="vote-way-mark" aria-hidden="true"><span>大众</span></span>
+              <span><b>未登录</b><small>选择计入大众榜；开始前和之后每 5 组确认一次真人</small></span></li>
+            <li class="is-count"><span class="vote-way-mark" aria-hidden="true"><span>精选题</span></span>
+              <span><b>登录并通过资格考试</b><small>选择同时计入精选榜</small></span></li>
           </ul>
-          <div class="sheet-actions"><button class="btn" type="button" data-sheet-close>先体验</button><button class="btn primary" type="button" data-count>${unbound ? '绑定邮箱后开始' : '登录后开始'}${icon('right')}</button></div>
-          ${unbound ? '' : '<p class="vote-ways-foot">还没有账号？<button class="link" type="button" data-register>注册</button></p>'}`,
-        onClose: () => { notice = null; resolve(answer); },
+          ${check ? '<div class="challenge-widget" data-widget></div><p class="challenge-status" role="status" data-status></p>' : ''}
+          <div class="sheet-actions"><button class="btn" type="button" data-start${check ? ' disabled' : ''}>直接开始</button><button class="btn primary" type="button" data-count>登录${icon('right')}</button></div>
+          ${check ? '<p class="vote-ways-foot" data-start-note>完成验证后可以开始</p>' : ''}
+          <p class="vote-ways-foot">还没有账号？<button class="link" type="button" data-register>注册</button></p>`,
+        onClose: () => { widget?.remove(); notice = null; entryToken = token; resolve({ answer }); },
       });
+      if (check) {
+        const start = $('[data-start]', notice.el), note = $('[data-start-note]', notice.el), line = $('[data-status]', notice.el);
+        loadTurnstile().then(() => {
+          if (!notice) return;
+          widget = mountTurnstile($('[data-widget]', notice.el), check.siteKey, (message) => {
+            line.textContent = message;
+            token = widget?.token ?? '';
+            start.disabled = !token;
+            note.hidden = Boolean(token);
+          }, check.action);
+        }).catch((error) => { line.textContent = error.message; });
+      }
       notice.el.addEventListener('click', (e) => {
-        const pick = e.target.closest('[data-count], [data-register]');
+        const pick = e.target.closest('[data-count], [data-register], [data-start]');
         if (!pick) return;
-        answer = pick.matches('[data-count]') ? 'count' : 'register';
+        answer = pick.matches('[data-count]') ? 'count' : pick.matches('[data-register]') ? 'register' : 'try';
         notice.close();
       });
     });
@@ -785,10 +1039,10 @@ function match(root, ctx, first, scope) {
   async function start() {
     let seen = false;
     try { seen = sessionStorage.getItem(NOTICE) === '1'; } catch { /* private mode */ }
-    if (platform.available && (!platform.user || needsEmail()) && !seen) {
+    if (platform.available && !platform.user && !seen) {
       try { sessionStorage.setItem(NOTICE, '1'); } catch { /* private mode */ }
-      const answer = await countNotice();
-      if (answer === 'count' && alive) await requireUser('登录后，这一轮的选择会计入榜单。');
+      const { answer } = await countNotice();
+      if (answer === 'count' && alive) await requireUser('登录后，这一轮的选择会同时计入精选榜。');
       if (answer === 'register' && alive) await openAuth({ mode: 'register' });
     }
     if (alive) next();
@@ -801,6 +1055,7 @@ function match(root, ctx, first, scope) {
     fullscreen: true,
     onPlatformChange() {
       if (state.prefetch && state.prefetch.user !== (platform.user?.id ?? null)) dropPrefetch();
+      if (humanSheet && state.held && heldUser !== (platform.user?.id ?? null)) humanSheet.close();
       if (activeDraw && activeDraw.user !== (platform.user?.id ?? null)) {
         drawGeneration++;
         activeDraw.cancel();
@@ -816,6 +1071,9 @@ function match(root, ctx, first, scope) {
       removeEventListener('message', onFold);
       removeEventListener('resize', onResize);
       alive = false;
+      stopGate();
+      document.removeEventListener('visibilitychange', onVisibility);
+      humanSheet?.close();
       drawGeneration++;
       activeDraw?.cancel();
       dropPrefetch();
