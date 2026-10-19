@@ -1,4 +1,6 @@
-## 网站更新日志（2026-10-19，本地完成，未提交/部署）
+## 网站更新日志（2026-10-19，已提交 abd262c 并与成员等级一起上线，资产 9b8097e528b447494b64e44d）
+
+- 上线（2026-10-19）：以线上源码为底三方合并主线 57b4393→6d941d2，保留现场补丁；生产库副本迁移演练与 reviewer（GPT-6.1-Sol）候选测试通过后一次切换，无回滚。重启 2.08s，库计数前后一致，全部账号 Lv0。备份与回滚包 /root/aob-release-20261019/backup，发布记录在父工作区 .local/release-20261019/RELEASE.md。未做生产登录/投票/真实 Cloudflare 全链路；更新日志首批 6 条（中英）已按用户确认录入线上。
 
 - 新增公开页 `#/changelog`（`site/changelog.js`）与固定链接 `#/changelog/<id>`：按月分组时间线、类型筛选（页面内状态）、复制链接、英文回退「仅中文」；首页标题上方新闻胶囊（45 天内最新一条，未读带「新」，`localStorage` 键 `gallery-changelog-seen`）；页脚入口；`scripts/datapack.mjs` 保留路由名加 `changelog`。后台录入页在 arenaofbias-server/admin，接口见其 docs/api-contract.md（schema v46）。
 - 分工：设计 Opus 5.5（Lead），前端与后台页面 Sonnet 5.5，后端 GPT-6.1-Sol，review/测试 GPT-6.1-Sol。设计稿与截图在父工作区 `.local/changelog/`，不入库。
