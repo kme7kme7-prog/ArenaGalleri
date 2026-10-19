@@ -266,6 +266,8 @@ export default {
   '收起指南': 'Close guide', '暂无可评的题': 'No questions available for review', '暂未开放': 'Coming soon',
   '本地查看请先运行': 'To view locally, first run', '正在打开预览…': 'Opening preview…',
   '点击作品直接进入在线预览': 'Click a work to open its live preview',
+  '展开模型，按题目查看作品': 'Expand a model to browse its works by question',
+  '查看作品': 'View works', '模型官网': 'Model website',
   '点击场景后键盘会交给场景本身；点一下顶栏即可恢复本站快捷键。': 'After clicking a scene, keyboard input goes to the scene. Click the top bar to restore gallery shortcuts.',
   '统计加载中…': 'Loading statistics…',
   '网站已发布新版本，这个标签页仍是旧版。刷新后会回到当前页面。': 'A new version is available. Refresh this tab to update and return to the current page.',

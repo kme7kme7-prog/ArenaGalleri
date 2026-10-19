@@ -327,6 +327,15 @@ function renderLibrary(scopes = [], fresh = true) {
   }
   // The index lists verified works.
   const catalogued = results.filter(({ r }) => r.status === 'verified');
+  const modelQuestions = new Map();
+  for (const { t, r } of catalogued) {
+    const id = registeredOf(r);
+    if (!id) continue;
+    if (!modelQuestions.has(id)) modelQuestions.set(id, new Map());
+    const questions = modelQuestions.get(id);
+    if (!questions.has(t.id)) questions.set(t.id, { task: t, works: [] });
+    questions.get(t.id).works.push(r);
+  }
   const vendors = [...modelsByVendor.keys()].sort(byName);
   if (!vendors.includes(homeState.vendor)) homeState.vendor = '';
   // Only models with an answer can narrow the question list.
@@ -344,19 +353,23 @@ function renderLibrary(scopes = [], fresh = true) {
     const ids = new Set(models.map((m) => m.id));
     const works = catalogued.filter(({ r }) => ids.has(registeredOf(r))).length;
     const items = models.map((m) => {
-      const mine = catalogued.filter(({ r }) => registeredOf(r) === m.id);
-      const mark = m.logo
-        ? `<a class="brand-mark" href="${esc(m.brandUrl)}" target="_blank" rel="noopener" aria-label="${esc(m.brandName)} 官网" title="${esc(m.brandName)} 官网"><img src="${esc(versionedMedia(m.logo))}" alt="" loading="lazy" decoding="async"></a>`
-        : brandMark(m);
-      return `<li class="dir-model" data-dir-model="${esc([m.name, ...(m.aliases ?? []), m.vendorNote ?? '', vendor].join(' '))}">${mark}
-        <div class="dir-model-body">
-          <h4><span data-i18n-ignore>${esc(m.name)}</span>${m.vendorNote ? `<span class="note">${esc(m.vendorNote)}</span>` : ''}</h4>
-          ${mine.length ? `<ul class="dir-works">${mine.map(({ t, r }) => `<li><a href="${viewHref(t, r.id)}" data-i18n-original-attrs="title" title="${esc(t.title)}"><span data-i18n-ignore>${esc(r.title)}</span>${resultBadges(r)}</a></li>`).join('')}</ul>` : '<p class="muted">暂无作品</p>'}
-        </div>
+      const questions = [...(modelQuestions.get(m.id)?.values() ?? [])].sort((a, b) => byName(a.task.title, b.task.title));
+      const workCount = questions.reduce((sum, question) => sum + question.works.length, 0);
+      return `<li class="dir-model" data-dir-model="${esc([m.name, ...(m.aliases ?? []), m.vendorNote ?? '', vendor].join(' '))}" data-dir-model-id="${esc(m.id)}" data-dir-work-count="${workCount}">
+        <details class="dir-model-detail">
+          <summary class="dir-model-summary">${brandMark(m)}
+            <span class="dir-model-body"><b class="dir-model-name" data-i18n-ignore>${esc(m.name)}</b>${m.vendorNote ? `<span class="dir-model-note">${esc(m.vendorNote)}</span>` : ''}<span class="dir-model-meta">${questions.length} 道题目 · ${workCount} 件作品</span></span>
+            <span class="dir-model-toggle"><span class="dir-when-closed">查看作品</span><span class="dir-when-open">收起</span>${icon('next')}</span>
+          </summary>
+          <div class="dir-model-content">${questions.map(({ task: t, works: answers }) => `<section class="dir-question" data-dir-question="${esc(t.id)}">
+            <header class="dir-question-head"><a class="dir-question-title" href="${taskHref(t)}"><span class="dir-question-label">题目</span><span data-i18n-ignore>${esc(t.title)}</span></a><span class="dir-question-count">${answers.length} 件作品</span></header>
+            <ul class="dir-works">${answers.map((r) => `<li><a href="${viewHref(t, r.id)}"><span class="dir-work-title" data-i18n-ignore>${esc(r.title)}</span><span class="dir-work-badges">${resultBadges(r)}</span>${icon('next')}</a></li>`).join('')}</ul>
+          </section>`).join('')}${m.brandUrl ? `<a class="dir-brand-source" href="${esc(m.brandUrl)}" target="_blank" rel="noopener">模型官网${icon('arrow')}</a>` : ''}</div>
+        </details>
       </li>`;
     }).join('');
     return `<section class="dir-row" data-dir-vendor="${esc(vendor)}">
-      <header class="dir-vendor"><h3>${esc(vendor)}</h3><p>${models.length} 个模型 · ${works} 件作品</p></header>
+      <header class="dir-vendor"><h3>${esc(vendor)}</h3><p data-dir-vendor-count>${models.length} 个模型 · ${works} 件作品</p></header>
       <ul class="dir-models">${items}</ul>
     </section>`;
   }).join('');
@@ -368,7 +381,7 @@ function renderLibrary(scopes = [], fresh = true) {
         <div class="task-list">${newCard}${taskCards || (newCard ? '' : '<p class="muted">还没有题目。</p>')}</div>
         <div class="board-empty" data-home-empty hidden><h3>没有找到这道题</h3><p>${platform.available ? '换个关键词或筛选条件，或者把它发起成一道新题。' : '换个关键词或筛选条件，或浏览全部题目。'}</p><div class="board-empty-actions"><button class="btn" data-home-reset>清除筛选</button>${platform.available ? `<a class="btn primary" href="#/new">${icon('plus')}发起题目</a>` : ''}</div></div>
       </section>
-      <section data-home-panel="models" hidden><div class="collection-heading"><div class="collection-title"><h2 id="h-models">模型索引</h2><span data-model-count>${modelsByVendor.size} 家厂商 · ${exhibited.length} 个模型</span></div><span class="collection-caption">点击作品直接进入在线预览</span></div>
+      <section data-home-panel="models" hidden><div class="collection-heading"><div class="collection-title"><h2 id="h-models">模型索引</h2><span data-model-count>${modelsByVendor.size} 家厂商 · ${exhibited.length} 个模型</span></div><span class="collection-caption">展开模型，按题目查看作品</span></div>
         ${modelToolbar}<div class="dir-rows">${rows}</div>
         <div class="board-empty" data-model-empty hidden><h3>没有找到这个模型</h3><p>换个关键词，或查看全部厂商。</p><div class="board-empty-actions"><button class="btn" data-model-reset>清除筛选</button></div></div></section>
       ${footer()}
@@ -417,11 +430,12 @@ function renderLibrary(scopes = [], fresh = true) {
     let models = 0, vendorsShown = 0;
     for (const row of $$('[data-dir-vendor]', root)) {
       const vendorMatch = textMatches(needle, row.dataset.dirVendor);
-      let shown = 0;
+      let shown = 0, worksShown = 0;
       for (const item of $$('[data-dir-model]', row)) {
         item.hidden = !vendorMatch && !textMatches(needle, item.dataset.dirModel);
-        if (!item.hidden) shown++;
+        if (!item.hidden) { shown++; worksShown += Number(item.dataset.dirWorkCount); }
       }
+      $('[data-dir-vendor-count]', row).textContent = `${shown} 个模型 · ${worksShown} 件作品`;
       row.hidden = !shown || Boolean(homeState.vendor && row.dataset.dirVendor !== homeState.vendor);
       if (!row.hidden) { models += shown; vendorsShown++; }
     }

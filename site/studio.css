@@ -420,7 +420,43 @@ dialog.sheet.avatar-sheet { width: min(440px, calc(100% - 32px)); }
 .collection-toolbar + .task-list { padding-top: 6px; }
 .collection-toolbar + .dir-rows > .dir-row:first-child { padding-top: 6px; }
 .dir-row { grid-template-columns: 160px minmax(0, 1fr); }
-.dir-models { grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+/* Model inventories stay compact until opened; each answer keeps its question context. */
+.dir-rows, .dir-vendor, .dir-models, .dir-model-detail { min-width: 0; }
+.dir-vendor { overflow-wrap: anywhere; }
+.dir-models { display: block; }
+.dir-model { display: block; border-bottom: 1px solid var(--line); }
+.dir-model:last-child { border-bottom: 0; }
+.dir-model-summary { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 0; list-style: none; cursor: pointer; }
+.dir-model-summary::-webkit-details-marker { display: none; }
+.dir-model-summary::marker { content: ''; }
+.dir-model-summary:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 3px; border-radius: 4px; }
+.dir-model-summary .brand-mark { width: 36px; height: 36px; }
+.dir-model-name { display: block; color: var(--ink); font-size: 14.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.dir-model-note { display: block; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.dir-model-meta { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.dir-model-toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.dir-model-toggle .i { width: 15px; height: 15px; }
+.dir-model-summary:hover .dir-model-toggle { color: var(--ink); }
+.dir-model-detail[open] > summary .dir-model-toggle .i { transform: rotate(90deg); }
+.dir-model-detail[open] .dir-when-closed, .dir-model-detail:not([open]) .dir-when-open { display: none; }
+.dir-model-content { min-width: 0; padding: 0 0 14px 48px; }
+.dir-question { min-width: 0; padding: 14px 0; border-top: 1px solid var(--line); }
+.dir-question-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.dir-question-title { display: flex; flex: 1 1 180px; align-items: baseline; gap: 8px; min-width: 0; color: var(--ink); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.dir-question-title:hover { text-decoration: underline; text-underline-offset: 3px; }
+.dir-question-label { flex: none; color: var(--muted); font-size: 11px; font-weight: 400; }
+.dir-question-count { flex: none; color: var(--muted); font-size: 11px; }
+.dir-works { margin: 7px 0 0; }
+.dir-works a { position: relative; display: flex; flex-wrap: wrap; gap: 6px 10px; width: 100%; padding: 8px 30px 8px 10px; border-radius: 4px; font-size: 12.5px; line-height: 1.65; }
+.dir-works a::before { display: none; }
+.dir-works a:hover { background: var(--surface-2); }
+.dir-work-title { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.dir-work-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+.dir-work-badges:empty { display: none; }
+.dir-work-badges .badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.dir-works a > .i { position: absolute; top: 50%; right: 10px; width: 14px; height: 14px; transform: translateY(-50%); color: var(--muted); }
+.dir-brand-source { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
+.dir-brand-source .i { width: 13px; height: 13px; }
 
 /* Compact, borderless works. Per-card canvases scroll with their DOM elements. */
 .result-grid { gap: 17px 28px; padding-top: 10px; }
@@ -548,6 +584,8 @@ button.ref-tile:hover img.is-loaded { transform: scale(1.045); }
 .ref-warn .link { margin-left: auto; font-size: 12.5px; white-space: nowrap; }
 .ref-credit-field { margin-top: 14px; }
 @media (max-width: 760px) {
+  .dir-model-content { padding-left: 0; }
+  .dir-model-summary { gap: 10px; }
   .ref-editor-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .ref-editor-foot { flex-direction: column; align-items: stretch; }
 }
