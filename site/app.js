@@ -24,6 +24,7 @@ import { downloadReference, linkReferences, referenceSheet, useReferenceViewer }
 import { aiJudged, aiScoreOf, categoryLabel, categoryOf, domainList, domainsIn, domainsOf, searchMatch, tracksOf } from './categories.js';
 import { textMatches } from './match.js';
 import { modelResolver } from './models.js';
+import { recommendQuestions } from './question-recommendations.js';
 import { createWorkControls, workFrameUrl } from './work-controls.js';
 import { hasModelPreview, screenshotOf } from './work-preview-media.js';
 
@@ -217,8 +218,9 @@ function pageStart({ title, description, descriptionOriginal = false, section, m
 const sideNav = (label, links) => `<nav class="side-nav section-nav" aria-label="${esc(label)}">${links.map(([href, glyph, text, current, count]) => `<a class="side-link" href="${esc(href)}"${current ? ' aria-current="page"' : ''}>${icon(glyph)}${esc(text)}${count === undefined ? '' : `<span class="nav-count">${count}</span>`}</a>`).join('')}</nav>`;
 const pageEnd = () => `${footer()}</main></div>`;
 const searchControl = (type, placeholder, value = '') => `<label class="collection-search">${icon('search')}<input type="search" data-${type}-search aria-label="${placeholder}" placeholder="${placeholder}" value="${esc(value)}"></label>`;
-const questionSorts = { date: '发布时间（最新在前）', works: '解答数量（多到少）', title: '题目名称（A–Z）' };
-const homeState = { category: '', domain: '', model: '', query: '', view: 'tasks', sort: Object.hasOwn(questionSorts, store.get('question-sort')) ? store.get('question-sort') : 'works', modelQuery: '', vendor: '' };
+const questionSorts = { recommended: '推荐（热门与探索）', date: '发布时间（最新在前）', works: '解答数量（多到少）', title: '题目名称（A–Z）' };
+const recommendationLabels = { popular: '热门', unanswered: '等你来测', explore: '待探索', recent: '新题' };
+const homeState = { category: '', domain: '', model: '', query: '', view: 'tasks', sort: Object.hasOwn(questionSorts, store.get('question-sort')) ? store.get('question-sort') : 'recommended', recommendationBatch: 0, modelQuery: '', vendor: '' };
 
 // ---- home -----------------------------------------------------------------------------
 // Questioned works stay visible as reference but are left out of every count.
@@ -257,13 +259,14 @@ const option = (value, text, selected, suffix = null) => `<option${suffix === nu
 const answeredBy = (t, id) => counted(t).some((r) => registeredOf(r) === id);
 // A card names its form, then its domains.
 const tagLine = (t) => `${t.category ? `<li class="tag-kind">${esc(categoryLabel(t.category))}</li>` : ''}${domainsOf(t).map((d) => `<li class="tag-domain">${esc(d)}</li>`).join('')}`;
-function sortedTasks() {
+function rankedTasks(tasks = DATA.tasks, now = Date.now()) {
+  if (homeState.sort === 'recommended') return recommendQuestions(tasks, { now, batch: homeState.recommendationBatch, modelKey: r => registeredOf(r) ?? modelKey(r) });
   const order = new Map(DATA.tasks.map((t, i) => [t.id, i]));
-  return [...DATA.tasks].sort((a, b) => {
+  return [...tasks].sort((a, b) => {
     if (homeState.sort === 'works') return counted(b).length - counted(a).length || order.get(b.id) - order.get(a.id);
     if (homeState.sort === 'title') return byName(a.title, b.title);
     return (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0) || order.get(b.id) - order.get(a.id);
-  });
+  }).map(task => ({ task, reason: null }));
 }
 
 // Form and domain ride in the address (#/questions/<category>/<domain>, either may be left out),
@@ -275,6 +278,7 @@ function renderLibrary(scopes = [], fresh = true) {
   homeState.category = scopes.find((x) => DATA.tasks.some((t) => t.category === x)) ?? '';
   homeState.domain = scopes.find((x) => DATA.tasks.some((t) => domainsOf(t).includes(x))) ?? '';
   const controller = new AbortController();
+  const recommendationTime = Date.now();
   let previews = null, destroyed = false, activePreviewKey = null;
   const choices = DATA.tasks.map((task) => ({ task, result: taskCover(task, platform.featured?.[task.id]?.cover) }));
   const artworkFor = (t, shown, eager = false) => shown?.previewMode === 'screenshot'
@@ -284,7 +288,7 @@ function renderLibrary(scopes = [], fresh = true) {
       : shown ? coverHtml(shown, '', eager) : `<span class="question-placeholder">${icon('text')}<span>${counted(t).length ? '暂无预览图' : '等待第一份答案'}</span></span>`;
   const results = DATA.tasks.flatMap((t) => counted(t).map((r) => ({ t, r })));
 
-  const taskCards = sortedTasks().map((t, ti) => {
+  const taskCards = rankedTasks(DATA.tasks, recommendationTime).map(({ task: t }, ti) => {
     const works = counted(t);
     const shown = choices.find(({ task }) => task === t).result;
     const artwork = artworkFor(t, shown, ti < 3);
@@ -293,7 +297,7 @@ function renderLibrary(scopes = [], fresh = true) {
         ${artwork}
       </a>
       <div class="task-body">
-        <div class="question-byline"><ul class="tag-line">${tagLine(t)}</ul>
+        <div class="question-byline"><ul class="tag-line"><li class="tag-recommendation" data-question-reason hidden></li>${tagLine(t)}</ul>
           <span class="avatar question-avatar${bySite(t) ? ' is-site' : ''}" role="img" aria-label="发布者：${esc(authorName(t))}" title="发布者：${esc(authorName(t))}">${authorAvatar(t)}</span>
         </div>
         <h3><a href="${taskHref(t)}"><span data-i18n-ignore>${esc(t.title)}</span></a></h3>
@@ -378,6 +382,7 @@ function renderLibrary(scopes = [], fresh = true) {
       <section data-home-panel="tasks">
         <div class="collection-heading"><div class="collection-title"><h2 id="h-tasks">全部题目</h2><span data-home-count title="解答数不计存疑作品">${DATA.tasks.length} 道题目</span></div>${platform.available ? '<div class="task-acts" data-home-blind></div>' : ''}</div>
         ${taskToolbar}
+        <div class="question-recommendation" data-question-recommendation><p>热门、新题与待探索题目穿插展示</p><button class="btn sm ghost" type="button" data-recommend-refresh>换一批</button></div>
         <div class="task-list">${newCard}${taskCards || (newCard ? '' : '<p class="muted">还没有题目。</p>')}</div>
         <div class="board-empty" data-home-empty hidden><h3>没有找到这道题</h3><p>${platform.available ? '换个关键词或筛选条件，或者把它发起成一道新题。' : '换个关键词或筛选条件，或浏览全部题目。'}</p><div class="board-empty-actions"><button class="btn" data-home-reset>清除筛选</button>${platform.available ? `<a class="btn primary" href="#/new">${icon('plus')}发起题目</a>` : ''}</div></div>
       </section>
@@ -392,6 +397,7 @@ function renderLibrary(scopes = [], fresh = true) {
   const filter = () => {
     let count = 0;
     const promptOnly = new Set();
+    const matching = [];
     blindScope = [];
     for (const card of $$('[data-task-card]', root)) {
       const task = DATA.tasks.find((t) => t.id === card.dataset.taskCard);
@@ -406,6 +412,7 @@ function renderLibrary(scopes = [], fresh = true) {
       }
       if (!card.hidden) {
         count++;
+        matching.push(task);
         if ((platform.arena[task.id]?.entries ?? 0) >= 2) blindScope.push(task);
       }
     }
@@ -417,9 +424,21 @@ function renderLibrary(scopes = [], fresh = true) {
         ? act('judge', `#/arena/random`, AB, '参与盲评', `可盲评 ${blindScope.reduce((sum, t) => sum + platform.arena[t.id].works, 0)} 件`)
         : act('judge', '', AB, '参与盲评', '暂无可评的题', '当前范围内没有两个模型配置以上的盲评池');
     }
-    const order = sortedTasks().sort((a, b) => promptOnly.has(a.id) - promptOnly.has(b.id));
+    // Mix within the filtered result set and keep direct search hits before prompt-only hits.
+    const ranked = [...rankedTasks(matching.filter(t => !promptOnly.has(t.id)), recommendationTime),
+      ...rankedTasks(matching.filter(t => promptOnly.has(t.id)), recommendationTime)];
+    const reasons = new Map(ranked.map(({ task, reason }) => [task.id, reason]));
+    const shown = new Set(matching.map(t => t.id));
+    const order = [...ranked.map(row => row.task), ...DATA.tasks.filter(t => !shown.has(t.id))];
     const list = $('.task-list', root), cards = $$('[data-task-card]', list);
-    if (order.some((t, i) => cards[i].dataset.taskCard !== t.id)) list.append(...order.map((t) => cards.find((card) => card.dataset.taskCard === t.id)));
+    const cardsById = new Map(cards.map(card => [card.dataset.taskCard, card]));
+    if (order.some((t, i) => cards[i].dataset.taskCard !== t.id)) list.append(...order.map(t => cardsById.get(t.id)));
+    for (const card of cards) {
+      const reason = $('[data-question-reason]', card), text = recommendationLabels[reasons.get(card.dataset.taskCard)];
+      reason.hidden = !text;
+      reason.textContent = text ?? '';
+    }
+    $('[data-question-recommendation]').hidden = homeState.sort !== 'recommended' || count === 0;
     $('#h-tasks').innerHTML = [homeState.category ? `<span>${esc(categoryLabel(homeState.category))}</span>` : '', homeState.domain ? `<span>${esc(homeState.domain)}</span>` : '', homeState.model ? `<span data-i18n-ignore>${esc(MODELS.get(homeState.model)?.name)}</span>` : ''].filter(Boolean).join(' · ') || '全部题目';
     $('[data-home-count]').textContent = `${count} 道题目`;
     $('[data-home-empty]').hidden = count > 0;
@@ -480,7 +499,8 @@ function renderLibrary(scopes = [], fresh = true) {
     if (view) { homeState.view = view.dataset.homeView; homeState.category = ''; homeState.domain = ''; }
     if (event.target.closest('[data-home-reset]')) { homeState.category = ''; homeState.domain = ''; homeState.model = ''; homeState.query = ''; $('[data-home-search]').value = ''; }
     if (event.target.closest('[data-model-reset]')) { homeState.vendor = ''; homeState.modelQuery = ''; $('[data-model-search]').value = ''; }
-    if (category || domain || view || event.target.closest('[data-home-reset], [data-model-reset]')) filter();
+    if (event.target.closest('[data-recommend-refresh]')) homeState.recommendationBatch++;
+    if (category || domain || view || event.target.closest('[data-home-reset], [data-model-reset], [data-recommend-refresh]')) filter();
   };
   filter();
   window.addEventListener('localechange', filter, { signal: controller.signal });

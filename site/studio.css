@@ -380,6 +380,11 @@ dialog.sheet.avatar-sheet { width: min(440px, calc(100% - 32px)); }
 .tag-line li { color: var(--muted); }
 .tag-line .tag-kind { color: var(--ink-2); }
 .tag-line .tag-domain { color: var(--ink-2); }
+.tag-line .tag-recommendation { flex: none; padding-right: 7px; border-right: 1px solid var(--line-2); color: var(--ink); font-weight: 600; }
+.question-recommendation { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -2px 0 12px; }
+.question-recommendation p { flex: 1; min-width: 0; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.question-recommendation .btn { flex: none; }
+.question-recommendation + .task-list { padding-top: 6px; }
 .question-byline { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 8px; }
 .question-byline .tag-line { flex: 1; min-width: 0; margin: 0; }
 .question-avatar { flex: 0 0 22px; width: 22px; height: 22px; margin-left: auto; font-size: 10px; }
@@ -396,8 +401,8 @@ dialog.sheet.avatar-sheet { width: min(440px, calc(100% - 32px)); }
 .prompt-hit mark { padding: 0 2px; border-radius: 3px; color: var(--ink); background: color-mix(in srgb, var(--ink) 14%, transparent); }
 .question-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; color: var(--muted); font-size: 11px; }
 .question-meta > span, .question-meta > a { display: flex; align-items: center; gap: 4px; }
-.question-meta > a { color: var(--ink-2); white-space: nowrap; }
-.question-meta .i { width: 13px; height: 13px; }
+.question-meta > a { min-width: 0; color: var(--ink-2); white-space: normal; }
+.question-meta .i { flex: none; width: 13px; height: 13px; }
 /* The "new question" card: three blank windows waiting for answers, like the stack on the home page. */
 .task-new { border-style: dashed; border-color: var(--line-2); background: transparent; color: var(--ink); text-decoration: none; }
 .task-new:hover { border-color: var(--muted); }
