@@ -1036,4 +1036,25 @@ Vite 项目请包含 package.json 和构建后的 dist/ 目录|Vite projects mus
 请填写人工审查理由|Enter a manual review reason
 `.trim().split('\n').map((line) => line.split('|')));
 
-export default { ...phrases, ...legal, ...dynamic, ...errors };
+// Website changelog: page chrome only. Entry titles and bodies come from the server in both languages.
+const changelog = Object.fromEntries(`
+更新日志|Changelog
+亿模亿样的新功能、改进、修复与规则调整。|New features, improvements, fixes and policy changes on ArenaGalleri.
+按发布时间倒序|Newest first
+全部更新|All updates
+更新条数|Updates
+最近更新|Latest
+更新类型|Update type
+更新日志暂时无法加载|The changelog could not be loaded
+还没有更新记录|No updates yet
+这个类型还没有更新|No updates of this type yet
+查看全部|View all
+仅中文|Chinese only
+去看看|Take a look
+复制这条更新的链接|Copy link to this update
+已复制链接|Link copied
+复制失败，请从地址栏复制|Could not copy. Copy the link from the address bar.
+这条更新不存在或已撤下|This update does not exist or has been withdrawn.
+`.trim().split('\n').map((line) => line.split('|')));
+
+export default { ...phrases, ...legal, ...dynamic, ...errors, ...changelog };

@@ -3,6 +3,8 @@ import { $$, esc, icon, img, brandMark, reducedMotion } from './ui.js';
 import { catalogState, platform } from './platform.js';
 import { screenshotOf } from './work-preview-media.js';
 
+// Platform not ruled out: the news pill's row is held open even before there is anything to show.
+const newsSpace = () => ['loading', 'ready'].includes(catalogState());
 const time = (r) => Date.parse(r.addedAt) || 0;
 // Short tab names: "机械键盘 · 交互式产品配置器" → "机械键盘".
 const shortTitle = (t) => t.title.split(' · ')[0];
@@ -201,6 +203,7 @@ export function mount(root, ctx) {
   root.innerHTML = `${ctx.header()}<main class="landing page">
     <section class="home-hero" aria-labelledby="home-title">
       <div class="home-copy">
+        <div class="home-news-slot" data-home-news${newsSpace() ? '' : ' hidden'}></div>
         <div class="home-verse${decks.length ? ' is-turning' : ''}">
           <h1 id="home-title"><span class="home-verse-a">回字有四样写法，</span><span class="home-verse-b">这道题有<em>${hanzi(firstCount)}</em>种<span class="home-stop">。</span></span></h1>
           <p class="home-cite">鲁迅《孔乙己》</p>
@@ -243,7 +246,29 @@ export function mount(root, ctx) {
   let turning = 0, dealt = 0;
   const sung = [];
   let currentVerse = VERSES[0], verseCount = firstCount;
+  // The newest changelog entry, when it is recent; its space is kept once the platform may supply it so the headline stays put.
+  let news = null, newsAsked = false, gone = false;
+  const showNews = () => {
+    const slot = root.querySelector('[data-home-news]');
+    if (!slot) return;
+    slot.hidden = !newsSpace();
+    if (!news) { slot.innerHTML = ''; return; }
+    const { entry, view, mark, shortDate } = news, en = locale() === 'en';
+    slot.innerHTML = `<a class="home-news" href="#/changelog/${entry.id}" data-i18n-original-attrs="aria-label" aria-label="${esc(`${en ? 'Latest update: ' : '最近更新：'}${shortDate} ${view.title}`)}">${mark ? `<span class="home-news-new" data-i18n-ignore>${en ? 'New' : '新'}</span>` : ''}<time class="home-news-date" datetime="${entry.publishedOn}">${shortDate}</time><span class="home-news-title" data-i18n-ignore>${esc(view.title)}</span>${icon('right')}</a>`;
+  };
+  const askNews = () => {
+    if (newsAsked || !platform.available) return;
+    newsAsked = true;
+    import('./changelog.js').then(async (changelog) => {
+      const entry = await changelog.latestNews();
+      if (!entry || gone) return;
+      news = { entry, mark: changelog.unseen(entry), shortDate: changelog.shortDate(entry.publishedOn), get view() { return changelog.entryView(entry); } };
+      showNews();
+    }).catch(() => {});
+  };
+  askNews();
   const refreshLocale = () => {
+    showNews();
     sing(verseCount, currentVerse);
     const count = answersOf(decks[current]).length;
     if (cta) cta.querySelector('[data-home-n]').textContent = translate('看看这 {count} 种', { count });
@@ -277,6 +302,8 @@ export function mount(root, ctx) {
       $$('img[loading="lazy"]', recentSection).forEach((image) => { image.loading = 'eager'; });
     }
     root.querySelector('.home-blind').hidden = !platform.available;
+    askNews();
+    showNews();
     refreshLinks();
     ctx.settleImages();
   };
@@ -478,6 +505,7 @@ export function mount(root, ctx) {
     destroy() {
       clearInterval(timer);
       clearInterval(retryTimer);
+      gone = true;
       window.removeEventListener('localechange', refreshLocale);
       removeEventListener('scroll', onScroll);
       near.disconnect();

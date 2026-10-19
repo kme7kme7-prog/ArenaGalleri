@@ -1,3 +1,10 @@
+## 网站更新日志（2026-10-19，本地完成，未提交/部署）
+
+- 新增公开页 `#/changelog`（`site/changelog.js`）与固定链接 `#/changelog/<id>`：按月分组时间线、类型筛选（页面内状态）、复制链接、英文回退「仅中文」；首页标题上方新闻胶囊（45 天内最新一条，未读带「新」，`localStorage` 键 `gallery-changelog-seen`）；页脚入口；`scripts/datapack.mjs` 保留路由名加 `changelog`。后台录入页在 arenaofbias-server/admin，接口见其 docs/api-contract.md（schema v46）。
+- 分工：设计 Opus 5.5（Lead），前端与后台页面 Sonnet 5.5，后端 GPT-6.1-Sol，review/测试 GPT-6.1-Sol。设计稿与截图在父工作区 `.local/changelog/`，不入库。
+- 验证：check 87/0、test 57/57；隔离前后端联调走通后台草稿→发布→撤回→删除及前台列表/固定链接/首页「新」/英文回退，1440 与 390 目视。review 唯一 P3（空列表时失效固定链接无提示）已修并复跑 check/test。未 build/intake（未改数据包相关逻辑）。
+- 首批 4 条内容草稿见 `.local/changelog/ui-design.md` §7，待用户确认后从后台录入，未写入任何数据库。
+
 ## 成员分级与精选榜前端（2026-10-19，本地完成，未提交/部署）
 
 - 前端按 Lv0–Lv3 重做：等级与资格考试（`site/exam.js`、`site/level-gate.js`）、盲评 5s/3s 服务端计时与两侧 `aob:work-ready` 就绪、大众榜/精选榜（`site/curated.js`）、人机验证挂件带 `action`；后台精选/标准对/投票风控页在 arenaofbias-server/admin。
