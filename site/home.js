@@ -1,7 +1,8 @@
 import { locale, setPageTitle, t as translate } from './i18n.js';
 import { $$, esc, icon, img, brandMark, reducedMotion } from './ui.js';
-import { catalogState, platform } from './platform.js';
+import { catalogState, isSenior, platform } from './platform.js';
 import { screenshotOf } from './work-preview-media.js';
+import { latestAnnouncement, announcementShortDate } from './announcements.js';
 
 // Platform not ruled out: the news pill's row is held open even before there is anything to show.
 const newsSpace = () => ['loading', 'ready'].includes(catalogState());
@@ -252,9 +253,13 @@ export function mount(root, ctx) {
     const slot = root.querySelector('[data-home-news]');
     if (!slot) return;
     slot.hidden = !newsSpace();
-    if (!news) { slot.innerHTML = ''; return; }
-    const { entry, view, mark, shortDate } = news, en = locale() === 'en';
-    slot.innerHTML = `<a class="home-news" href="#/changelog/${entry.id}" data-i18n-original-attrs="aria-label" aria-label="${esc(`${en ? 'Latest update: ' : '最近更新：'}${shortDate} ${view.title}`)}">${mark ? `<span class="home-news-new" data-i18n-ignore>${en ? 'New' : '新'}</span>` : ''}<time class="home-news-date" datetime="${entry.publishedOn}">${shortDate}</time><span class="home-news-title" data-i18n-ignore>${esc(view.title)}</span>${icon('right')}</a>`;
+    const en = locale() === 'en';
+    const notice = latestAnnouncement();
+    const announcement = notice ? `<button type="button" class="home-announcement" data-open-announcements aria-label="${esc(`${en ? 'Announcement: ' : '公告：'}${notice.title}`)}"><time datetime="${esc(notice.publishedAt)}">${announcementShortDate(notice)}</time><span>${en ? 'Notice' : '公告'}</span></button>`
+      : isSenior() ? `<button type="button" class="home-announcement" data-open-announcements aria-label="${en ? 'Open announcements and publish the first one' : '打开公告并发布第一则'}">${icon('plus')}<span>${en ? 'Notice' : '公告'}</span></button>` : '';
+    if (!news) { slot.innerHTML = announcement; return; }
+    const { entry, view, mark, shortDate } = news;
+    slot.innerHTML = `<a class="home-news" href="#/changelog/${entry.id}" data-i18n-original-attrs="aria-label" aria-label="${esc(`${en ? 'Latest update: ' : '最近更新：'}${shortDate} ${view.title}`)}">${mark ? `<span class="home-news-new" data-i18n-ignore>${en ? 'New' : '新'}</span>` : ''}<time class="home-news-date" datetime="${entry.publishedOn}">${shortDate}</time><span class="home-news-title" data-i18n-ignore>${esc(view.title)}</span>${icon('right')}</a>${announcement}`;
   };
   const askNews = () => {
     if (newsAsked || !platform.available) return;
@@ -266,7 +271,9 @@ export function mount(root, ctx) {
       showNews();
     }).catch(() => {});
   };
+  showNews();
   askNews();
+  window.addEventListener('announcementschange', showNews);
   const refreshLocale = () => {
     showNews();
     sing(verseCount, currentVerse);
@@ -507,6 +514,7 @@ export function mount(root, ctx) {
       clearInterval(retryTimer);
       gone = true;
       window.removeEventListener('localechange', refreshLocale);
+      window.removeEventListener('announcementschange', showNews);
       removeEventListener('scroll', onScroll);
       near.disconnect();
     },
