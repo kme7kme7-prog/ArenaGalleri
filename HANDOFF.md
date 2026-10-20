@@ -4,6 +4,14 @@
 - VPS静态基线与本仓5cb4b70的55份功能源一致，runtime-config保留生产配置；后台服务active/running，MainPID1766041、NRestarts0。发布从已推送源码及正式CI数据包取材，完整现场为底增量更新，保留其他代码、媒体、作品入口原字节和业务数据；准备可回滚目录后切换，不整仓覆盖后台。
 - [本轮归档](docs/archive/2026-10-19-question-recommendations-atmeplz.md)。本条写于发布前，最终提交号、包号、线上验证及回滚位置记录父工作区HANDOFF与私有 `.local/recommendation-minimax-release-20261019/`，不提前宣称上线。以下保留本地验收记录。
 
+## 搜索收录与分享卡片元信息（2026-10-20，kme7kme7-prog，PR 待 shadow 合并，未部署）
+
+- 目标：搜索引擎能按名字「亿模亿样」找到本站；QQ/微信分享卡片只读原始 HTML，元信息必须写在静态 HTML 里。
+- `site/index.html`：title「亿模亿样 ArenaGalleri · 模型效果对比」、新 description、canonical、Open Graph、itemprop、twitter、WebSite 结构化数据；`#app` 内放一段真实的静态介绍（`app.js` 首次渲染时整块替换），noscript 改为介绍文字。
+- 英文界面标题保留中文名：`site/i18n.js` 的 `setPageTitle` 把站名渲染为「亿模亿样 ArenaGalleri」，`i18n-gallery.js` 对应条目同步。
+- 新增 `site/robots.txt`、`site/sitemap.xml`（hash 路由只收首页）与 1200×630 占位分享图 `site/assets/share-preview.png`，正式图待定。
+- 归档：[搜索收录与分享卡片](docs/archive/2026-10-20-seo-share-metadata-kme7kme7-prog.md)。
+
 ## 题库热门与探索混排（2026-10-19，本地完成，未提交/部署）
 
 - 用户要求热门题保持优先，同时让无人测试的项目获得展示。题库默认改为推荐排序：候选充足时每六题依次为热门、零作品、热门、新题、热门、低覆盖题；低覆盖指已验证模型不足四个，新题为近七天且仍接受投稿、提示词已公开的题目。池不足自动补位，全量去重且不丢题。保留时间/作品数/名称排序与既有明确选择。
