@@ -35,6 +35,25 @@ export function fetchApi(path, options = {}) {
   return fetch(apiUrl(path), { credentials: 'include', ...options, headers });
 }
 
+// Startup reads are GETs, so they are safe to repeat. Back off after no answer, a timeout, a body
+// that is not JSON, or 429 (never sooner than its Retry-After); any other HTTP answer is final.
+// One budget covers every attempt, so a slow link gets a few chances without a long wait.
+export const READ_RETRY = { delays: [1000, 3000, 6000], budget: 45000, timeout: 15000 };
+export async function retryRead(attempt, { delays, budget, timeout } = READ_RETRY) {
+  const deadline = Date.now() + budget;
+  for (let tries = 0; ; tries++) {
+    try {
+      return await attempt(Math.min(timeout, deadline - Date.now()), tries);
+    } catch (error) {
+      const limited = error?.kind === 'limited';
+      if ((error?.kind && !limited) || tries >= delays.length) throw error;
+      const wait = Math.max(delays[tries], limited ? (error.retryAt ?? 0) - Date.now() : 0);
+      if (Date.now() + wait + 2000 > deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+  }
+}
+
 export function createUploadRequest(path) {
   const xhr = new XMLHttpRequest();
   xhr.open('POST', apiUrl(path));

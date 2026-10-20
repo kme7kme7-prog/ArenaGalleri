@@ -20,22 +20,22 @@ test('platform recovery waits out rate limits, shares retries and keeps version 
   globalThis.fetch = async (url) => {
     if (!url.endsWith('/catalog')) return success();
     calls++;
-    return new Response(JSON.stringify({ error: 'Too many reads', retryAfter: 12 }),
+    return new Response(JSON.stringify({ error: 'Too many reads', retryAfter: 60 }),
       { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '30' } });
   };
   try {
     const { platform, connectPlatform, refreshPlatform, startPlatformRecovery, onPlatformChange } = await import('../site/platform.js');
     assert.equal(await connectPlatform(build), false);
     assert.equal(platform.connectionError.kind, 'limited');
-    assert.equal(platform.connectionError.retryAt, now + 12000);
+    assert.equal(platform.connectionError.retryAt, now + 60000);
     startPlatformRecovery();
-    assert.equal(scheduled.delay, 12000);
+    assert.equal(scheduled.delay, 60000);
     assert.equal(await refreshPlatform('reconnect'), false);
     globalThis.window.dispatchEvent(new Event('online'));
     await new Promise(setImmediate);
     assert.equal(calls, 1, 'cooldown blocks both manual and network-event retries');
 
-    now += 12000;
+    now += 60000;
     let release;
     globalThis.fetch = (url) => { if (!url.endsWith('/catalog')) return Promise.resolve(success()); calls++; return new Promise((resolve) => { release = resolve; }); };
     let changes = 0;
@@ -53,14 +53,17 @@ test('platform recovery waits out rate limits, shares retries and keeps version 
     assert.equal(changes, 1, 'successful recovery tells the current route to redraw');
     unsubscribe();
 
+    globalThis.setTimeout = (fn) => { fn(); return 1; };
+    globalThis.fetch = () => { calls++; return Promise.reject(new DOMException('Timed out', 'TimeoutError')); };
     assert.equal(await connectPlatform(build, Promise.reject(new DOMException('Timed out', 'TimeoutError'))), false);
+    assert.equal(calls, 5, 'a timed-out read is repeated three times before it reports');
     assert.match(platform.connectionError.message, /超时/);
     assert.equal(platform.available, true, 'a failed refresh preserves an already connected snapshot');
     assert.equal(await connectPlatform(build, Promise.resolve(new Response('{}', { status: 409 }))), false);
     assert.equal(platform.mismatch, true);
     now += 30000;
     assert.equal(await refreshPlatform('reconnect'), false);
-    assert.equal(calls, 2, 'version mismatch cannot be bypassed by recovery');
+    assert.equal(calls, 5, 'version mismatch cannot be bypassed by recovery');
   } finally {
     globalThis.document = original.document;
     globalThis.window = original.window;

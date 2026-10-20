@@ -1,3 +1,8 @@
+## 平台读取退避重试（2026-10-20，kme7kme7-prog，已授权开 PR，未合并/未部署）
+
+- 背景：部分移动用户的 api 请求被调度到 EdgeOne 洛杉矶节点，TLS 慢或偶发失败，题库显示「连接失败」。`catalog`、兼容 `bootstrap`、`session`、`activity` 改经 `platform-api.js` 的 `retryRead`：无响应、超时、2xx 非 JSON 或 429 时按 1/3/6 秒退避，最多再试 3 次（429 至少等 Retry-After），其他 HTTP 状态不重试；单次 15 秒，整次连同等待不超过 45 秒，期间显示加载中，用尽后才显示原错误。
+- check 90/0、test 74/74；本机 Chrome 打开线上 gallery 并替换两个文件、拦截 catalog，验证了重置后恢复、HTML 响应后恢复、持续失败约 10 秒报错、500 不重试。未跑 build/intake（需私有数据包）。详见 [本轮归档](docs/archive/2026-10-20-api-read-retry-kme7kme7-prog.md)。
+
 ## 题库推荐与模型更名发布准备（2026-10-19，Atmeplz，已授权）
 
 - 用户验收并明确授权将题库推荐机制和前轮模型更名一起提交、推送GitHub及同步VPS。Gallery提交推荐模块、界面、中英适配、测试与规则文档；更名由独立数据仓提交。每仓一条英文提交，GitHub身份Atmeplz / 224206292+Atmeplz@users.noreply.github.com。
