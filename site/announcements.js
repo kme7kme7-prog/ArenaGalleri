@@ -1,6 +1,5 @@
 import { locale } from './i18n.js';
 import { api, isSenior, onPlatformChange, toast } from './platform.js';
-import { apiUrl } from './platform-api.js';
 import { esc, icon, store } from './ui.js';
 import { renderAnnouncementMarkdown } from './announcement-markdown.js';
 
@@ -14,7 +13,8 @@ const dateOf = entry => {
 const fullDate = entry => new Date(entry.publishedAt).toLocaleDateString(locale() === 'en' ? 'en-US' : 'zh-CN',
   { year: 'numeric', month: 'long', day: 'numeric' });
 
-let entries = [], started = false, pending = null, modal = null, stream = null;
+let entries = [], started = false, pending = null, modal = null, timer = null;
+const POLL_MS = 60000;
 let selectedId = 0, editing = false, dismissedThrough = 0, shownAdmin = false;
 const latest = () => entries[0] ?? null;
 export const latestAnnouncement = () => latest();
@@ -112,15 +112,11 @@ function maybeOpen() {
   openAnnouncements(entry.id);
 }
 
-function connectStream() {
-  if (stream || !started) return;
-  stream = new EventSource(apiUrl('announcements/events'), { withCredentials: true });
-  stream.addEventListener('announcement', async event => {
-    const id = Number(JSON.parse(event.data).id) || 0;
-    if (id <= (latest()?.id ?? 0)) return;
-    await refresh();
-    if (id > (latest()?.id ?? 0)) await refresh();
-  });
+// Poll once a minute while the page is visible; a hidden page stops polling and
+// refreshes as soon as it becomes visible again.
+function schedule() {
+  clearInterval(timer);
+  timer = document.hidden ? null : setInterval(() => void refresh(), POLL_MS);
 }
 
 async function refresh() {
@@ -130,7 +126,6 @@ async function refresh() {
     const previous = latest()?.id ?? 0;
     const changed = next.length !== entries.length || next.some((entry, index) => entry.id !== entries[index]?.id);
     entries = next;
-    connectStream();
     if (modal && !editing && changed) {
       if ((latest()?.id ?? 0) > previous) selectedId = latest().id;
       render();
@@ -155,6 +150,9 @@ export async function startAnnouncements() {
   window.addEventListener('localechange', () => { if (modal && !editing) render(); });
   window.addEventListener('storage', event => { if (event.key === READ_KEY) dismissedThrough = Math.max(dismissedThrough, readThrough()); });
   await refresh();
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) void refresh(); });
-  setInterval(() => { if (!document.hidden) void refresh(); }, 60000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) void refresh();
+    schedule();
+  });
+  schedule();
 }
