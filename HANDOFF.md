@@ -1,3 +1,11 @@
+## 搜索收录与分享卡片元信息（2026-10-20，kme7kme7-prog，PR 待 shadow 合并，未部署）
+
+- 目标：搜索引擎能按名字「亿模亿样」找到本站；QQ/微信分享卡片只读原始 HTML，元信息必须写在静态 HTML 里。
+- `site/index.html`：title「亿模亿样 ArenaGalleri · 模型效果对比」、新 description、canonical、Open Graph、itemprop、twitter、WebSite 结构化数据；`#app` 内放一段真实的静态介绍（`app.js` 首次渲染时整块替换），noscript 改为介绍文字。
+- 英文界面标题保留中文名：`site/i18n.js` 的 `setPageTitle` 把站名渲染为「亿模亿样 ArenaGalleri」，`i18n-gallery.js` 对应条目同步。
+- 新增 `site/robots.txt`、`site/sitemap.xml`（hash 路由只收首页）与 1200×630 占位分享图 `site/assets/share-preview.png`，正式图待定。
+- 归档：[搜索收录与分享卡片](docs/archive/2026-10-20-seo-share-metadata-kme7kme7-prog.md)。
+
 ## 平台读取退避重试（2026-10-20，kme7kme7-prog，已授权开 PR，未合并/未部署）
 
 - 背景：部分移动用户的 api 请求被调度到 EdgeOne 洛杉矶节点，TLS 慢或偶发失败，题库显示「连接失败」。`catalog`、兼容 `bootstrap`、`session`、`activity` 改经 `platform-api.js` 的 `retryRead`：无响应、超时、2xx 非 JSON 或 429 时按 1/3/6 秒退避，最多再试 3 次（429 至少等 Retry-After），其他 HTTP 状态不重试；单次 15 秒，整次连同等待不超过 45 秒，期间显示加载中，用尽后才显示原错误。

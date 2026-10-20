@@ -13,8 +13,28 @@
   <style>html[data-entry]::after { content:''; position:fixed; inset:0; z-index:2147483646; background:#121211; }</style>
   <script src="entry-boot.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>亿模亿样 · 模型效果对比</title>
-  <meta name="description" content="同一份提示词，不同模型的前端表达。浏览作品、并排体验、查看截图与提示词。" />
+  <title>亿模亿样 ArenaGalleri · 模型效果对比</title>
+  <meta name="description" content="亿模亿样（ArenaGalleri）：把同一份提示词交给不同 AI 模型，收录它们生成的可运行前端作品。在线运行、并排对比、查看截图与提示词，参与匿名盲评与排行榜。" />
+  <link rel="canonical" href="https://gallery.arenaofbias.icu/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="亿模亿样" />
+  <meta property="og:locale" content="zh_CN" />
+  <meta property="og:title" content="亿模亿样 · 模型效果对比" />
+  <meta property="og:description" content="同一份提示词，各家 AI 模型的解答并排陈列。在线运行、并排对比，匿名盲评选出更好的那一个。" />
+  <meta property="og:url" content="https://gallery.arenaofbias.icu/" />
+  <meta property="og:image" content="https://gallery.arenaofbias.icu/assets/share-preview.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="亿模亿样 · 同一份提示词，各家 AI 模型的解答并排陈列" />
+  <meta itemprop="name" content="亿模亿样 · 模型效果对比" />
+  <meta itemprop="description" content="同一份提示词，各家 AI 模型的解答并排陈列。在线运行、并排对比，匿名盲评选出更好的那一个。" />
+  <meta itemprop="image" content="https://gallery.arenaofbias.icu/assets/share-preview.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="亿模亿样 · 模型效果对比" />
+  <meta name="twitter:description" content="同一份提示词，各家 AI 模型的解答并排陈列。在线运行、并排对比，匿名盲评选出更好的那一个。" />
+  <meta name="twitter:image" content="https://gallery.arenaofbias.icu/assets/share-preview.png" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"亿模亿样","alternateName":["ArenaGalleri","亿模亿样 · 模型效果对比"],"url":"https://gallery.arenaofbias.icu/"}</script>
   <meta name="color-scheme" content="light dark" />
   <meta name="theme-color" content="#121211" />
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
@@ -27,6 +47,13 @@
       document.documentElement.dataset.theme = theme;
     })();
   </script>
+  <style>
+    .static-intro { box-sizing: border-box; max-width: 40rem; margin: 0 auto; padding: 18vh 24px 48px; color: #ecebe6; font: 16px/1.75 system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+    html[data-theme="light"] .static-intro { color: #1c1b19; }
+    .static-intro h1 { margin: 0 0 16px; font: 500 34px/1.25 "Songti SC", "Noto Serif SC", serif; }
+    .static-intro p { margin: 0 0 12px; opacity: .78; }
+    .static-intro a { color: inherit; }
+  </style>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="sandtable.css" />
   <link rel="stylesheet" href="exhibition.css" />
@@ -34,7 +61,14 @@
   <link rel="stylesheet" href="studio.css" />
 </head>
 <body>
-  <div id="app" aria-live="polite"></div>
+  <div id="app" aria-live="polite">
+    <main class="static-intro">
+      <h1>亿模亿样 <span lang="en">ArenaGalleri</span></h1>
+      <p>把同一份提示词交给不同 AI 模型，收录它们生成的可运行前端作品：在线运行、并排对比、查看截图与提示词。</p>
+      <p>先别看名字，只看作品：同一道题的两份解答匿名并排，投票后揭晓模型，汇入排行榜。</p>
+      <p>姊妹站：<a href="https://game.arenaofbias.icu/">偏见试验场 ARENA OF BIAS</a> ｜ <a href="https://arenaofbias.icu/">总入口</a></p>
+    </main>
+  </div>
   <div id="lightbox" class="lightbox" role="dialog" aria-modal="true" aria-label="图片浏览" hidden>
     <div class="lb-top">
       <span class="lb-count" aria-live="polite"></span>
@@ -48,7 +82,7 @@
     </figure>
     <button class="lb-btn lb-nav lb-next" data-lb="next" aria-label="下一张（→）"></button>
   </div>
-  <noscript>此页面需要启用 JavaScript。 Please enable JavaScript to use this page.</noscript>
+  <noscript><p class="static-intro">亿模亿样需要启用 JavaScript 才能浏览和运行作品。Please enable JavaScript to browse ArenaGalleri.</p></noscript>
   <script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/controls/OrbitControls.js":"./vendor/OrbitControls.js","three/addons/utils/BufferGeometryUtils.js":"./vendor/BufferGeometryUtils.js"}}</script>
   <script src="runtime-config.js"></script>
   <script type="module" src="app.js"></script>
