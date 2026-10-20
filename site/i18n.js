@@ -69,10 +69,13 @@ const originals = new WeakMap();
 let observer;
 let pageTitle;
 let lastPageTitle;
+// Search engines read the rendered title; the Chinese site name stays in English titles.
+const BRAND = '亿模亿样';
+const titlePart = (text) => text === BRAND && current === 'en' ? `${BRAND} ${t(BRAND)}` : t(text);
 export function setPageTitle(parts) {
   pageTitle = parts;
   if (typeof document !== 'undefined') {
-    const text = parts.map((part) => typeof part === 'string' ? t(part) : part.original ? part.text : t(part.text)).join(' · ');
+    const text = parts.map((part) => typeof part === 'string' ? titlePart(part) : part.original ? part.text : titlePart(part.text)).join(' · ');
     if (document.title !== text) document.title = text;
     lastPageTitle = text;
   }
