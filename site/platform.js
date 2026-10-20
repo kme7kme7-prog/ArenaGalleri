@@ -2,7 +2,7 @@ import { languageButton, translateText } from './i18n.js';
 // Platform layer: session, uploads, reactions and the dialogs they share. The gallery runs
 // without it as a static archive; `platform.available` is false when no API answers.
 import { $, $$, esc, formatDate, icon } from './ui.js';
-import { compatibleBuild, fetchApi, resolveApiMedia, setDatapackVersion, staleBuild } from './platform-api.js';
+import { compatibleBuild, fetchApi, resolveApiMedia, retryRead, setDatapackVersion, staleBuild } from './platform-api.js';
 import { loadTurnstile, mountTurnstile } from './turnstile.js';
 import { CONTACT } from './legal.js';
 import { openAuthDialog } from './auth-dialog.js';
@@ -51,10 +51,12 @@ export const onPlatformChange = (listener) => { listeners.add(listener); return 
 const emit = (reason) => listeners.forEach((listener) => listener(reason));
 
 // Older backends still expose a combined bootstrap; keep that fallback in memory only.
-export const requestBootstrap = () => fetchApi('bootstrap', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+export const requestBootstrap = (timeout = 15000) => fetchApi('bootstrap', { cache: 'no-store', signal: AbortSignal.timeout(timeout) });
+const requestCatalog = (timeout = 15000) => fetchApi('catalog', { credentials: 'omit', cache: 'no-cache', signal: AbortSignal.timeout(timeout) });
+const requestSession = (timeout = 15000) => fetchApi('session', { cache: 'no-store', signal: AbortSignal.timeout(timeout) });
 export function requestPlatform() {
-  const catalog = fetchApi('catalog', { credentials: 'omit', cache: 'no-cache', signal: AbortSignal.timeout(15000) });
-  const session = sessionConnection ? null : fetchApi('session', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+  const catalog = requestCatalog();
+  const session = sessionConnection ? null : requestSession();
   catalog.catch(() => {});
   session?.catch(() => {});
   return { catalog, session };
@@ -71,6 +73,7 @@ let activityNeedsRefresh = true;
 let publicWorks = [];
 let workAccess = [];
 const cooling = (error) => Date.now() < (error?.retryAt ?? 0);
+const LEGACY = Symbol('legacy session'), MISMATCH = Symbol('version mismatch');
 function clearPrivate() {
   accountGeneration++;
   invalidateActivity();
@@ -158,7 +161,7 @@ function loadActivity() {
   platform.activityConnecting = true;
   const task = (async () => {
     try {
-      const data = await responseData(await fetchApi('activity', { cache: 'no-store', signal: AbortSignal.timeout(15000) }));
+      const data = await retryRead(async (timeout) => responseData(await fetchApi('activity', { cache: 'no-store', signal: AbortSignal.timeout(timeout) })));
       if (!current()) return false;
       if (!compatibleBuild(frontendBuildInfo, data)) throw new Error('Invalid platform response');
       acceptActivity(data);
@@ -183,12 +186,15 @@ function loadSession(request, catalogConnection, refreshActivity = false) {
   const generation = accountGeneration;
   const task = (async () => {
     try {
-      const response = await request;
-      if (response.status === 404) {
-        await catalogConnection;
-        if (legacy && platform.sessionReady) return true;
-      }
-      const data = await responseData(response);
+      const data = await retryRead(async (timeout, tries) => {
+        const response = await (tries ? requestSession(timeout) : request);
+        if (response.status === 404) {
+          await catalogConnection;
+          if (legacy && platform.sessionReady) return LEGACY;
+        }
+        return responseData(response);
+      });
+      if (data === LEGACY) return true;
       if (generation !== accountGeneration) return false;
       if (!compatibleBuild(frontendBuildInfo, data) || !Object.hasOwn(data, 'user')
         || (data.user !== null && !data.user?.id)) throw new Error('Invalid platform response');
@@ -231,10 +237,12 @@ export function connectPlatform(buildInfo = frontendBuildInfo, request) {
 async function readPlatform(buildInfo, request, bootstrap = false) {
   const generation = accountGeneration;
   try {
-    let response = await request;
-    if (!bootstrap && response.status === 404) { legacy = true; bootstrap = true; response = await requestBootstrap(); }
-    if (response.status === 409) { platform.available = false; platform.mismatch = true; return false; }
-    const data = await responseData(response);
+    const data = await retryRead(async (timeout, tries) => {
+      let response = await (tries ? (bootstrap ? requestBootstrap : requestCatalog)(timeout) : request);
+      if (!bootstrap && response.status === 404) { legacy = true; bootstrap = true; response = await requestBootstrap(timeout); }
+      return response.status === 409 ? MISMATCH : responseData(response);
+    });
+    if (data === MISMATCH) { platform.available = false; platform.mismatch = true; return false; }
     if (!acceptCatalog(data, buildInfo)) return false;
     if (bootstrap && generation === accountGeneration) {
       const identityChanged = (data.user?.id ?? null) !== (platform.user?.id ?? null) || data.user?.role !== platform.user?.role || levelOf(data.user) !== levelOf(platform.user);
@@ -256,7 +264,7 @@ async function readPlatform(buildInfo, request, bootstrap = false) {
 export async function refreshPlatform(reason = 'refresh') {
   if (!frontendBuildInfo || platform.mismatch) return false;
   if (platform.available && !platform.connectionError && !legacy && reason === 'reconnect') {
-    if (!cooling(platform.sessionError)) await (sessionConnection ?? loadSession(fetchApi('session', { cache: 'no-store', signal: AbortSignal.timeout(15000) }), Promise.resolve(true)));
+    if (!cooling(platform.sessionError)) await (sessionConnection ?? loadSession(requestSession(), Promise.resolve(true)));
     if (platform.sessionReady && (!platform.activityReady || activityNeedsRefresh || platform.activityError) && !cooling(platform.activityError)) void loadActivity();
     emit(reason);
     return true;
@@ -384,7 +392,7 @@ async function checkSession() {
       if (catalogState() !== 'static') await refreshPlatform('reconnect');
       return;
     }
-    if (!legacy) await (sessionConnection ?? loadSession(fetchApi('session', { cache: 'no-store', signal: AbortSignal.timeout(15000) }), Promise.resolve(true)));
+    if (!legacy) await (sessionConnection ?? loadSession(requestSession(), Promise.resolve(true)));
     else {
       const { user } = await api('auth/me');
       if ((user?.id ?? null) !== (platform.user?.id ?? null)) await refreshPlatform('session');
