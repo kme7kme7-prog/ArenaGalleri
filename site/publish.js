@@ -25,6 +25,7 @@ const sideSteps = (current, kept = null) => `<ol class="side-steps">${['题目�
 
 export function mount(root, ctx) {
   let question = blank();
+  let checking = false;
   // showing: 'form', 'upload' (the flow is on screen) or 'done'. skipGuard: the next popstate is our own back.
   let flow = null, flowTask = null, active = true, showing = 'form', skipGuard = false, proceed = null;
   // Resubmitting: the rejected question as last submitted, its sample results and whether to drop them.
