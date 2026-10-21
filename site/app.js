@@ -221,7 +221,7 @@ const pageEnd = () => `${footer()}</main></div>`;
 const searchControl = (type, placeholder, value = '') => `<label class="collection-search">${icon('search')}<input type="search" data-${type}-search aria-label="${placeholder}" placeholder="${placeholder}" value="${esc(value)}"></label>`;
 const questionSorts = { recommended: '推荐（热门与探索）', date: '发布时间（最新在前）', works: '解答数量（多到少）', title: '题目名称（A–Z）' };
 const recommendationLabels = { popular: '热门', unanswered: '等你来测', explore: '待探索', recent: '新题' };
-const homeState = { category: '', domain: '', model: '', query: '', view: 'tasks', sort: Object.hasOwn(questionSorts, store.get('question-sort')) ? store.get('question-sort') : 'recommended', recommendationBatch: 0, modelQuery: '', vendor: '' };
+const homeState = { category: '', domain: '', model: '', unanswered: false, query: '', view: 'tasks', sort: Object.hasOwn(questionSorts, store.get('question-sort')) ? store.get('question-sort') : 'recommended', recommendationBatch: 0, modelQuery: '', vendor: '' };
 
 // ---- home -----------------------------------------------------------------------------
 // Questioned works stay visible as reference but are left out of every count.
@@ -274,7 +274,7 @@ function rankedTasks(tasks = DATA.tasks, now = Date.now()) {
 // as does the model index (#/questions/models), so a return or a shared link keeps them. Search
 // and the selects only survive a return; a fresh visit opens the whole library.
 function renderLibrary(scopes = [], fresh = true) {
-  if (fresh) Object.assign(homeState, { model: '', query: '', modelQuery: '', vendor: '' });
+  if (fresh) Object.assign(homeState, { model: '', unanswered: false, query: '', modelQuery: '', vendor: '' });
   homeState.view = scopes[0] === 'models' ? 'models' : 'tasks';
   homeState.category = scopes.find((x) => DATA.tasks.some((t) => t.category === x)) ?? '';
   homeState.domain = scopes.find((x) => DATA.tasks.some((t) => domainsOf(t).includes(x))) ?? '';
@@ -345,10 +345,11 @@ function renderLibrary(scopes = [], fresh = true) {
   if (!vendors.includes(homeState.vendor)) homeState.vendor = '';
   // Only models with an answer can narrow the question list.
   const answering = vendors.map((vendor) => [vendor, modelsByVendor.get(vendor).filter((m) => DATA.tasks.some((t) => answeredBy(t, m.id)))]).filter(([, models]) => models.length);
-  if (!answering.some(([, models]) => models.some((m) => m.id === homeState.model))) homeState.model = '';
+  if (!answering.some(([, models]) => models.some((m) => m.id === homeState.model))) { homeState.model = ''; homeState.unanswered = false; }
   // Search leads every list's toolbar; the heading keeps the page's own actions or a quiet note.
   const taskToolbar = `<div class="collection-toolbar">${searchControl('home', '搜索题目或提示词', homeState.query)}<div class="toolbar-actions">
     ${selectControl('home-model', '按作答模型筛选', option('', '全部作答模型', !homeState.model) + answering.map(([vendor, models]) => `<optgroup label="${esc(vendor)}">${models.map((m) => option(m.id, m.name, m.id === homeState.model, `（${DATA.tasks.filter((t) => answeredBy(t, m.id)).length} 题）`)).join('')}</optgroup>`).join(''))}
+    <button class="btn sm ghost model-answer-filter" type="button" data-home-unanswered aria-pressed="${homeState.unanswered}"${homeState.model ? '' : ' hidden'}>尚未回答</button>
     ${selectControl('home-sort', '题目排序', Object.entries(questionSorts).map(([value, text]) => option(value, text, value === homeState.sort)).join(''))}
   </div></div>`;
   const modelToolbar = `<div class="collection-toolbar">${searchControl('model', '搜索模型或厂商', homeState.modelQuery)}<div class="toolbar-actions">
@@ -403,7 +404,7 @@ function renderLibrary(scopes = [], fresh = true) {
     for (const card of $$('[data-task-card]', root)) {
       const task = DATA.tasks.find((t) => t.id === card.dataset.taskCard);
       const match = searchMatch(task, homeState.query);
-      card.hidden = Boolean(!match || (homeState.category && task.category !== homeState.category) || (homeState.domain && !domainsOf(task).includes(homeState.domain)) || (homeState.model && !answeredBy(task, homeState.model)));
+      card.hidden = Boolean(!match || (homeState.category && task.category !== homeState.category) || (homeState.domain && !domainsOf(task).includes(homeState.domain)) || (homeState.model && (homeState.unanswered ? answeredBy(task, homeState.model) : !answeredBy(task, homeState.model))));
       const hit = $('[data-prompt-hit]', card);
       hit.hidden = !match?.snippet;
       if (match?.snippet) {
@@ -440,11 +441,14 @@ function renderLibrary(scopes = [], fresh = true) {
       reason.textContent = text ?? '';
     }
     $('[data-question-recommendation]').hidden = homeState.sort !== 'recommended' || count === 0;
-    $('#h-tasks').innerHTML = [homeState.category ? `<span>${esc(categoryLabel(homeState.category))}</span>` : '', homeState.domain ? `<span>${esc(homeState.domain)}</span>` : '', homeState.model ? `<span data-i18n-ignore>${esc(MODELS.get(homeState.model)?.name)}</span>` : ''].filter(Boolean).join(' · ') || '全部题目';
+    $('#h-tasks').innerHTML = [homeState.category ? `<span>${esc(categoryLabel(homeState.category))}</span>` : '', homeState.domain ? `<span>${esc(homeState.domain)}</span>` : '', homeState.model ? `<span data-i18n-ignore>${esc(MODELS.get(homeState.model)?.name)}</span>` : '', homeState.model && homeState.unanswered ? '<span>尚未回答</span>' : ''].filter(Boolean).join(' · ') || '全部题目';
     $('[data-home-count]').textContent = `${count} 道题目`;
     $('[data-home-empty]').hidden = count > 0;
     $('[data-task-new]')?.toggleAttribute('hidden', count === 0);
     $('[data-home-model]').value = homeState.model;
+    const unanswered = $('[data-home-unanswered]', root);
+    unanswered.hidden = !homeState.model;
+    unanswered.setAttribute('aria-pressed', String(homeState.unanswered));
     // Model index: the keyword matches a model or its vendor; the vendor select keeps one row.
     const needle = homeState.modelQuery;
     let models = 0, vendorsShown = 0;
@@ -483,7 +487,7 @@ function renderLibrary(scopes = [], fresh = true) {
   };
   root.onchange = (event) => {
     const el = event.target;
-    if (el.matches('[data-home-model]')) homeState.model = el.value;
+    if (el.matches('[data-home-model]')) { homeState.model = el.value; if (!homeState.model) homeState.unanswered = false; }
     else if (el.matches('[data-model-vendor]')) homeState.vendor = el.value;
     else if (el.matches('[data-home-sort]')) {
       homeState.sort = el.value;
@@ -498,10 +502,11 @@ function renderLibrary(scopes = [], fresh = true) {
     if (category) { homeState.category = category.dataset.homeCategory; homeState.view = 'tasks'; }
     if (domain) { homeState.domain = homeState.view === 'tasks' && homeState.domain === domain.dataset.homeDomain ? '' : domain.dataset.homeDomain; homeState.view = 'tasks'; }
     if (view) { homeState.view = view.dataset.homeView; homeState.category = ''; homeState.domain = ''; }
-    if (event.target.closest('[data-home-reset]')) { homeState.category = ''; homeState.domain = ''; homeState.model = ''; homeState.query = ''; $('[data-home-search]').value = ''; }
+    if (event.target.closest('[data-home-reset]')) { homeState.category = ''; homeState.domain = ''; homeState.model = ''; homeState.unanswered = false; homeState.query = ''; $('[data-home-search]').value = ''; }
     if (event.target.closest('[data-model-reset]')) { homeState.vendor = ''; homeState.modelQuery = ''; $('[data-model-search]').value = ''; }
     if (event.target.closest('[data-recommend-refresh]')) homeState.recommendationBatch++;
-    if (category || domain || view || event.target.closest('[data-home-reset], [data-model-reset], [data-recommend-refresh]')) filter();
+    if (event.target.closest('[data-home-unanswered]')) homeState.unanswered = !homeState.unanswered;
+    if (category || domain || view || event.target.closest('[data-home-reset], [data-model-reset], [data-recommend-refresh], [data-home-unanswered]')) filter();
   };
   filter();
   window.addEventListener('localechange', filter, { signal: controller.signal });

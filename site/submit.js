@@ -199,14 +199,25 @@ export function uploadFlow(root, ctx, options) {
   const progressLabel = () => (state.progress < 1 ? `正在上传 ${Math.round(state.progress * 100)}%` : '正在检查文件…');
   const progressBytes = () => (state.total ? `${formatBytes(state.loaded)} / ${formatBytes(state.total)} · 请不要关闭页面` : '请不要关闭页面');
 
+  const peekedPrompt = () => task.promptVariants?.find((v) => v.id === state.peek)?.prompt ?? task.prompt;
+
+  async function copyPrompt(button) {
+    try {
+      await navigator.clipboard.writeText(peekedPrompt());
+      button.textContent = '已复制';
+      setTimeout(() => { button.textContent = '复制'; }, 1500);
+    } catch {
+      toast('复制失败，请手动选择文字复制');
+    }
+  }
+
   function promptPeek() {
     const variants = task.promptVariants ?? [];
-    const current = variants.find((v) => v.id === state.peek);
     const refs = task.references ?? [];
-    return `<details class="prompt-peek"><summary>${icon('guide')}<span>查看本题提示词</span>${variants.length ? ` · ${variants.length} 个版本，任选其一` : ''}${refs.length ? ` · 附 ${refs.length} 张参考图` : ''}</summary>
+    return `<details class="prompt-peek"><summary>${icon('guide')}<span class="prompt-peek-title"><span>查看本题提示词</span>${variants.length ? ` · ${variants.length} 个版本，任选其一` : ''}${refs.length ? ` · 附 ${refs.length} 张参考图` : ''}</span><button type="button" class="text-action prompt-peek-copy" data-copy-prompt aria-label="复制提示词" aria-live="polite">复制</button></summary>
       ${variants.length ? `<div class="seg" role="group" aria-label="提示词版本">${variants.map((v) => `<button type="button" data-i18n-ignore data-peek="${esc(v.id)}" aria-pressed="${v.id === state.peek}">${esc(v.label)}</button>`).join('')}</div>` : ''}
       ${refs.length ? `<div class="prompt-peek-refs">${referenceSheet(refs, { key: task.id, credit: task.referenceCredit })}<p class="fine">请把这 ${refs.length} 张图按顺序一并提供给模型，作为附件或放进工作区均可。</p></div>` : ''}
-      <pre>${linkReferences(current?.prompt ?? task.prompt, refs, task.id)}</pre></details>`;
+      <pre>${linkReferences(peekedPrompt(), refs, task.id)}</pre></details>`;
   }
 
   const confirmable = () => state.trial.loaded || state.trial.manual;
@@ -582,6 +593,12 @@ export function uploadFlow(root, ctx, options) {
   // The page handlers belong to the flow while it is on screen; a resume takes them back.
   function bind() {
     root.onclick = (e) => {
+      const copy = e.target.closest('[data-copy-prompt]');
+      if (copy) {
+        e.preventDefault();
+        void copyPrompt(copy);
+        return;
+      }
       if (e.target.matches('input[type="file"]')) return;
       const drop = e.target.closest('[data-drop]');
       if (drop && !state.uploading) { $('input[type="file"]', drop).click(); return; }
@@ -599,7 +616,7 @@ export function uploadFlow(root, ctx, options) {
       if (peek) {
         state.peek = peek.dataset.peek;
         $$('[data-peek]', root).forEach((b) => b.setAttribute('aria-pressed', String(b === peek)));
-        $('.prompt-peek pre', root).innerHTML = linkReferences(task.promptVariants.find((v) => v.id === state.peek).prompt, task.references, task.id);
+        $('.prompt-peek pre', root).innerHTML = linkReferences(peekedPrompt(), task.references, task.id);
         return;
       }
       const format = e.target.closest('[data-text-format]');

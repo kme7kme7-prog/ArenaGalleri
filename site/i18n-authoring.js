@@ -64,6 +64,7 @@ export default {
 '{value} / {total} · 请不要关闭页面': '{value} / {total} · Keep this page open',
 '请不要关闭页面': 'Keep this page open',
 '查看本题提示词': 'View the question prompt',
+'复制提示词': 'Copy prompt',
 '· {count} 个版本，任选其一': '· {count} versions; choose any one',
 '· 附 {count} 张参考图': '· {count} reference images',
 '提示词版本': 'Prompt version',
