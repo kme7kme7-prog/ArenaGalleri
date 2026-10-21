@@ -200,6 +200,10 @@ export function mount(root, ctx) {
   const stripMarkup = () => [false, true].map((copy) => `<div class="home-stream-group"${copy ? ' aria-hidden="true"' : ''}>${recentOf().map(({ task, work }) =>
     `<div class="home-stream-item">${windowCard(task, work, copy ? ' tabindex="-1"' : '')}<span data-i18n-ignore class="home-stream-task">${esc(shortTitle(task))}</span></div>`).join('')}</div>`).join('');
   const tabsMarkup = (selected = 0) => decks.map((t, i) => `<button class="home-tab" role="tab" aria-selected="${i === selected}" data-home-tab="${i}"><small>${String(i + 1).padStart(2, '0')}</small><span data-i18n-ignore>${esc(shortTitle(t))}</span><span class="home-tab-count">${answersOf(t).length}</span></button>`).join('');
+  const statusMarkup = () => `${proofMarkup()}<span class="home-connection" role="status">${connectionMarkup()}</span>`;
+  // Keep the last generated markup, since image fitting, translation and tab
+  // animation legitimately change the live DOM after it has been rendered.
+  let lastProof = statusMarkup(), lastTabs = tabsMarkup(), lastStrip = catalogReady() ? stripMarkup() : '';
 
   root.innerHTML = `${ctx.header()}<main class="landing page">
     <section class="home-hero" aria-labelledby="home-title">
@@ -214,7 +218,7 @@ export function mount(root, ctx) {
           ${first ? `<a class="btn home-enter" data-home-cta href="${ctx.taskHref(first)}"><span data-home-n>看看这 ${firstCount} 种</span>${icon('right')}</a>` : ''}
           <a class="home-link" href="#/questions">浏览全部题目${icon('right')}</a>
         </div>
-        <div class="home-proof">${proofMarkup()}<span class="home-connection" role="status">${connectionMarkup()}</span></div>
+        <div class="home-proof">${lastProof}</div>
       </div>
       <div class="home-stage">
         <div class="home-deck-frame">
@@ -224,13 +228,13 @@ export function mount(root, ctx) {
       </div>
       <div class="home-foot">
         <a class="home-scroll" href="#" data-scroll-next aria-label="向下查看最近收录"><span class="home-scroll-track" aria-hidden="true"><i></i></span></a>
-        <div class="home-tabs" role="tablist" aria-label="选择题目">${tabsMarkup()}</div>
+        <div class="home-tabs" role="tablist" aria-label="选择题目">${lastTabs}</div>
         <button class="home-motion" type="button" data-autoplay aria-pressed="false">暂停轮播 <span aria-hidden="true">Ⅱ</span></button>
       </div>
     </section>
     <section class="home-recent" aria-label="最近收录">
       <div class="home-recent-head"><h2>最近收录</h2><button class="home-motion" type="button" data-motion aria-pressed="false">暂停流动 <span aria-hidden="true">Ⅱ</span></button></div>
-      <div class="home-stream"><div class="home-stream-track">${catalogReady() ? stripMarkup() : ''}</div></div>
+      <div class="home-stream"><div class="home-stream-track">${lastStrip}</div></div>
     </section>
     <section class="home-blind" aria-labelledby="home-blind-title"${platform.available ? '' : ' hidden'}>
       <p class="home-blind-ab" aria-hidden="true"><i>A</i><span>vs</span><i>B</i></p>
@@ -293,20 +297,29 @@ export function mount(root, ctx) {
   // headline, or motion state. New answers join the next ordinary rotation.
   const updateCatalog = () => {
     const proof = root.querySelector('.home-proof');
-    proof.innerHTML = `${proofMarkup()}<span class="home-connection" role="status">${connectionMarkup()}</span>`;
+    const nextProof = statusMarkup();
+    if (nextProof !== lastProof) { proof.innerHTML = nextProof; lastProof = nextProof; }
     if (catalogReady()) {
       const next = decksOf(ctx.DATA.tasks), selectedId = decks[current]?.id;
       if (next.length) {
         decks = next;
         current = Math.max(0, decks.findIndex((t) => t.id === selectedId));
-        const left = tabList.scrollLeft;
-        tabList.innerHTML = tabsMarkup(current);
-        tabList.scrollLeft = left;
-        tabList.children[current]?.style.setProperty('--progress', autoQuestion ? String(Math.min(elapsed / QUESTION, 1)) : '1');
+        const nextTabs = tabsMarkup();
+        if (nextTabs !== lastTabs) {
+          const left = tabList.scrollLeft;
+          tabList.innerHTML = tabsMarkup(current);
+          lastTabs = nextTabs;
+          tabList.scrollLeft = left;
+          tabList.children[current]?.style.setProperty('--progress', autoQuestion ? String(Math.min(elapsed / QUESTION, 1)) : '1');
+        }
       }
-      recentSection.querySelector('.home-stream-track').innerHTML = stripMarkup();
-      fitPosters(recentSection);
-      $$('img[loading="lazy"]', recentSection).forEach((image) => { image.loading = 'eager'; });
+      const nextStrip = stripMarkup();
+      if (nextStrip !== lastStrip) {
+        recentSection.querySelector('.home-stream-track').innerHTML = nextStrip;
+        lastStrip = nextStrip;
+        fitPosters(recentSection);
+        $$('img[loading="lazy"]', recentSection).forEach((image) => { image.loading = 'eager'; });
+      }
     }
     root.querySelector('.home-blind').hidden = !platform.available;
     askNews();

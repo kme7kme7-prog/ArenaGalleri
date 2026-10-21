@@ -1746,7 +1746,9 @@ function stable(map, key, fresh) {
   for (const name of Object.keys(kept)) if (!Object.hasOwn(fresh, name)) delete kept[name];
   return Object.assign(kept, fresh);
 }
+let mergedCatalog = null;
 function mergePlatform() {
+  mergedCatalog = { works: platform.works, questions: platform.questions, state: catalogState() };
   if (!['ready', 'static'].includes(catalogState())) { DATA.tasks = []; return; }
   const listed = platform.available ? new Map(platform.questions.map((q) => [q.id, q])) : null;
   const ids = [...[...PACK.keys()].filter((id) => !listed || listed.has(id)), ...(listed ? [...listed.keys()].filter((id) => !PACK.has(id)) : [])];
@@ -1888,11 +1890,16 @@ async function show(version, visit, scrollBack) {
 // Signing in or out, a review or an upload: merge the new state and redraw what shows it.
 onPlatformChange((reason) => {
   if (!DATA) return;
-  mergePlatform();
   refreshAccountControls();
+  // A lightweight account check leaves the public catalog alone. A session
+  // refresh can also fetch a new catalog (e.g. after logout), which must merge.
+  const sessionOnly = ['session', 'session-ready'].includes(reason);
+  const sameCatalog = mergedCatalog?.works === platform.works && mergedCatalog?.questions === platform.questions && mergedCatalog?.state === catalogState();
+  if (sessionOnly && sameCatalog && !page?.awaitingSession && !page?.fullscreen) return;
+  mergePlatform();
   const activeRoute = location.hash.replace(/^#\/?/, '').split('/')[0];
   if (reason === 'identity' && ['new', 'submit', 'me', 'review'].includes(activeRoute)) { void route({ keepScroll: true }); return; }
-  if (['session', 'session-ready'].includes(reason) && !page?.awaitingSession && !page?.home && !page?.fullscreen) return;
+  if (sessionOnly && !page?.awaitingSession && !page?.home && !page?.fullscreen) return;
   if (reason === 'activity' && ['new', 'submit'].includes(location.hash.replace(/^#\/?/, '').split('/')[0]) && !page?.awaitingActivity) return;
   if (page?.onPlatformChange) return page.onPlatformChange(reason);
   route({ keepScroll: true });
