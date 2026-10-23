@@ -21,7 +21,7 @@ export function createExhibition(root, task, { label, vendorOf, cover, header, i
         <label class="sand-search"><span aria-hidden="true">⌕</span><input type="search" placeholder="搜索模型或作品" aria-label="搜索模型或作品"></label>
         <div class="sand-filters"><select aria-label="筛选模型厂商"><option value="">全部厂商</option>${[...new Set(task.results.map(vendorOf))].sort().map((v) => `<option>${escape(v)}</option>`).join('')}</select><button data-action="clear">清空已选</button></div>
         <div class="sand-catalog">${task.results.map((r) => `<article class="sand-item" data-id="${r.id}">
-          <label class="sand-pick"><img src="${escape(cover(r))}" alt="" loading="lazy"><span data-i18n-ignore><b>${escape(label(r))}</b><small>${escape(r.title)}</small></span><input type="checkbox" value="${r.id}" aria-label="加入展厅：${escape(label(r))}"></label>
+          <label class="sand-pick"><img data-media-src="${escape(cover(r))}" alt="" loading="lazy"><span data-i18n-ignore><b>${escape(label(r))}</b><small>${escape(r.title)}</small></span><input type="checkbox" value="${r.id}" aria-label="加入展厅：${escape(label(r))}"></label>
           <div class="sand-item-detail" hidden><span class="exhibition-status" role="status"></span><button data-focus="${r.id}">操作原作 ↗</button></div>
         </article>`).join('')}<p class="sand-no-results" hidden>没有匹配的作品，试试其他关键词。</p></div>
         <p class="sand-library-note">完整原作 · 独立实时运行<br>原有光影、动画、细节与交互全部保留。</p>

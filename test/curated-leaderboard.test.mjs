@@ -81,3 +81,31 @@ test('rankings wait for the server update time, coalesce reads, and stop after l
     Object.assign(globalThis, original);
   }
 });
+
+test('curated empty states describe staff history only when the current scope enables it', async () => {
+  const original = { document: globalThis.document, window: globalThis.window, addEventListener: globalThis.addEventListener,
+    fetch: globalThis.fetch, SAME_PROMPT_CONFIG: globalThis.SAME_PROMPT_CONFIG };
+  globalThis.document = Object.assign(new EventTarget(), { baseURI: 'https://gallery.test/', activeElement: null });
+  globalThis.window = new EventTarget();
+  globalThis.addEventListener = globalThis.window.addEventListener.bind(globalThis.window);
+  globalThis.SAME_PROMPT_CONFIG = { apiBaseUrl: 'https://backend.test/api/' };
+  try {
+    const { mountBoard } = await import('../site/leaderboard.js');
+    let scenario = 0;
+    for (const votes of [0, 12]) for (const flag of [true, false, undefined]) {
+      globalThis.fetch = async () => Response.json({ audience: 'curated', rows: [], unranked: [], totals: { votes, voters: 2 },
+        scope: { taskIds: ['question'], provisionalGames: 30, provisionalModels: 2, countingStartedAt: '2026-10-20T00:00:00Z',
+          ...(flag === undefined ? {} : { includesStaffHistory: flag }) } });
+      const container = Object.assign(new EventTarget(), { innerHTML: '', setAttribute() {}, removeAttribute() {},
+        querySelector() { return null; }, querySelectorAll() { return []; } });
+      // An explicit false in the scope overrides cached page metadata; an absent flag falls back.
+      const board = mountBoard(container, { curated: true, sectionId: `history-${scenario++}`, info: { includesStaffHistory: true } });
+      try {
+        await board.ready;
+        if (flag === false) assert.doesNotMatch(container.innerHTML, /管理员历史票|管理员的历史有效票/);
+        else assert.match(container.innerHTML, /含管理员历史票/);
+        if (!votes) assert.match(container.innerHTML, /精选榜等待比较/);
+      } finally { board.destroy(); }
+    }
+  } finally { Object.assign(globalThis, original); }
+});

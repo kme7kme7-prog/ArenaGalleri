@@ -63,14 +63,16 @@
       img.addEventListener('error', reject, { once:true });
     });
   }
-  async function ready(root) {
+  async function ready(root, { prepareImages = () => {} } = {}) {
     if (phase !== 'loading') return;
     phase = 'settling';
     try {
       await domReady;
       await nextFrame();
+      await prepareImages(root);
       // Wait for the visible first-screen images, including Gallery's lazy deck cards.
       const images = [...root.querySelectorAll('img')].filter(img => {
+        if (!img.hasAttribute('src')) return false;
         const rect = img.getBoundingClientRect();
         return rect.width && rect.height && rect.top < innerHeight && rect.bottom > 0 && rect.left < innerWidth && rect.right > 0;
       });

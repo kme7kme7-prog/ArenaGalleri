@@ -318,7 +318,6 @@ export function mount(root, ctx) {
         recentSection.querySelector('.home-stream-track').innerHTML = nextStrip;
         lastStrip = nextStrip;
         fitPosters(recentSection);
-        $$('img[loading="lazy"]', recentSection).forEach((image) => { image.loading = 'eager'; });
       }
     }
     root.querySelector('.home-blind').hidden = !platform.available;
@@ -381,6 +380,7 @@ export function mount(root, ctx) {
     card.style.zIndex = String(SLOTS.length - k);
     card.tabIndex = k ? -1 : 0;
     card.toggleAttribute('data-front', !k);
+    card.toggleAttribute('data-media-warm', k === 1);
   });
   const show = (i) => {
     current = i; elapsed = 0; sinceShuffle = 0;
@@ -454,7 +454,7 @@ export function mount(root, ctx) {
   // Cards shuffle and a random other question comes up on its own, pausing while the pointer or focus is on the hero.
   const TICK = 100;
   const timer = setInterval(() => {
-    if (!playing || hovering || document.visibilityState !== 'visible') return;
+    if (!playing || hovering || !heroVisible || document.visibilityState !== 'visible') return;
     sinceShuffle += TICK;
     if (autoQuestion) {
       elapsed += TICK;
@@ -478,15 +478,21 @@ export function mount(root, ctx) {
   };
   addEventListener('scroll', onScroll, { passive: true });
 
-  // The strip moves by transform, so lazy shots past its right edge would only start loading as they slide in.
-  // Fetch them all once the section comes near.
+  // Keep only the visible strip and the hero moving. Deferred images enter the small viewport
+  // margin as the strip moves; the second hero card is the only image warmed for the next turn.
   const recentSection = root.querySelector('.home-recent');
-  const near = new IntersectionObserver(([entry]) => {
-    if (!entry.isIntersecting) return;
-    near.disconnect();
-    $$('img[loading="lazy"]', recentSection).forEach((image) => { image.loading = 'eager'; });
-  }, { rootMargin: '0px 0px 800px 0px' });
-  near.observe(recentSection);
+  let heroVisible = true, recentVisible = false;
+  const syncMotion = () => { recentSection.querySelector('.home-stream-track').style.animationPlayState = document.hidden || !recentVisible ? 'paused' : ''; };
+  const near = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.target === hero) heroVisible = entry.isIntersecting;
+      else recentVisible = entry.isIntersecting;
+    }
+    syncMotion();
+  });
+  near.observe(hero); near.observe(recentSection);
+  document.addEventListener('visibilitychange', syncMotion);
+
 
   root.onclick = (event) => {
     if (event.target.closest('[data-scroll-next]')) {
@@ -530,6 +536,7 @@ export function mount(root, ctx) {
       window.removeEventListener('announcementschange', showNews);
       removeEventListener('scroll', onScroll);
       near.disconnect();
+      document.removeEventListener('visibilitychange', syncMotion);
     },
   };
 }

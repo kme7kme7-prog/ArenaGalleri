@@ -59,7 +59,7 @@ export const LOGO = '<svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><r
 
 export const ext = (href, text, cls = 'btn') => `<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener">${text}${icon('arrow')}</a>`;
 export const brandMark = (m, cls = 'brand-mark') => (m.logo
-  ? `<span class="${cls}"><img src="${esc(m.logo)}" alt="" loading="lazy" decoding="async"></span>`
+  ? `<span class="${cls}"><img data-media-src="${esc(m.logo)}" alt="" loading="lazy" decoding="async"></span>`
   : `<span class="${cls}${m.unlisted ? ' is-unlisted' : ''}" aria-hidden="true">${esc((m.name ?? '?').slice(0, 1))}</span>`);
 // The vendor under a model name; a model outside the registry says so (see models.js).
 const UNLISTED = { declared: '厂商由投稿者填写', inferred: '厂商按模型名称推断' };
@@ -98,6 +98,6 @@ export const versionedMedia = (src) => {
 export function img(src, alt, cls = '', eager = false) {
   src = versionedMedia(src);
   return src
-    ? `<img data-i18n-ignore class="${cls}" src="${esc(src)}" alt="${esc(alt)}" loading="${eager ? 'eager' : 'lazy'}"${eager ? ' fetchpriority="high"' : ''} decoding="async" />`
+    ? `<img data-i18n-ignore class="${cls}" ${eager ? 'src' : 'data-media-src'}="${esc(src)}" alt="${esc(alt)}" loading="${eager ? 'eager' : 'lazy'}"${eager ? ' fetchpriority="high"' : ''} decoding="async" />`
     : `<div class="${cls} img-empty">暂无截图</div>`;
 }

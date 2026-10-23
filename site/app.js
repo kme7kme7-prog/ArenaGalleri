@@ -15,7 +15,7 @@ import { initI18n, languageButton, setPageTitle } from './i18n.js';
 //   #/me · #/review           personal center · review queue (platform)
 //   #/terms · #/privacy       terms of use and disclaimer · privacy policy
 import { $, $$, LOGO, brandMark, byName, esc, ext, formatBytes, formatDate, icon, img, pad, store, syncThemeUi, themeButton, versionedMedia } from './ui.js';
-import { STATUS, accountControl, api, arenaScope, arenaText, avatarFace, bySite, catalogState, connectPlatform, can, isStaff, onPlatformChange, platform, reactionBar, refreshAccountControls, refreshPlatform, requestPlatform, setFaces, startPlatformRecovery, statusBadge, toast } from './platform.js';
+import { STATUS, accountControl, api, arenaScope, arenaText, avatarFace, bySite, catalogState, connectPlatform, can, isStaff, onPlatformChange, platform, reactionBar, refreshAccountControls, refreshPlatform, requestPlatform, setFaces, setActivityNeeded, startPlatformRecovery, statusBadge, toast } from './platform.js';
 import { mount as renderLanding } from './home.js';
 import { startAnnouncements } from './announcements.js';
 import { CONTACT, aigcLabel, beianLink, mount as renderLegal } from './legal.js';
@@ -28,8 +28,12 @@ import { modelResolver } from './models.js';
 import { recommendQuestions } from './question-recommendations.js';
 import { createWorkControls, workFrameUrl } from './work-controls.js';
 import { hasModelPreview, screenshotOf } from './work-preview-media.js';
+import { watchViewerFrame } from './viewer-loading.js';
+import { routeParts } from './route-path.js';
+import { createDeferredMedia } from './deferred-media.js';
 
 initI18n();
+const deferredMedia = createDeferredMedia();
 const root = $('#app');
 let DATA;
 let MODELS;
@@ -150,7 +154,10 @@ async function loadFailure(error, title) {
   }
   return { updated: false, title, text: error?.message ?? String(error) };
 }
-const settleImages = () => $$('img', root).forEach((im) => { if (im.complete) im.classList.add('is-loaded'); });
+const settleImages = () => {
+  deferredMedia.refresh(root);
+  $$('img[src]', root).forEach((im) => { if (im.complete && im.naturalWidth) im.classList.add('is-loaded'); });
+};
 
 // ---- shell ----------------------------------------------------------------------------
 const previewControl = () => `<div class="preview-setting" role="group" aria-label="作品卡片预览">
@@ -257,7 +264,6 @@ const act = (kind, href, glyph, title, note, hint = '') => (href
 // Filter selects share the task page's toolbar: the option text carries the label and count.
 const selectControl = (name, aria, options) => `<label class="result-sort">${aria}<select data-${name} aria-label="${aria}">${options}</select></label>`;
 const option = (value, text, selected, suffix = null) => `<option${suffix === null ? '' : ` data-i18n-ignore data-i18n-option-original="${esc(text)}" data-i18n-option-suffix="${esc(suffix)}"`} value="${esc(value)}"${selected ? ' selected' : ''}>${esc(text)}${suffix === null ? '' : esc(suffix)}</option>`;
-const answeredBy = (t, id) => counted(t).some((r) => registeredOf(r) === id);
 // A card names its form, then its domains.
 const tagLine = (t) => `${t.category ? `<li class="tag-kind">${esc(categoryLabel(t.category))}</li>` : ''}${domainsOf(t).map((d) => `<li class="tag-domain">${esc(d)}</li>`).join('')}`;
 function rankedTasks(tasks = DATA.tasks, now = Date.now()) {
@@ -281,18 +287,30 @@ function renderLibrary(scopes = [], fresh = true) {
   const controller = new AbortController();
   const recommendationTime = Date.now();
   let previews = null, destroyed = false, activePreviewKey = null;
+  const tasksById = new Map(DATA.tasks.map(task => [task.id, task]));
   const choices = DATA.tasks.map((task) => ({ task, result: taskCover(task, platform.featured?.[task.id]?.cover) }));
+  const choicesById = new Map(choices.map(choice => [choice.task.id, choice]));
   const artworkFor = (t, shown, eager = false) => shown?.previewMode === 'screenshot'
     ? img(screenshotOf(shown), shown.title, 'question-screenshot-preview', eager)
     : shown?.previewModel || shown?.previewLoader
       ? (shown.previewPoster ? img(shown.previewPoster, '', 'question-model-poster', eager) : coverHtml(shown))
       : shown ? coverHtml(shown, '', eager) : `<span class="question-placeholder">${icon('text')}<span>${counted(t).length ? '暂无预览图' : '等待第一份答案'}</span></span>`;
   const results = DATA.tasks.flatMap((t) => counted(t).map((r) => ({ t, r })));
+  // Build the answer lookup once per catalog, including aliases and unverified answers exactly
+  // as the question filter did. A selected model then needs one Set lookup per question.
+  const answersByModel = new Map();
+  for (const { t, r } of results) {
+    const id = registeredOf(r);
+    if (!id) continue;
+    if (!answersByModel.has(id)) answersByModel.set(id, new Set());
+    answersByModel.get(id).add(t.id);
+  }
+  const answeredBy = (task, id) => answersByModel.get(id)?.has(task.id) ?? false;
 
-  const taskCards = rankedTasks(DATA.tasks, recommendationTime).map(({ task: t }, ti) => {
+  const taskCards = rankedTasks(DATA.tasks, recommendationTime).map(({ task: t }) => {
     const works = counted(t);
-    const shown = choices.find(({ task }) => task === t).result;
-    const artwork = artworkFor(t, shown, ti < 3);
+    const shown = choicesById.get(t.id).result;
+    const artwork = artworkFor(t, shown);
     return `<article class="task-card" data-task-card="${esc(t.id)}">
       <a class="question-visual${shown?.previewMode === 'screenshot' ? ' screenshot-thumb' : shown?.previewModel || shown?.previewLoader ? ' model-thumb' : ''}" href="${taskHref(t)}" aria-label="查看「${esc(t.title)}」的全部作品" tabindex="-1"${shown ? ` data-preview-id="${esc(shown.id)}"` : ''}>
         ${artwork}
@@ -344,33 +362,37 @@ function renderLibrary(scopes = [], fresh = true) {
   const vendors = [...modelsByVendor.keys()].sort(byName);
   if (!vendors.includes(homeState.vendor)) homeState.vendor = '';
   // Only models with an answer can narrow the question list.
-  const answering = vendors.map((vendor) => [vendor, modelsByVendor.get(vendor).filter((m) => DATA.tasks.some((t) => answeredBy(t, m.id)))]).filter(([, models]) => models.length);
+  const answering = vendors.map((vendor) => [vendor, modelsByVendor.get(vendor).filter((m) => answersByModel.has(m.id))]).filter(([, models]) => models.length);
   if (!answering.some(([, models]) => models.some((m) => m.id === homeState.model))) { homeState.model = ''; homeState.unanswered = false; }
   // Search leads every list's toolbar; the heading keeps the page's own actions or a quiet note.
   const taskToolbar = `<div class="collection-toolbar">${searchControl('home', '搜索题目或提示词', homeState.query)}<div class="toolbar-actions">
-    ${selectControl('home-model', '按作答模型筛选', option('', '全部作答模型', !homeState.model) + answering.map(([vendor, models]) => `<optgroup label="${esc(vendor)}">${models.map((m) => option(m.id, m.name, m.id === homeState.model, `（${DATA.tasks.filter((t) => answeredBy(t, m.id)).length} 题）`)).join('')}</optgroup>`).join(''))}
+    ${selectControl('home-model', '按作答模型筛选', option('', '全部作答模型', !homeState.model) + answering.map(([vendor, models]) => `<optgroup label="${esc(vendor)}">${models.map((m) => option(m.id, m.name, m.id === homeState.model, `（${answersByModel.get(m.id).size} 题）`)).join('')}</optgroup>`).join(''))}
     <button class="btn sm ghost model-answer-filter" type="button" data-home-unanswered aria-pressed="${homeState.unanswered}"${homeState.model ? '' : ' hidden'}>尚未回答</button>
     ${selectControl('home-sort', '题目排序', Object.entries(questionSorts).map(([value, text]) => option(value, text, value === homeState.sort)).join(''))}
   </div></div>`;
   const modelToolbar = `<div class="collection-toolbar">${searchControl('model', '搜索模型或厂商', homeState.modelQuery)}<div class="toolbar-actions">
     ${selectControl('model-vendor', '按厂商筛选', option('', `全部厂商（${vendors.length}）`, !homeState.vendor) + vendors.map((v) => option(v, `${v}（${modelsByVendor.get(v).length}）`, v === homeState.vendor)).join(''))}
   </div></div>`;
-  const rows = vendors.map((vendor) => [vendor, modelsByVendor.get(vendor)]).map(([vendor, models]) => {
-    const ids = new Set(models.map((m) => m.id));
-    const works = catalogued.filter(({ r }) => ids.has(registeredOf(r))).length;
+  const modelContent = (id) => {
+    const m = MODELS.get(id);
+    const questions = [...(modelQuestions.get(id)?.values() ?? [])].sort((a, b) => byName(a.task.title, b.task.title));
+    return `${questions.map(({ task: t, works: answers }) => `<section class="dir-question" data-dir-question="${esc(t.id)}">
+            <header class="dir-question-head"><a class="dir-question-title" href="${taskHref(t)}"><span class="dir-question-label">题目</span><span data-i18n-ignore>${esc(t.title)}</span></a><span class="dir-question-count">${answers.length} 件作品</span></header>
+            <ul class="dir-works">${answers.map((r) => `<li><a href="${viewHref(t, r.id)}"><span class="dir-work-title" data-i18n-ignore>${esc(r.title)}</span><span class="dir-work-badges">${resultBadges(r)}</span>${icon('next')}</a></li>`).join('')}</ul>
+          </section>`).join('')}${m.brandUrl ? `<a class="dir-brand-source" href="${esc(m.brandUrl)}" target="_blank" rel="noopener">模型官网${icon('arrow')}</a>` : ''}`;
+  };
+  const modelRows = () => vendors.map((vendor) => [vendor, modelsByVendor.get(vendor)]).map(([vendor, models]) => {
+    const works = models.reduce((sum, model) => sum + [...(modelQuestions.get(model.id)?.values() ?? [])].reduce((count, question) => count + question.works.length, 0), 0);
     const items = models.map((m) => {
-      const questions = [...(modelQuestions.get(m.id)?.values() ?? [])].sort((a, b) => byName(a.task.title, b.task.title));
-      const workCount = questions.reduce((sum, question) => sum + question.works.length, 0);
+      const questions = modelQuestions.get(m.id);
+      const workCount = [...(questions?.values() ?? [])].reduce((sum, question) => sum + question.works.length, 0);
       return `<li class="dir-model" data-dir-model="${esc([m.name, ...(m.aliases ?? []), m.vendorNote ?? '', vendor].join(' '))}" data-dir-model-id="${esc(m.id)}" data-dir-work-count="${workCount}">
         <details class="dir-model-detail">
           <summary class="dir-model-summary">${brandMark(m)}
-            <span class="dir-model-body"><b class="dir-model-name" data-i18n-ignore>${esc(m.name)}</b>${m.vendorNote ? `<span class="dir-model-note">${esc(m.vendorNote)}</span>` : ''}<span class="dir-model-meta">${questions.length} 道题目 · ${workCount} 件作品</span></span>
+            <span class="dir-model-body"><b class="dir-model-name" data-i18n-ignore>${esc(m.name)}</b>${m.vendorNote ? `<span class="dir-model-note">${esc(m.vendorNote)}</span>` : ''}<span class="dir-model-meta">${questions?.size ?? 0} 道题目 · ${workCount} 件作品</span></span>
             <span class="dir-model-toggle"><span class="dir-when-closed">查看作品</span><span class="dir-when-open">收起</span>${icon('next')}</span>
           </summary>
-          <div class="dir-model-content">${questions.map(({ task: t, works: answers }) => `<section class="dir-question" data-dir-question="${esc(t.id)}">
-            <header class="dir-question-head"><a class="dir-question-title" href="${taskHref(t)}"><span class="dir-question-label">题目</span><span data-i18n-ignore>${esc(t.title)}</span></a><span class="dir-question-count">${answers.length} 件作品</span></header>
-            <ul class="dir-works">${answers.map((r) => `<li><a href="${viewHref(t, r.id)}"><span class="dir-work-title" data-i18n-ignore>${esc(r.title)}</span><span class="dir-work-badges">${resultBadges(r)}</span>${icon('next')}</a></li>`).join('')}</ul>
-          </section>`).join('')}${m.brandUrl ? `<a class="dir-brand-source" href="${esc(m.brandUrl)}" target="_blank" rel="noopener">模型官网${icon('arrow')}</a>` : ''}</div>
+          <div class="dir-model-content"></div>
         </details>
       </li>`;
     }).join('');
@@ -379,6 +401,7 @@ function renderLibrary(scopes = [], fresh = true) {
       <ul class="dir-models">${items}</ul>
     </section>`;
   }).join('');
+  let modelsMounted = false;
 
   root.innerHTML = `${libraryStart([{ text: '题库' }])}
       <section data-home-panel="tasks">
@@ -389,20 +412,20 @@ function renderLibrary(scopes = [], fresh = true) {
         <div class="board-empty" data-home-empty hidden><h3>没有找到这道题</h3><p>${platform.available ? '换个关键词或筛选条件，或者把它发起成一道新题。' : '换个关键词或筛选条件，或浏览全部题目。'}</p><div class="board-empty-actions"><button class="btn" data-home-reset>清除筛选</button>${platform.available ? `<a class="btn primary" href="#/new">${icon('plus')}发起题目</a>` : ''}</div></div>
       </section>
       <section data-home-panel="models" hidden><div class="collection-heading"><div class="collection-title"><h2 id="h-models">模型索引</h2><span data-model-count>${modelsByVendor.size} 家厂商 · ${exhibited.length} 个模型</span></div><span class="collection-caption">展开模型，按题目查看作品</span></div>
-        ${modelToolbar}<div class="dir-rows">${rows}</div>
+        ${modelToolbar}<div class="dir-rows"></div>
         <div class="board-empty" data-model-empty hidden><h3>没有找到这个模型</h3><p>换个关键词，或查看全部厂商。</p><div class="board-empty-actions"><button class="btn" data-model-reset>清除筛选</button></div></div></section>
       ${footer()}
     </main></div>`;
   // While searching, questions matched by their own words come first and those matched only inside
   // a prompt follow, each showing the stretch of prompt that matched; the chosen sort holds within each.
   let blindScope = [];
-  const filter = () => {
+  const filterTasks = () => {
     let count = 0;
     const promptOnly = new Set();
     const matching = [];
     blindScope = [];
     for (const card of $$('[data-task-card]', root)) {
-      const task = DATA.tasks.find((t) => t.id === card.dataset.taskCard);
+      const task = tasksById.get(card.dataset.taskCard);
       const match = searchMatch(task, homeState.query);
       card.hidden = Boolean(!match || (homeState.category && task.category !== homeState.category) || (homeState.domain && !domainsOf(task).includes(homeState.domain)) || (homeState.model && (homeState.unanswered ? answeredBy(task, homeState.model) : !answeredBy(task, homeState.model))));
       const hit = $('[data-prompt-hit]', card);
@@ -449,6 +472,15 @@ function renderLibrary(scopes = [], fresh = true) {
     const unanswered = $('[data-home-unanswered]', root);
     unanswered.hidden = !homeState.model;
     unanswered.setAttribute('aria-pressed', String(homeState.unanswered));
+    const leadImage = $('.task-card:not([hidden]) .question-visual img', root);
+    if (leadImage) leadImage.fetchPriority = 'high';
+  };
+  const filterModels = () => {
+    if (!modelsMounted) {
+      $('.dir-rows', root).innerHTML = modelRows();
+      modelsMounted = true;
+      settleImages();
+    }
     // Model index: the keyword matches a model or its vendor; the vendor select keeps one row.
     const needle = homeState.modelQuery;
     let models = 0, vendorsShown = 0;
@@ -468,6 +500,10 @@ function renderLibrary(scopes = [], fresh = true) {
     $('[data-model-count]').textContent = `${vendorsShown} 家厂商 · ${models} 个模型`;
     $('[data-model-empty]').hidden = models > 0;
     $('[data-model-vendor]').value = homeState.vendor;
+  };
+  const filter = () => {
+    if (homeState.view === 'tasks') filterTasks();
+    else filterModels();
     $$('[data-home-panel]').forEach((el) => { el.hidden = el.dataset.homePanel !== homeState.view; });
     $$('.side-nav [data-home-view]').forEach((el) => el.setAttribute('aria-pressed', String(el.dataset.homeView === homeState.view && !(el.dataset.homeView === 'tasks' && (homeState.category || homeState.domain)))));
     $$('[data-home-category]').forEach((el) => el.setAttribute('aria-pressed', String(homeState.view === 'tasks' && el.dataset.homeCategory === homeState.category)));
@@ -478,6 +514,7 @@ function renderLibrary(scopes = [], fresh = true) {
     const address = [LIBRARY.href, ...(homeState.view === 'models' ? ['models'] : scopes.map(encodeURIComponent))].join('/');
     if (location.hash !== address) history.replaceState(history.state, '', address);
     previews?.setPaused(homeState.view !== 'tasks');
+    deferredMedia.refresh(root);
   };
   root.oninput = (event) => {
     if (event.target.matches('[data-home-search]')) homeState.query = event.target.value;
@@ -508,6 +545,15 @@ function renderLibrary(scopes = [], fresh = true) {
     if (event.target.closest('[data-home-unanswered]')) homeState.unanswered = !homeState.unanswered;
     if (category || domain || view || event.target.closest('[data-home-reset], [data-model-reset], [data-recommend-refresh], [data-home-unanswered]')) filter();
   };
+  root.addEventListener('toggle', (event) => {
+    const detail = event.target;
+    if (!detail.matches('.dir-model-detail') || !detail.open) return;
+    const content = $('.dir-model-content', detail);
+    if (content.dataset.mounted) return;
+    content.innerHTML = modelContent(detail.closest('[data-dir-model-id]').dataset.dirModelId);
+    content.dataset.mounted = '1';
+    settleImages();
+  }, { capture: true, signal: controller.signal });
   filter();
   window.addEventListener('localechange', filter, { signal: controller.signal });
   setPageTitle(['题库', DATA.title]);
@@ -534,11 +580,11 @@ function renderLibrary(scopes = [], fresh = true) {
     const visual = event.target.closest('.question-visual');
     const card = visual?.closest('[data-task-card]');
     if (!card || visual.contains(event.relatedTarget) || card.hidden) return;
-    loadPreviews(choices.find(({ task }) => task.id === card.dataset.taskCard));
+    loadPreviews(choicesById.get(card.dataset.taskCard));
   };
   root.onfocusin = (event) => {
     const card = event.target.closest('[data-task-card]');
-    if (card && !card.hidden && homeState.view === 'tasks') loadPreviews(choices.find(({ task }) => task.id === card.dataset.taskCard));
+    if (card && !card.hidden && homeState.view === 'tasks') loadPreviews(choicesById.get(card.dataset.taskCard));
   };
   return {
     destroy() { destroyed = true; controller.abort(); previews?.destroy(); activePreviewKey = null; },
@@ -602,7 +648,6 @@ function prioritizeResultLead() {
     : card?.querySelector('img.result-model-poster') ?? card?.querySelector('img.result-screenshot-preview') ?? leadImages[0];
   for (const image of images) {
     const eager = image === selected;
-    image.loading = eager ? 'eager' : 'lazy';
     image.fetchPriority = eager ? 'high' : 'auto';
   }
 }
@@ -643,6 +688,7 @@ function activatePanel(name, updateHash = true) {
   $$('[data-go]').forEach((el) => el.setAttribute('aria-pressed', String(el.dataset.go === target)));
   resultPreviews?.setPaused(target !== 'results');
   if (target === 'board') mountTaskBoard();
+  deferredMedia.refresh(root);
   if (updateHash) {
     const base = `#${location.hash.split('#')[1]}`;
     history.replaceState(history.state, '', target === 'results' ? base : `${base}#${target}`);
@@ -702,11 +748,9 @@ function resultCard(t, r) {
   const screenshot = screenshotOf(r);
   const coverWork = coverLead(t);
   const lead = isLead(coverWork, r);
-  const eagerPoster = lead && !screenshotPreview && Boolean(r.previewPoster) && previewMode === 'model';
-  const eagerScreenshot = lead && !eagerPoster;
   return `<article class="result${screenshotPreview ? ' is-screenshot-preview' : ''}${lead ? ' is-lead' : ''}" data-vendor="${esc(vendorOf(r))}" data-model="${esc(modelKey(r))}" data-id="${esc(r.id)}" data-status="${r.status}">
     <div class="result-media">
-      <a href="${viewHref(t, r.id)}" aria-label="在线预览：${esc(r.title)}，${esc(label(r))}">${screenshotPreview && screenshot ? img(screenshot, r.title, 'result-screenshot-preview', eagerScreenshot) : coverHtml(r, 'result-screenshot-preview', eagerScreenshot)}${!screenshotPreview && r.previewPoster ? img(r.previewPoster, '', 'result-model-poster', eagerPoster) : ''}<span class="play">${icon('arrow')}在线预览</span></a>
+      <a href="${viewHref(t, r.id)}" aria-label="在线预览：${esc(r.title)}，${esc(label(r))}">${screenshotPreview && screenshot ? img(screenshot, r.title, 'result-screenshot-preview') : coverHtml(r, 'result-screenshot-preview')}${!screenshotPreview && r.previewPoster ? img(r.previewPoster, '', 'result-model-poster') : ''}<span class="play">${icon('arrow')}在线预览</span></a>
       ${lead ? '<span class="lead-seal" aria-hidden="true"><span>代表</span></span>' : ''}
       ${t.results.length > 1 ? `<button class="pick" data-pick="${esc(r.id)}" aria-pressed="false" aria-label="加入对比：${esc(r.title)}"><span class="pick-box">${icon('plus')}${icon('check')}</span><span class="pick-text">对比</span></button>` : ''}
     </div>
@@ -1216,7 +1260,7 @@ const lightbox = (() => {
       label = name;
       strip.hidden = !withStrip || list.length < 2;
       el.classList.toggle('has-strip', !strip.hidden);
-      strip.innerHTML = strip.hidden ? '' : list.map((it, k) => `<button data-i18n-ignore type="button" data-lb-go="${k}" aria-label="${esc(it.title)}"><img src="${esc(it.thumb ?? it.src)}" alt="" decoding="async"></button>`).join('');
+      strip.innerHTML = strip.hidden ? '' : list.map((it, k) => `<button data-i18n-ignore type="button" data-lb-go="${k}" aria-label="${esc(it.title)}"><img data-media-src="${esc(it.thumb ?? it.src)}" alt="" decoding="async"></button>`).join('');
       lastFocus = document.activeElement;
       show();
       el.hidden = false;
@@ -1266,6 +1310,9 @@ function workFacts(r) {
 
 function createViewer(t) {
   const state = { panes: [], queries: [], active: 0, guide: store.get('guide') === '1' && wide() };
+  const frameLoads = new Map();
+  let blurTimer;
+  const clearFrameLoads = () => { for (const stop of frameLoads.values()) stop(); frameLoads.clear(); };
   const byId = (id) => t.results.find((r) => r.id === id);
   const options = () => sortedResults(t).map((r) => option(r.id, `${r.title} · ${label(r)}${r.promptVariant ? ` · ${variantsOf(t).find((variant) => variant.id === r.promptVariant)?.label}` : ''}`, false, r.status !== 'verified' ? ` · ${STATUS[r.status].label}` : '')).join('');
   const many = t.results.length > 1;
@@ -1324,6 +1371,8 @@ function createViewer(t) {
   }
 
   function load(i) {
+    frameLoads.get(i)?.();
+    frameLoads.delete(i);
     const r = byId(state.panes[i]);
     const pane = $(`[data-pane="${i}"]`, stage);
     const body = $('.pane-body', pane);
@@ -1347,14 +1396,12 @@ function createViewer(t) {
     const frame = $('iframe', body);
     if (split) controls.add(frame, { inject: hosted(r) });
     const loader = $('.loader', body);
-    let done = false;
-    const hide = () => {
-      if (done) return;
-      done = true;
-      setTimeout(() => loader.classList.add('gone'), 500);
-    };
-    frame.addEventListener('load', hide, { once: true });
-    setTimeout(hide, 20000);
+    frameLoads.set(i, watchViewerFrame(frame, {
+      onLoaded: () => { loader.classList.add('gone'); frameLoads.delete(i); },
+      onSlow: () => {
+        loader.innerHTML = `<b>作品尚未完成载入</b><span>可以重新载入这一侧，或继续等待。</span><button class="btn" type="button" data-pane-reload="${i}">${icon('reload')}重新载入当前栏</button>`;
+      },
+    }));
   }
 
   function renderGuide() {
@@ -1412,6 +1459,7 @@ function createViewer(t) {
   function update(panes) {
     const before = state.panes;
     if (panes.length !== before.length) {
+      clearFrameLoads();
       controls.clear();
       if (panes.length > 1) controls.hide();
       stage.innerHTML = panes.map((_, i) => paneHtml(i)).join('');
@@ -1455,6 +1503,8 @@ function createViewer(t) {
   };
 
   el.addEventListener('click', (e) => {
+    const retry = e.target.closest('[data-pane-reload]');
+    if (retry) return load(Number(retry.dataset.paneReload));
     const variant = e.target.closest('[data-pane-variant]');
     if (variant && variant.dataset.variantResult) {
       const i = Number(variant.dataset.paneVariant), panes = [...state.panes];
@@ -1509,9 +1559,11 @@ function createViewer(t) {
   });
   // Clicking into a frame does not bubble; focus moving into it marks that pane active.
   const onBlur = () => {
-    setTimeout(() => {
+    clearTimeout(blurTimer);
+    blurTimer = setTimeout(() => {
       const frame = document.activeElement;
       if (frame?.tagName !== 'IFRAME') return;
+      if (!stage.contains(frame)) return;
       const i = Number(frame.closest('[data-pane]')?.dataset.pane);
       if (state.panes.length > 1 && i !== state.active) { state.active = i; sync(); }
     });
@@ -1547,6 +1599,8 @@ function createViewer(t) {
       sync();
     },
     destroy() {
+      clearFrameLoads();
+      clearTimeout(blurTimer);
       controls.destroy();
       document.removeEventListener('keydown', onKey);
       window.removeEventListener('blur', onBlur);
@@ -1622,7 +1676,7 @@ function catalogPending() {
 // is earlier in this tab's history, it goes back there for real and keeps its filters and scroll.
 const PAGE_NAMES = { questions: '题库', arena: '盲评' };
 function placeOf(hash) {
-  const [p = '', a] = hash.replace(/^#\/?/, '').split('#')[0].split('/').filter(Boolean).map(decodeURIComponent);
+  const [p = '', a] = (routeParts(hash) ?? [hash]);
   const t = DATA.tasks.find((x) => x.id === p);
   if (t && !a) return { key: p, name: '题目', up: LIBRARY.href };
   if (t) return { key: a === 'exhibition' || a === 'sandtable' ? `${p}/stage` : `${p}/view`, up: taskHref(t) };
@@ -1819,18 +1873,24 @@ function teardown() {
 // newer route has taken over.
 async function show(version, visit, scrollBack) {
   if (version !== routeVersion) return;
-  const parts = location.hash.replace(/^#\/?/, '').split('#')[0].split('/').filter(Boolean).map(decodeURIComponent);
-  const [taskId, a, vs, b] = parts;
+  const parts = routeParts(location.hash);
+  const [taskId, a, vs, b] = parts ?? [];
   const platformPage = Object.hasOwn(PLATFORM_PAGES, taskId ?? '') ? taskId : null;
   const t = platformPage ? null : DATA.tasks.find((x) => x.id === taskId);
   const inExhibition = t && hasExhibition(t) && (a === 'exhibition' || a === 'sandtable');
   const inViewer = t && a && !inExhibition;
+  // Home counts come from the public catalog. Authoring, legal and exam pages use their
+  // own session/data reads; fetch shared reactions and pools only where they are shown.
+  void setActivityNeeded(Boolean(parts && (['questions', 'arena', 'leaderboard', 'me', 'review'].includes(taskId) || (t && !inExhibition))));
   const ids = inViewer ? [a, vs === 'vs' ? b : null].filter(Boolean) : [];
   const works = ids.filter((id, i) => t.results.some((r) => r.id === id) && ids.indexOf(id) === i);
 
   // The viewer stays up while the address moves between works of its task, so switching one pane
   // does not reload the other.
-  if (!taskId && page?.home) {
+  if (!parts) {
+    teardown();
+    notFound('路径参数编码无效');
+  } else if (!taskId && page?.home) {
     refreshAccountControls();
     page.onPlatformChange();
   } else if (works.length && page?.task === t) page.update(works);
@@ -1929,7 +1989,7 @@ try {
   await route({ from: '' });
   void startAnnouncements();
   // Enter the page frame while each work area loads its own data.
-  const homeArrival = window.ArenaEntry?.ready(root);
+  const homeArrival = window.ArenaEntry?.ready(root, { prepareImages: deferredMedia.prepare });
   await platformConnection;
   initialPlatformSettled = true;
   if (!platform.available && resultSort === 'score') resultSort = 'added';
@@ -1937,7 +1997,7 @@ try {
   // A mounted review already owns its arrival read; preserve it across startup settling.
   if (page?.review && /^#\/?review(?:\/|$)/.test(location.hash)) refreshAccountControls();
   else await route({ keepScroll: true });
-  await (homeArrival ?? window.ArenaEntry?.ready(root));
+  await (homeArrival ?? window.ArenaEntry?.ready(root, { prepareImages: deferredMedia.prepare }));
   startPlatformRecovery();
 } catch (err) {
   window.ArenaEntry?.fail();

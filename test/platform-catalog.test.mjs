@@ -14,7 +14,11 @@ async function environment(label, run) {
   globalThis.window = new EventTarget();
   globalThis.addEventListener = globalThis.window.addEventListener.bind(globalThis.window);
   globalThis.SAME_PROMPT_CONFIG = { apiBaseUrl: 'https://backend.test/api/' };
-  try { await run(await import(`../site/platform.js?case=${label}`)); }
+  try {
+    const module = await import(`../site/platform.js?case=${label}`);
+    module.setActivityNeeded(true); // Existing cases model a route that consumes activity.
+    await run(module);
+  }
   finally {
     globalThis.document = original.document;
     globalThis.window = original.window;

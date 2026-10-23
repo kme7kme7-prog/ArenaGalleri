@@ -19,7 +19,7 @@ export const useReferenceViewer = (open) => { openViewer = open; };
 export function referenceSheet(refs = [], { key, credit = '', download = true, still = false } = {}) {
   if (!refs.length) return '';
   sets.set(key, { refs, credit, key });
-  const tile = (ref, i) => `<img data-i18n-ignore src="${esc(media(ref.thumb ?? ref.src))}" alt="${still ? esc(caption(ref, i)) : ''}" loading="lazy" decoding="async"><span class="ref-no">${pad(i + 1)}${ref.caption ? `<span data-i18n-ignore>${esc(ref.caption)}</span>` : ''}</span>`;
+  const tile = (ref, i) => `<img data-i18n-ignore data-media-src="${esc(media(ref.thumb ?? ref.src))}" alt="${still ? esc(caption(ref, i)) : ''}" loading="lazy" decoding="async"><span class="ref-no">${pad(i + 1)}${ref.caption ? `<span data-i18n-ignore>${esc(ref.caption)}</span>` : ''}</span>`;
   return `<div class="ref-sheet">
     <div class="ref-sheet-head"><b>参考图</b><span class="ref-count">${refs.length}</span>${download && !still ? `<button class="text-action" type="button" data-ref-key="${esc(key)}" data-ref-download>${icon('download')}<span>全部下载</span></button>` : ''}</div>
     <div class="ref-grid">${refs.map((ref, i) => (still ? `<span class="ref-tile">${tile(ref, i)}</span>`

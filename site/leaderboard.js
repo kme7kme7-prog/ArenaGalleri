@@ -1,4 +1,5 @@
 import { setPageTitle } from './i18n.js';
+import { routeParts } from './route-path.js';
 // Leaderboard: the full page (#/leaderboard[/<category>|/<task>][/<domain>], or #/leaderboard/<domain>)
 // and the panel on each task page.
 import { $, brandMark, esc, formatDate, formatTime, icon, pad, store, vendorLine } from './ui.js';
@@ -98,10 +99,11 @@ export function mountBoard(container, ctx) {
     .filter((track) => data.standings?.[track.name]?.[row.key])
     .map((track) => `<span data-board-standing>${esc(`${track.label}第 ${data.standings[track.name][row.key]}`)}</span>`);
 
-  // A curated board fills from nothing, so its empty states say where it stands and where to go next.
+  // Curated empty states explain the comparison threshold and how to contribute.
   function curatedEmpty(data) {
     const taskIds = data.scope?.taskIds ?? [];
     const votes = data.totals?.votes ?? 0;
+    const staffHistory = data.scope?.includesStaffHistory ?? ctx.info?.includesStaffHistory;
     const since = data.scope?.countingStartedAt ?? ctx.info?.countingStartedAt;
     const level = levelOf();
     const go = level >= 1 ? '<button class="btn primary sm" type="button" data-curated-arena>去盲评精选题</button><a class="btn sm" href="#/leaderboard">查看大众榜</a>'
@@ -112,10 +114,13 @@ export function mountBoard(container, ctx) {
         ? '<div class="board-empty"><p class="board-empty-title">这个分区还没有题目</p><p>管理员把题目放进这个分区后才开始计票。</p><div class="board-empty-actions"><a class="btn sm" href="#/leaderboard/curated">查看精选总榜</a></div></div>'
         : '<div class="board-empty"><p class="board-empty-title">还没有精选题目</p><p>管理员挑选题目后，精选榜才开始计票。</p><div class="board-empty-actions"><a class="btn sm" href="#/leaderboard">查看大众榜</a></div></div>';
     }
-    const counts = `${taskIds.length} 道精选题 · ${votes} 次有效比较${since ? ` · ${formatDate(since)} 起` : ''}`;
+    const counts = `${taskIds.length} 道精选题 · ${votes} 次有效比较${staffHistory ? ' · 含管理员历史票' : since ? ` · ${formatDate(since)} 起` : ''}`;
+    const explanation = staffHistory
+      ? '统计认证成员的新选择，并纳入普通管理员和高级管理员的历史有效票；只计精选题，和大众榜分开计票。'
+      : '这里只统计 Lv1 及以上成员在精选题上的选择，和大众榜分开计票。';
     return votes
       ? `<div class="board-empty"><p class="board-empty-title">精选榜收集中</p><p>已有 ${votes} 次有效比较，${data.scope?.provisionalModels ?? 0} 个模型正在积累，满 ${data.scope?.provisionalGames ?? 30} 次比较后上榜。</p><p class="board-meta">${counts}</p><div class="board-empty-actions">${go}</div></div>`
-      : `<div class="board-empty"><p class="board-empty-title">精选榜从零开始</p><p>这里只统计 Lv1 及以上成员在精选题上的选择，和大众榜分开计票。模型在本榜比较满 ${data.scope?.provisionalGames ?? 30} 次后上榜，在那之前不给出没有依据的名次。</p><p class="board-meta">${counts}</p><div class="board-empty-actions">${go}</div></div>`;
+      : `<div class="board-empty"><p class="board-empty-title">精选榜等待比较</p><p>${explanation}模型在本榜比较满 ${data.scope?.provisionalGames ?? 30} 次后上榜，在那之前不给出没有依据的名次。</p><p class="board-meta">${counts}</p><div class="board-empty-actions">${go}</div></div>`;
   }
 
   function table(data) {
@@ -280,7 +285,7 @@ export function mountBoard(container, ctx) {
 export function mount(root, ctx) {
   const tasks = ctx.DATA.tasks.filter(votedTask);
   const tracks = tracksOf(tasks);
-  const [first = null, second = null] = location.hash.replace(/^#\/?/, '').split('#')[0].split('/').filter(Boolean).map(decodeURIComponent).slice(1);
+  const [first = null, second = null] = (routeParts(location.hash) ?? []).slice(1);
   const curated = first === 'curated';
   if (curated && second === 'frontend') {
     location.replace('#/leaderboard/curated');
@@ -345,7 +350,8 @@ export function mount(root, ctx) {
     const since = info?.countingStartedAt;
     const description = !curated ? '由全部计票的盲评选择计算。分数反映作品在同题比较中被偏好的程度，区间越窄，结论越可靠。'
       : sectionId ? `精选总榜中「${section?.name ?? ''}」分区的 ${section?.questionCount ?? 0} 道题，单独计算名次。`
-        : `只统计 Lv1 及以上成员（通过资格考试）在精选题上的选择，题目由管理员挑选。和大众榜分开计票${since ? `，${formatDate(since)} 起从零累计` : ''}。`;
+        : !info?.includesStaffHistory ? `只统计 Lv1 及以上成员（通过资格考试）在精选题上的选择，题目由管理员挑选。和大众榜分开计票${since ? `，${formatDate(since)} 起从零累计` : ''}。`
+        : `统计认证成员${since ? `自 ${formatDate(since)} 起` : ''}在精选题上的选择，并纳入普通管理员和高级管理员的历史有效票。题目由管理员挑选，和大众榜分开计票。`;
     root.innerHTML = `${ctx.pageStart({ title: '排行榜', section: 'leaderboard', heading: scopeTitle, headingOriginal: Boolean(task), crumbs, description,
       meta: `<dl class="side-stats" data-stats>
           ${stat('有效比较', !curated && platform.activityReady ? pad(platform.totals.votes) : '—')}
@@ -400,7 +406,8 @@ export function mount(root, ctx) {
     }
     // Curated views depend on the structure; others only refresh the curated group.
     if (curated && !known) return render(info);
-    if (curated && JSON.stringify(info.sections) !== JSON.stringify(known.sections)) return render(info);
+    if (curated && (JSON.stringify(info.sections) !== JSON.stringify(known.sections)
+      || info.includesStaffHistory !== known.includesStaffHistory || info.countingStartedAt !== known.countingStartedAt)) return render(info);
     const group = $('[data-curated-nav]', root);
     if (group) group.innerHTML = `<h2 class="board-nav-title">精选榜</h2>${curatedNav(info)}`;
   }, () => { if (curated && !destroyed && !drawn) { $('[data-board]', root).innerHTML = '<p class="muted">精选榜暂时无法载入，请稍后重试。</p>'; } });

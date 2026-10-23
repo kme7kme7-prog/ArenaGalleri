@@ -161,7 +161,8 @@ test('legacy bootstrap, session and activity reads use the same backoff', async 
     assert.deepEqual(time.waits, [1000]);
     assert.equal(platform.sessionReady, true);
   });
-  await withPlatform('session-activity', async ({ connectPlatform, platform }, time) => {
+  await withPlatform('session-activity', async ({ connectPlatform, platform, setActivityNeeded }, time) => {
+    setActivityNeeded(true);
     const failing = () => Promise.reject(new TypeError('Failed to fetch'));
     const calls = serve({ catalog: [catalog()], session: [failing, json({ user: null })],
       activity: [failing, json({ arena: {}, reactions: { counts: {}, mine: {} } })] });

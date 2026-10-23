@@ -33,3 +33,14 @@ test('formatting follows the selected locale', () => {
   setLocale('zh-CN');
   assert.equal(formatDate('2026-10-11T12:00:00'), new Date('2026-10-11T12:00:00').toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }));
 });
+
+test('curated staff-history messages and viewer recovery copy translate with dynamic counts', () => {
+  setLocale('en');
+  assert.equal(translateText('精选榜等待比较'), 'Waiting for curated comparisons');
+  assert.match(translateText('3 道精选题 · 12 次有效比较 · 含管理员历史票'), /3 curated questions · 12 valid comparisons · includes historical admin votes/);
+  assert.match(translateText('统计认证成员的新选择，并纳入普通管理员和高级管理员的历史有效票；只计精选题，和大众榜分开计票。模型在本榜比较满 30 次后上榜，在那之前不给出没有依据的名次。'), /historical votes.*30 comparisons/);
+  setLocale('zh-CN');
+  setLocale('en');
+  assert.equal(translateText('作品尚未完成载入'), 'The work has not finished loading');
+  setLocale('zh-CN');
+});

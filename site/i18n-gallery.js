@@ -1,5 +1,6 @@
 export default {
   '尚未回答': 'Unanswered',
+  '作品尚未完成载入': 'The work has not finished loading',
   "写作（{count} 题）": "Writing ({count} questions)",
   "写作排行": "Writing ranking",
   "写作第 {count}": "Writing #{count}",

@@ -70,6 +70,7 @@ let accountGeneration = 0;
 export const accountVersion = () => accountGeneration;
 let activityGeneration = 0;
 let activityNeedsRefresh = true;
+let activityNeeded = false;
 let publicWorks = [];
 let workAccess = [];
 const cooling = (error) => Date.now() < (error?.retryAt ?? 0);
@@ -153,7 +154,22 @@ function acceptActivity(data) {
   activityNeedsRefresh = false;
   platform.activityError = null;
 }
+const activityVisible = () => document.visibilityState !== 'hidden';
+// The mounted route declares whether it uses these statistics. Catalog and session
+// reads stay independent, so authoring/legal pages never download the whole block.
+export function setActivityNeeded(needed) {
+  activityNeeded = Boolean(needed);
+  return ensureActivity();
+}
+export function ensureActivity() {
+  if (!activityNeeded || !activityVisible() || platform.mismatch || legacy) return Promise.resolve(false);
+  if (sessionConnection) return sessionConnection.then(() => ensureActivity());
+  if (!platform.available || !platform.sessionReady) return Promise.resolve(false);
+  if (platform.activityReady && !activityNeedsRefresh && !platform.activityError) return Promise.resolve(true);
+  return loadActivity();
+}
 function loadActivity() {
+  if (!activityNeeded || !activityVisible()) return Promise.resolve(false);
   if (activityConnection || cooling(platform.activityError)) return activityConnection ?? Promise.resolve(false);
   const generation = accountGeneration;
   const readGeneration = activityGeneration;
@@ -161,12 +177,17 @@ function loadActivity() {
   platform.activityConnecting = true;
   const task = (async () => {
     try {
-      const data = await retryRead(async (timeout) => responseData(await fetchApi('activity', { cache: 'no-store', signal: AbortSignal.timeout(timeout) })));
+      const data = await retryRead(async (timeout) => {
+        // A retry budget can span a route change or a backgrounded tab.
+        if (!activityNeeded || !activityVisible()) throw { kind: 'deferred' };
+        return responseData(await fetchApi('activity', { cache: 'no-store', signal: AbortSignal.timeout(timeout) }));
+      });
       if (!current()) return false;
       if (!compatibleBuild(frontendBuildInfo, data)) throw new Error('Invalid platform response');
       acceptActivity(data);
       return true;
     } catch (error) {
+      if (error.kind === 'deferred') return false;
       if (current()) {
         platform.activityError = error.kind ? error : connectionFailure(error);
         if (recoveryStarted) startPlatformRecovery();
@@ -285,11 +306,11 @@ let recoveryRetryUsed = false;
 export function startPlatformRecovery() {
   recoveryStarted = true;
   if (platform.mismatch || catalogState() === 'static') return;
-  if (platform.available && !platform.connectionError && !platform.sessionError && !platform.activityError) return;
+  if (platform.available && !platform.connectionError && !platform.sessionError && !(activityNeeded && platform.activityError)) return;
   if (recoveryRetryUsed) return;
   recoveryRetryUsed = true;
   setTimeout(() => {
-    if (!platform.available || platform.connectionError || platform.sessionError || platform.activityError) void refreshPlatform('reconnect');
+    if (!platform.available || platform.connectionError || platform.sessionError || activityNeeded && platform.activityError) void refreshPlatform('reconnect');
   }, Math.max(2000, (platform.connectionError?.retryAt ?? platform.sessionError?.retryAt ?? platform.activityError?.retryAt ?? 0) - Date.now()));
 }
 
@@ -388,7 +409,7 @@ async function checkSession() {
   sessionCheckedAt = Date.now();
   sessionChecking = true;
   try {
-    if (!platform.available || platform.connectionError || platform.sessionError || platform.activityError) {
+    if (!platform.available || platform.connectionError || platform.sessionError || activityNeeded && platform.activityError) {
       if (catalogState() !== 'static') await refreshPlatform('reconnect');
       return;
     }
@@ -403,7 +424,7 @@ async function checkSession() {
 window.addEventListener('focus', checkSession);
 window.addEventListener('online', checkSession);
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') void checkSession();
+  if (document.visibilityState === 'visible') void checkSession().then(ensureActivity);
 });
 window.addEventListener('pageshow', (event) => {
   if (event.persisted) void checkSession();
