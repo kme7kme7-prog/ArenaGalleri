@@ -4,7 +4,7 @@
 // After submitting, one stage track shows where the work is and follows it while it waits.
 import { $, $$, esc, formatBytes, formatTime, icon } from './ui.js';
 import { setPageTitle } from './i18n.js';
-import { api, can, isStaff, needsEmail, platform, refreshPlatform, toast } from './platform.js';
+import { accountVersion, api, can, isStaff, needsEmail, platform, refreshPlatform, toast } from './platform.js';
 import { levelGate } from './level-gate.js';
 import { createUploadRequest, resolveApiMedia } from './platform-api.js';
 import { onWorkFieldChange, readWorkFields, workFieldsHtml } from './work-fields.js';
@@ -112,7 +112,7 @@ export function uploadFlow(root, ctx, options) {
     progress: 0, loaded: 0, total: 0, uploading: false, draft: null, error: '',
     trial: freshTrial(), view: 'desktop', confirmed: false, cover: null,
     submitting: false, work: null, result: null, xhr: null, timer: 0, poll: 0, polls: 0,
-    resumable: null, peek: task.promptVariants?.[0]?.id ?? null,
+    resumable: null, resultOwner: null, peek: task.promptVariants?.[0]?.id ?? null,
     // fields: the info form's values while it is off screen; notice: why a resumed draft needs
     // another look ('prompt', or { file } when its format no longer fits).
     draftTemplate: null, confirmedPrompt: null, fields: null, notice: null,
@@ -482,7 +482,7 @@ export function uploadFlow(root, ctx, options) {
   function restart({ keepFields = false } = {}) {
     discard();
     clearTimeout(state.timer);
-    clearTimeout(state.poll);
+    stopFollow();
     if (keepFields) saveFields();
     Object.assign(state, { draft: null, error: '', trial: freshTrial(), confirmed: false, cover: null, work: null, result: null, polls: 0, notice: null,
       ...(keepFields ? {} : { fields: null, text: '' }) });
@@ -523,33 +523,54 @@ export function uploadFlow(root, ctx, options) {
     };
   }
 
-  // Follows a waiting result through GET /api/me and redraws the finished view when it moves.
-  function follow() {
+  let pollRun = 0, pollRead = null, pollController = null;
+  function stopFollow() {
     clearTimeout(state.poll);
-    if (!active || !state.result || !waiting(state.result) || state.polls >= POLL_LIMIT) return;
-    state.poll = setTimeout(async () => {
-      state.polls++;
-      try {
-        const me = await api('me');
-        if (!active || !state.result) return;
-        const { work, question } = state.result;
-        const freshWork = work && me.works?.find((item) => item.id === work.id);
-        const freshQuestion = question && me.questions?.find((item) => item.id === question.id);
-        const key = (r) => JSON.stringify([r.work?.moderation?.status, r.work?.status, r.question?.moderation?.status]);
-        const next = { ...state.result, ...(freshWork ? { work: freshWork } : {}), ...(freshQuestion ? { question: freshQuestion } : {}) };
-        if (key(next) !== key(state.result)) {
-          // The done page asks the catalog whether the work is in the gallery, so refresh it first.
-          await refreshPlatform('upload').catch(() => {});
-          if (!active || !state.result) return;
-          Object.assign(state, { result: next, work: next.work });
-          draw();
-        }
-      } catch { /* keep trying until the limit */ }
-      follow();
-    }, POLL_MS);
+    pollRun++;
+    pollController?.abort();
+    pollController = null;
+    pollRead = null;
   }
+  // A finished submission needs only its own status, and only while its owner sees this page.
+  function follow(immediate = false) {
+    clearTimeout(state.poll);
+    if (!active || suspended || document.hidden || !state.result || !waiting(state.result) || state.polls >= POLL_LIMIT || state.resultOwner !== accountVersion() || pollRead) return;
+    state.poll = setTimeout(() => {
+      if (!active || suspended || document.hidden || state.resultOwner !== accountVersion()) return;
+      const result = state.result, owner = state.resultOwner, run = ++pollRun, controller = new AbortController();
+      pollController = controller;
+      const current = () => active && !suspended && !document.hidden && run === pollRun && result === state.result && owner === accountVersion();
+      const params = new URLSearchParams({ view: 'submission' });
+      if (result.work) { params.set('task', result.work.task); params.set('work', result.work.id); }
+      if (result.question) params.set('question', result.question.id);
+      const timer = setTimeout(() => controller.abort(), 15000);
+      state.polls++;
+      pollRead = (async () => {
+        try {
+          const status = await api(`me?${params}`, { signal: controller.signal });
+          if (!current()) return;
+          const next = { ...result, ...(status.work ? { work: { ...result.work, ...status.work } } : {}), ...(status.question ? { question: { ...result.question, ...status.question } } : {}) };
+          const key = (r) => JSON.stringify([r.work?.moderation, r.work?.status, r.work?.reason, r.question?.moderation]);
+          if (key(next) !== key(result)) {
+            // Public visibility still comes from the catalog, after the status read.
+            await refreshPlatform('upload').catch(() => {});
+            if (!current()) return;
+            Object.assign(state, { result: next, work: next.work });
+            draw();
+          }
+        } catch (error) {
+          if (current() && error.status === 404) state.polls = POLL_LIMIT;
+        } finally {
+          clearTimeout(timer);
+          if (run === pollRun) { pollRead = null; pollController = null; follow(); }
+        }
+      })();
+    }, immediate ? 0 : POLL_MS);
+  }
+  const followVisibility = () => { if (document.hidden) stopFollow(); else follow(true); };
 
   async function submit(form) {
+    const owner = accountVersion();
     const error = $('.form-error:not(.field-error)', form);
     error.textContent = '';
     const { body, error: problem } = readWorkFields(form, task);
@@ -564,15 +585,17 @@ export function uploadFlow(root, ctx, options) {
     try {
       const payload = { ...body, draftId: state.draft.id, confirmed: true, cover: state.cover, trial: trialSummary() };
       const result = options.submit ? await options.submit(payload) : await api('works', { method: 'POST', body: payload });
-      Object.assign(state, { result, work: result.work, polls: 0, fields: null });
+      if (!active || owner !== accountVersion()) return;
+      Object.assign(state, { result, work: result.work, resultOwner: owner, polls: 0, fields: null });
       clearTimeout(state.timer);
       if (!options.submit) toast(['pending', 'review'].includes(result.work.moderation?.status) ? '作品已提交，正在内容审核' : '作品已提交');
       await refreshPlatform('upload');
-      if (!active) return;
+      if (!active || owner !== accountVersion()) return;
       draw();
       scrollTo({ top: 0 });
       follow();
     } catch (e) {
+      if (!active || owner !== accountVersion()) return;
       error.textContent = e.message;
       button.disabled = false;
       label.textContent = idle;
@@ -697,6 +720,7 @@ export function uploadFlow(root, ctx, options) {
     if (e.type === 'drop') upload(e.dataTransfer.files[0]);
   };
   for (const type of ['dragover', 'dragleave', 'drop']) root.addEventListener(type, onDrag);
+  document.addEventListener('visibilitychange', followVisibility);
 
   draw();
   findDraft();
@@ -710,6 +734,7 @@ export function uploadFlow(root, ctx, options) {
       saveFields();
       suspended = true;
       state.xhr?.abort();
+      stopFollow();
       resizeObserver?.disconnect();
     },
     // Called after the owner changed the task in place. Returns true when the draft needs another look.
@@ -731,6 +756,7 @@ export function uploadFlow(root, ctx, options) {
       else if (state.draft) startTrial();
       bind();
       draw();
+      follow(true);
       return Boolean(state.notice);
     },
     // Gives up the draft with the flow, when the owner goes on without it.
@@ -748,7 +774,8 @@ export function uploadFlow(root, ctx, options) {
       active = false;
       state.xhr?.abort();
       clearTimeout(state.timer);
-      clearTimeout(state.poll);
+      stopFollow();
+      document.removeEventListener('visibilitychange', followVisibility);
       resizeObserver?.disconnect();
       removeEventListener('message', onMessage);
       for (const type of ['dragover', 'dragleave', 'drop']) root.removeEventListener(type, onDrag);

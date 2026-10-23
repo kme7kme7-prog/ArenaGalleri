@@ -2,7 +2,7 @@
 // plain gap in quality, and picks the better one. Pass the mark and the account becomes Lv1. Nothing here
 // knows which side is right; the server grades and answers only with a total.
 import { $, $$, esc, formatDate, icon, themeButton } from './ui.js';
-import { api, levelOf, levelText, openDialog, platform, refreshPlatform, toast } from './platform.js';
+import { accountVersion, api, levelOf, levelText, openDialog, platform, refreshPlatform, toast } from './platform.js';
 import { languageButton, setPageTitle } from './i18n.js';
 import { aigcLabel } from './legal.js';
 import { createHold, watchFrameLoad } from './arena-loading.js';
@@ -15,6 +15,7 @@ const TIPS = ['两件作品都完整操作一遍，不只看第一屏。', '拖�
 export function mount(root, ctx) {
   let alive = true, view = 'loading', info = null, attempt = null, outcome = null, failure = '';
   let teardownPlay = () => {};
+  let infoRequest = 0, infoController = null, beginRequest = 0, playGeneration = 0;
 
   const exam = () => info?.exam ?? {};
   const total = () => attempt?.questionCount ?? exam().questionCount ?? 0;
@@ -33,16 +34,31 @@ export function mount(root, ctx) {
   const empty = (title, text, actions) => `<div class="board-empty exam-empty"><p class="board-empty-title">${title}</p><p>${text}</p><div class="board-empty-actions">${actions}</div></div>`;
 
   async function loadInfo() {
+    const run = ++infoRequest, owner = accountVersion();
+    beginRequest++;
+    infoController?.abort();
+    infoController = null;
+    info = null;
+    failure = '';
     view = 'loading';
     page('资格考试', '<p class="muted" role="status">正在载入…</p>');
     setPageTitle(['资格考试', ctx.DATA.title]);
     if (!platform.user) return renderInfo();
     if (levelOf() >= 1) return renderInfo();
+    const controller = new AbortController();
+    infoController = controller;
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 15000);
     try {
-      info = await api('qualification');
-      failure = '';
+      const data = await api('qualification', { signal: controller.signal });
+      if (!alive || run !== infoRequest || owner !== accountVersion()) return;
+      info = data;
     } catch (error) {
-      failure = error.message;
+      if (!alive || run !== infoRequest || owner !== accountVersion()) return;
+      failure = timedOut ? '连接超时，请重试。' : error.message;
+    } finally {
+      clearTimeout(timer);
+      if (run === infoRequest) infoController = null;
     }
     if (alive && view === 'loading') renderInfo();
   }
@@ -77,15 +93,16 @@ export function mount(root, ctx) {
   }
 
   async function begin(restart = false) {
+    const owner = accountVersion(), run = ++beginRequest;
     const buttons = $$('[data-a="start"], [data-a="restart"]', root);
     buttons.forEach((b) => { b.disabled = true; });
     try {
       const data = await api('qualification/attempts', { method: 'POST', body: restart ? { restart: true } : {} });
-      if (!alive) return;
+      if (!alive || owner !== accountVersion() || run !== beginRequest) return;
       attempt = data.attempt;
       play();
     } catch (error) {
-      if (!alive) return;
+      if (!alive || owner !== accountVersion() || run !== beginRequest) return;
       buttons.forEach((b) => { b.disabled = false; });
       if (error.code === 'exam_not_ready') { info = { ...info, exam: { ...exam(), ready: false } }; return renderInfo(); }
       toast(error.message);
@@ -93,6 +110,7 @@ export function mount(root, ctx) {
   }
 
   async function restartAsk() {
+    const owner = accountVersion();
     const ok = await new Promise((resolve) => {
       let yes = false;
       const sheet = openDialog({ title: '放弃当前答卷？', className: 'confirm-sheet',
@@ -100,17 +118,22 @@ export function mount(root, ctx) {
         onClose: () => resolve(yes) });
       $('[data-yes]', sheet.el).addEventListener('click', () => { yes = true; sheet.close(); });
     });
-    if (ok && alive) void begin(true);
+    if (ok && alive && owner === accountVersion()) void begin(true);
   }
 
   // ---- answering --------------------------------------------------------------------------
   function play() {
     teardownPlay();
     view = 'play';
+    const generation = ++playGeneration, owner = accountVersion();
+    const playing = () => alive && view === 'play' && generation === playGeneration && owner === accountVersion();
     const items = attempt.items;
     const st = { index: Math.max(0, items.findIndex((item) => !item.answer)), ready: {}, seen: { a: true }, side: 'a', split: 0.5, last: 0.5, prompt: false, busy: false, saved: false, unavailable: false, loadErrors: {} };
     const stops = new Map();
     const timers = new Set();
+    let linkRead = null, linkController = null;
+    const reloadingSides = new Set();
+    const cancelLinks = () => { linkController?.abort(); linkController = null; linkRead = null; reloadingSides.clear(); };
     const mobile = () => matchMedia('(max-width: 860px)').matches;
     const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); };
     const hold = createHold(() => tick());
@@ -280,6 +303,7 @@ export function mount(root, ctx) {
       $(`[data-body="${side}"]`, el).replaceChildren(layer(item()[side], side));
     }
     function unload() {
+      cancelLinks();
       readyRun++;
       stops.forEach((stop) => stop());
       stops.clear();
@@ -341,14 +365,33 @@ export function mount(root, ctx) {
 
     // The links of a long test run out; the attempt hands out fresh ones without touching the answers.
     async function reloadSide(side) {
+      if (!playing() || reloadingSides.has(side)) return;
+      const current = item();
+      reloadingSides.add(side);
       try {
-        const data = await api(`qualification/attempts/${attempt.id}`);
-        if (!alive || view !== 'play') return;
-        const fresh = data.attempt.items.find((it) => it.id === item().id);
-        if (fresh) Object.assign(item(), { a: fresh.a, b: fresh.b });
+        if (!linkRead) {
+          const controller = new AbortController();
+          linkController = controller;
+          const timer = setTimeout(() => controller.abort(), 15000);
+          const reading = api(`qualification/attempts/${attempt.id}`, { signal: controller.signal }).finally(() => {
+            clearTimeout(timer);
+            if (linkRead === reading) { linkRead = null; linkController = null; }
+          });
+          linkRead = reading;
+        }
+        const data = await linkRead;
+        if (!playing() || current !== item()) return;
+        const fresh = data.attempt.items.find((it) => it.id === current.id);
+        if (fresh) Object.assign(current, { a: fresh.a, b: fresh.b });
       } catch (error) {
+        if (!playing() || current !== item()) return;
         if (error.code === 'exam_item_unavailable') return gone();
+        toast(error.name === 'AbortError' ? '连接超时，请重试。' : error.message);
+        return;
+      } finally {
+        if (current === item()) reloadingSides.delete(side);
       }
+      if (!playing() || current !== item()) return;
       load(side);
       update();
     }
@@ -365,7 +408,7 @@ export function mount(root, ctx) {
       drawBar();
       try {
         const saved = await api(`qualification/attempts/${attempt.id}/items/${current.id}/answer`, { method: 'PUT', body: { choice } });
-        if (!alive || item() !== current) return;
+        if (!playing() || item() !== current) return;
         current.answer = choice;
         attempt.answeredCount = saved.answeredCount ?? items.filter((it) => it.answer).length;
         st.busy = false;
@@ -376,7 +419,7 @@ export function mount(root, ctx) {
           later(() => { st.saved = false; update(); submitSheet(); }, 350);
         } else later(() => { if (alive && view === 'play') show(next); }, 450);
       } catch (error) {
-        if (!alive || item() !== current) return;
+        if (!playing() || item() !== current) return;
         st.busy = false;
         if (error.code === 'exam_item_unavailable') return gone();
         if (error.code === 'answer_too_early') {
@@ -400,6 +443,7 @@ export function mount(root, ctx) {
         line.textContent = '';
         try {
           const result = await api(`qualification/attempts/${attempt.id}/submit`, { method: 'POST', body: {} });
+          if (!playing()) { sheet.close(); return; }
           outcome = result;
           sheet.close();
           if (!alive) return;
@@ -409,6 +453,7 @@ export function mount(root, ctx) {
           }
           result_();
         } catch (error) {
+          if (!playing()) { sheet.close(); return; }
           if (error.code === 'exam_incomplete') {
             const open = items.findIndex((it) => !it.answer);
             line.textContent = `还有 ${items.length - (error.data?.answeredCount ?? items.filter((it) => it.answer).length)} 组没答`;
@@ -469,6 +514,8 @@ export function mount(root, ctx) {
     addEventListener('resize', onResize);
 
     function cleanup() {
+      playGeneration++;
+      cancelLinks();
       readyRun++;
       hold.stop();
       stops.forEach((stop) => stop());
@@ -519,6 +566,9 @@ export function mount(root, ctx) {
     },
     destroy() {
       alive = false;
+      infoRequest++;
+      beginRequest++;
+      infoController?.abort();
       teardownPlay();
       root.onclick = null;
       document.body.classList.remove('is-viewer');

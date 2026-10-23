@@ -70,6 +70,7 @@ export function mount(root, ctx) {
   const target = /^\d+$/.test(ctx.param ?? '') ? ctx.param : null;
   let entries = recall('changelog')?.entries ?? null;
   let failed = false, kind = '', destroyed = false;
+  let readController = null, readRun = 0, pendingRead = null;
 
   const counts = () => Object.fromEntries(['', ...Object.keys(KINDS)].map((k) => [k, k ? entries.filter((e) => e.kind === k).length : entries.length]));
   const stat = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
@@ -131,17 +132,30 @@ export function mount(root, ctx) {
   }
 
   async function load() {
-    failed = false;
-    const shown = entries && JSON.stringify(entries);
-    try {
-      entries = (await apiRemembered('changelog')).entries;
-      markSeen(entries);
-    } catch {
-      if (!entries) failed = true;
-    }
-    if (destroyed) return;
-    if (!shown || shown !== JSON.stringify(entries)) draw();
-    arrive();
+    if (pendingRead) return pendingRead;
+    const run = ++readRun, controller = new AbortController();
+    readController = controller;
+    const timer = setTimeout(() => controller.abort(), 15000);
+    pendingRead = (async () => {
+      failed = false;
+      const shown = entries && JSON.stringify(entries);
+      try {
+        const data = await apiRemembered('changelog', { signal: controller.signal });
+        if (destroyed || run !== readRun || controller.signal.aborted) return;
+        entries = data.entries;
+        markSeen(entries);
+      } catch {
+        if (destroyed || run !== readRun) return;
+        if (!entries) failed = true;
+      } finally {
+        clearTimeout(timer);
+        if (run === readRun) { pendingRead = null; readController = null; }
+      }
+      if (destroyed || run !== readRun) return;
+      if (!shown || shown !== JSON.stringify(entries)) draw();
+      arrive();
+    })();
+    return pendingRead;
   }
 
   const onClick = (event) => {
@@ -164,6 +178,8 @@ export function mount(root, ctx) {
     onPlatformChange() {},
     destroy() {
       destroyed = true;
+      readRun++;
+      readController?.abort();
       root.removeEventListener('click', onClick);
       window.removeEventListener('localechange', relocalize);
     },

@@ -688,6 +688,10 @@ function activatePanel(name, updateHash = true) {
   $$('[data-go]').forEach((el) => el.setAttribute('aria-pressed', String(el.dataset.go === target)));
   resultPreviews?.setPaused(target !== 'results');
   if (target === 'board') mountTaskBoard();
+  if (target === 'results') {
+    const task = DATA.tasks.find((item) => item.id === taskState.task);
+    if (task) void loadTaskScores(task);
+  } else if (taskScoreRead) cancelTaskScores(false);
   deferredMedia.refresh(root);
   if (updateHash) {
     const base = `#${location.hash.split('#')[1]}`;
@@ -697,14 +701,53 @@ function activatePanel(name, updateHash = true) {
 
 // The task leaderboard doubles as the source of the "榜单评分" sort.
 let taskBoard = null;
-async function loadTaskScores(t) {
-  if (!platform.available || aiJudged(t)) return;
-  try {
-    const board = await api(`leaderboard?task=${encodeURIComponent(t.id)}`);
-    if (taskState.task !== t.id) return;
-    taskScores = new Map(board.rows.map((row) => [row.key, row.score]));
-    if (resultSort === 'score') applySort(t);
-  } catch { /* the sort falls back to names */ }
+let taskScoreRead = null, taskScoreController = null, taskScoreRun = 0, scoredTask = null, taskScoreError = '';
+function updateTaskScoreStatus() {
+  const status = $('[data-score-state]');
+  if (!status) return;
+  status.hidden = resultSort !== 'score' || scoredTask === taskState.task;
+  status.innerHTML = taskScoreError ? `${esc(taskScoreError)} <button class="link" type="button" data-task-score-retry>重试加载</button>` : '正在载入榜单…';
+}
+function cancelTaskScores(forget = true) {
+  taskScoreRun++;
+  taskScoreController?.abort();
+  taskScoreController = null;
+  taskScoreRead = null;
+  if (forget) scoredTask = null;
+  taskScoreError = '';
+  updateTaskScoreStatus();
+}
+function loadTaskScores(t) {
+  if (resultSort !== 'score' || !platform.available || aiJudged(t) || scoredTask === t.id) return;
+  if (taskScoreRead) { updateTaskScoreStatus(); return taskScoreRead; }
+  const run = ++taskScoreRun, controller = new AbortController();
+  taskScoreController = controller;
+  taskScoreError = '';
+  updateTaskScoreStatus();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    if (run === taskScoreRun) { taskScoreError = '连接超时，请重试。'; updateTaskScoreStatus(); }
+    controller.abort();
+  }, 15000);
+  taskScoreRead = (async () => {
+    try {
+      const board = await api(`leaderboard?task=${encodeURIComponent(t.id)}`, { signal: controller.signal });
+      if (run !== taskScoreRun || taskState.task !== t.id || controller.signal.aborted) return;
+      const current = DATA.tasks.find((task) => task.id === t.id);
+      if (!current) return;
+      taskScores = new Map(board.rows.map((row) => [row.key, row.score]));
+      scoredTask = t.id;
+      if (resultSort === 'score') applySort(current);
+    } catch (error) {
+      if (run === taskScoreRun) taskScoreError = timedOut ? '连接超时，请重试。' : error.message;
+    }
+    finally {
+      clearTimeout(timer);
+      if (run === taskScoreRun) { taskScoreRead = null; taskScoreController = null; updateTaskScoreStatus(); }
+    }
+  })();
+  return taskScoreRead;
 }
 async function mountTaskBoard() {
   const body = $('#board-body');
@@ -905,6 +948,7 @@ function renderTask(t) {
         <option value="">全部服务商（${t.results.length}）</option>
         ${providerChoices.map(([key, item]) => `<option value="${esc(key)}"${key === taskState.provider ? ' selected' : ''}>${esc(item.name)}（${item.count}）</option>`).join('')}
       </select></label>${sortControl()}</div></div>
+      <p class="fine" role="status" data-score-state hidden></p>
       <div data-results>${familyShown(t) ? familyView(t) : resultGroups(t)}</div>
       <p class="muted filter-empty" hidden>${t.results.length ? '没有匹配的作品，请试试其他关键词或筛选条件。' : '还没有作品，点击本题的「上传作品」带来第一份答案。'}</p>
     </section>
@@ -928,7 +972,6 @@ function renderTask(t) {
   syncTaskView(t);
   filterResults(t);
   syncPicks(t);
-  loadTaskScores(t);
 
   root.oninput = (e) => {
     if (!e.target.matches('[data-work-search]')) return;
@@ -944,8 +987,11 @@ function renderTask(t) {
     if (!e.target.matches('[data-result-sort]')) return;
     setResultSort(e.target.value);
     applySort(t);
+    if (resultSort === 'score') void loadTaskScores(t);
+    else cancelTaskScores();
   };
   root.onclick = (e) => {
+    if (e.target.closest('[data-task-score-retry]')) { cancelTaskScores(); void loadTaskScores(t); return; }
     const promptVariant = e.target.closest('[data-prompt-variant]');
     if (promptVariant) {
       taskState.promptVariant = promptVariant.dataset.promptVariant;
@@ -1040,8 +1086,10 @@ function taskPage(t) {
   renderTask(t);
   activatePanel(location.hash.split('#')[2], false);
   return {
+    scoreTask: t.id,
     ready: updateResultPreviews(t),
-    destroy() {
+    destroy({ keepTaskScores = false } = {}) {
+      if (!keepTaskScores) cancelTaskScores();
       taskBoard?.destroy?.();
       taskBoard = null;
       ++previewVersion;
@@ -1882,8 +1930,8 @@ async function route({ keepScroll = false, from = null } = {}) {
 //                     router draws the page again in place
 //   destroy           it lets go of timers, listeners and frames
 // Pages may also set root.on* handlers; tearing a page down clears them.
-function teardown() {
-  page?.destroy?.();
+function teardown(options) {
+  page?.destroy?.(options);
   page = null;
   root.onclick = root.onchange = root.oninput = root.onsubmit = root.onkeydown = root.onpointerover = root.onfocusin = null;
   lightbox.close();
@@ -1917,7 +1965,9 @@ async function show(version, visit, scrollBack) {
     page.onPlatformChange();
   } else if (works.length && page?.task === t) page.update(works);
   else {
-    teardown();
+    // Session/activity arrivals redraw the same task. Its public score read belongs
+    // to that task, while leaving it (including a withdrawal) still cancels the read.
+    teardown({ keepTaskScores: Boolean(t && !inViewer && !inExhibition && page?.scoreTask === t.id) });
     if (!taskId) page = renderLanding(root, context());
     else if (!['ready', 'static'].includes(catalogState()) && !['terms', 'privacy'].includes(taskId)) page = platformPage ? platformOffline(platformPage) : catalogPending();
     else if (taskId === 'questions') page = renderLibrary(parts.slice(1), Boolean(visit && !visit.returning));
