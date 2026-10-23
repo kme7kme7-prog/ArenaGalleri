@@ -80,7 +80,7 @@ export function mountBoard(container, ctx) {
   let unit = store.get('board-unit') === 'model' ? 'model' : 'config';
   let showSmallSamples = store.get('board-show-small-samples') === 'true';
   let currentData = null;
-  let controller = null;
+  let request = null;
   let destroyed = false;
   let query = '';
   let text = '';
@@ -198,6 +198,7 @@ export function mountBoard(container, ctx) {
   let drawn = false;
   function draw(data) {
     if (ctx.curated && data.audience !== 'curated') throw new Error('后端尚未支持精选榜，请更新后端后重试');
+    if (!Array.isArray(data.rows) || !Array.isArray(data.unranked) || !data.totals) throw new Error('服务暂时不可用，请稍后重试。');
     // A fresh board can land while the reader types; the search keeps its focus.
     const typing = document.activeElement?.matches('[data-board-search]');
     const togglingSamples = document.activeElement?.matches('[data-board-small]');
@@ -210,31 +211,52 @@ export function mountBoard(container, ctx) {
     drawn = true;
   }
   // A board seen before draws at once from memory; the fresh one replaces it only if it differs.
-  async function load() {
-    controller?.abort();
-    controller = new AbortController();
+  function load() {
+    if (destroyed) return Promise.resolve();
     const params = new URLSearchParams({ by: unit, ...(ctx.curated ? { audience: 'curated', ...(ctx.sectionId ? { sectionId: ctx.sectionId } : {}) } : ctx.task ? { task: ctx.task.id } : { ...(ctx.category ? { category: ctx.category } : {}), ...(ctx.domain ? { domain: ctx.domain } : {}) }) });
     if (filterable) for (const [field, value] of Object.entries(filters)) if (value) params.set(field, value);
     const path = `leaderboard?${params}`;
-    const known = recall(path);
+    if (request?.path === path) return request.promise;
+    request?.controller.abort();
+    const controller = new AbortController();
+    const reading = { path, controller, promise: null };
+    request = reading;
+    let known = recall(path);
     let fromMemory = false;
     container.setAttribute('aria-busy', 'true');
-    try {
-      if (known) { draw(known); fromMemory = true; }
-      const data = await apiRemembered(path, { signal: controller.signal });
-      if (destroyed) return;
+    $('[data-board-error]', container)?.remove();
+    // Include the JSON body in the deadline. Cancelled responses may finish late;
+    // only this request may draw or clear the busy state.
+    let reject;
+    const cancelled = new Promise((_, fail) => { reject = fail; });
+    const onAbort = () => reject(controller.signal.reason);
+    controller.signal.addEventListener('abort', onAbort, { once: true });
+    const timer = setTimeout(() => controller.abort(new DOMException('连接超时，请重试。', 'TimeoutError')), 15000);
+    reading.promise = (async () => { try {
+      if (known) {
+        try { draw(known); fromMemory = true; }
+        catch { known = null; } // A malformed cached answer must not prevent a fresh retry.
+      }
+      const data = await Promise.race([apiRemembered(path, { signal: controller.signal }), cancelled]);
+      if (destroyed || request !== reading || controller.signal.aborted) return;
       if (JSON.stringify(data) !== JSON.stringify(known)) draw(data);
       ctx.onLoad?.(data);
       return data;
     } catch (error) {
-      if (error.name === 'AbortError' || destroyed || fromMemory) return;
-      container.innerHTML = `<p class="muted">榜单暂时无法载入：${esc(error.message)}</p>`;
+      if (error.name === 'AbortError' || destroyed || request !== reading) return;
+      const message = `<div data-board-error role="status"><p class="muted">榜单暂时无法载入：${esc(error.message)}</p><button class="btn sm" type="button" data-board-retry>重试加载</button></div>`;
+      if (fromMemory) container.insertAdjacentHTML('afterbegin', message);
+      else container.innerHTML = message;
     } finally {
-      container.removeAttribute('aria-busy');
-    }
+      clearTimeout(timer);
+      controller.signal.removeEventListener('abort', onAbort);
+      if (request === reading) { request = null; container.removeAttribute('aria-busy'); }
+    } })();
+    return reading.promise;
   }
 
   const onClick = (e) => {
+    if (e.target.closest('[data-board-retry]')) return void load();
     if (e.target.closest('[data-curated-arena]')) {
       arenaScope.set(currentData?.scope?.taskIds ?? []);
       location.hash = '#/arena/random';
@@ -271,7 +293,7 @@ export function mountBoard(container, ctx) {
     },
     destroy() {
       destroyed = true;
-      controller?.abort();
+      request?.controller.abort();
       container.removeEventListener('click', onClick);
       container.removeEventListener('change', onChange);
     },

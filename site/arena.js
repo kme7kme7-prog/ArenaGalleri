@@ -3,7 +3,7 @@
 // The server picks every pair and hands out opaque frame addresses; nothing on this page
 // knows which work is which until the vote comes back with the reveal.
 import { $, $$, brandMark, esc, icon, pad, themeButton } from './ui.js';
-import { api, arenaScope, isSenior, isStaff, levelOf, openAuth, openDialog, platform, reactionBar, requireUser, toast } from './platform.js';
+import { accountVersion, api, arenaScope, isSenior, isStaff, levelOf, openAuth, openDialog, platform, reactionBar, requireUser, toast } from './platform.js';
 import { aigcLabel } from './legal.js';
 import { domainsOf, matchesQuery, tracksOf, votedTask } from './categories.js';
 import { linkReferences, referenceSheet } from './references.js';
@@ -192,6 +192,8 @@ function match(root, ctx, first, scope) {
   const hold = createHold(() => tickGate());
   let shownStatus = '';
   let activeDraw = null, drawGeneration = 0;
+  let owner = accountVersion(), policyController = null, placeController = null;
+  const owns = (current, version) => alive && version === accountVersion() && state.match === current;
   const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); };
 
   document.body.classList.add('is-viewer');
@@ -290,16 +292,17 @@ function match(root, ctx, first, scope) {
   const resetGate = () => { hold.reset(); shownStatus = ''; };
   // The server's clock decides at the earliest; the local count never opens sooner than 5 seconds of attention.
   function startGate() {
-    const current = state.match;
+    const current = state.match, version = accountVersion();
     resetGate();
     hold.begin();
+    if (document.hidden) hold.stop();
     live(`${seconds(viewMs())} 秒后可以投票`);
     api(`arena/matches/${current.id}/ready`, { method: 'POST', body: {} }).then((ready) => {
-      if (state.match !== current || state.result) return;
+      if (!owns(current, version) || state.result) return;
       const after = (iso) => performance.now() + Date.parse(iso) - Date.parse(ready.serverNow);
       hold.mark('vote', after(ready.voteAllowedAt));
       hold.mark('skip', after(ready.skipAllowedAt));
-      if (voteWait() > 0 || skipWait() > 0) hold.resume();
+      if (!document.hidden && (voteWait() > 0 || skipWait() > 0)) hold.resume();
       syncGate();
     }).catch(() => { /* a vote sent too early is answered with match_not_ready and asks again */ });
     update();
@@ -312,7 +315,15 @@ function match(root, ctx, first, scope) {
       live('现在可以投票');
     }
   }
-  const onVisibility = () => { hold.touch(); el.classList.toggle('is-away', document.hidden); };
+  const onVisibility = () => {
+    hold.touch();
+    el.classList.toggle('is-away', document.hidden);
+    if (document.hidden) {
+      hold.stop();
+      if (state.prefetch && !state.prefetch.settled) dropPrefetch();
+    } else if (state.result) prefetch();
+    else if (bothReady() && (voteWait() > 0 || skipWait() > 0)) hold.resume();
+  };
   document.addEventListener('visibilitychange', onVisibility);
 
   const skipLabel = () => (skipWait() > 0 ? `${seconds(skipWait())} 秒后可跳过` : '跳过这一组');
@@ -555,13 +566,19 @@ function match(root, ctx, first, scope) {
 
   // The pinned model's place on the overall model board, refreshed after each counted pinned vote.
   async function place(pin) {
+    const version = accountVersion();
+    placeController?.abort();
+    const controller = new AbortController();
+    placeController = controller;
+    const timer = setTimeout(() => controller.abort(), 15000);
     try {
-      const board = await api('leaderboard?by=model');
+      const board = await api('leaderboard?by=model', { signal: controller.signal });
       const row = board.rows.find((r) => r.key === pin.key);
-      if (state.pin !== pin) return;
+      if (!alive || version !== accountVersion() || state.pin !== pin || controller.signal.aborted) return;
       state.place = row ? `综合第 ${row.rank} 名 · ${row.score} ±${row.interval}${row.provisional ? ' · 暂定' : ''}` : '尚未上榜';
       if (state.result) drawBar();
     } catch { /* the tally stands without a place */ }
+    finally { clearTimeout(timer); if (placeController === controller) placeController = null; }
   }
 
   // The next task of a random round: any task in range the reader has not run out of, not the same one twice.
@@ -657,9 +674,8 @@ function match(root, ctx, first, scope) {
   // Fetch only the next pair's addresses. Its works start when the reader moves on,
   // after the current frames have been removed; hidden works can keep rendering.
   function prefetch() {
-    if (state.prefetch || state.error || !state.match) return;
+    if (!alive || owner !== accountVersion() || document.hidden || state.prefetch || state.error || !state.match) return;
     const ahead = loadPair((signal) => draw(task, state.match.id, state.random, state.random, signal));
-    ahead.user = platform.user?.id ?? null;
     ahead.promise = ahead.promise.then((drawn) => {
       Object.assign(ahead, drawn, { settled: true });
     }, (error) => { ahead.error = error; ahead.settled = true; });
@@ -697,6 +713,7 @@ function match(root, ctx, first, scope) {
         say('正在确认…');
         try {
           const value = await submit(widget.token);
+          if (closed) return;
           done = true;
           status.innerHTML = `${icon('check')}已确认`;
           status.classList.remove('is-error');
@@ -727,10 +744,10 @@ function match(root, ctx, first, scope) {
       mount();
     });
   }
-  let humanSheet = null, heldUser = null, entryToken = '';
+  let humanSheet = null, entryToken = '';
 
   async function next() {
-    if (state.busy || state.error) return;
+    if (!alive || state.busy || state.error) return;
     state.busy = true;
     const generation = ++drawGeneration;
     frameLoads.forEach((stop) => stop());
@@ -758,7 +775,7 @@ function match(root, ctx, first, scope) {
         else if (!settled && ahead.error) throw ahead.error;
       }
       if (!alive || generation !== drawGeneration) return;
-      const attempt = (token) => Object.assign(loadPair((signal) => draw(earlier, previous, state.random, state.random && state.round > 0, signal, token)), { user: platform.user?.id ?? null });
+      const attempt = (token) => loadPair((signal) => draw(earlier, previous, state.random, state.random && state.round > 0, signal, token));
       let drawn = ahead?.match ? ahead : null;
       if (!drawn && !challenge) {
         activeDraw = attempt(entryToken);
@@ -772,9 +789,12 @@ function match(root, ctx, first, scope) {
       if (!drawn) {
         // The next pair waits for a person's check; the works stay unloaded and the choice of task stays open.
         for (const body of $$('[data-body]', el)) body.innerHTML = `<div class="arena-layer">${loader(body.dataset.body, '完成人机验证后继续')}</div>`;
-        const user = platform.user?.id ?? null;
-        activeDraw = { user, cancel: () => humanSheet?.close() };
-        const answer = await askHuman({ challenge, submit: (token) => { activeDraw = Object.assign(attempt(token), { user }); return activeDraw.promise; } });
+        const version = accountVersion();
+        activeDraw = { cancel: () => humanSheet?.close() };
+        const answer = await askHuman({ challenge, submit: (token) => {
+          if (!alive || version !== accountVersion() || generation !== drawGeneration) throw new DOMException('Pair cancelled', 'AbortError');
+          activeDraw = attempt(token); return activeDraw.promise;
+        } });
         humanSheet = null;
         if (!alive || generation !== drawGeneration) return;
         if (answer?.error) throw answer.error;
@@ -831,37 +851,40 @@ function match(root, ctx, first, scope) {
 
   // The server asks for a check on this vote. The pick is kept and sent again once the person is confirmed.
   async function verifyVote(choice, challenge) {
-    const current = state.match, user = platform.user?.id ?? null;
-    heldUser = user;
+    const current = state.match, version = accountVersion();
     state.busy = true;
     state.held = choice;
     state.needVerify = null;
     update();
-    const answer = await askHuman({ challenge, submit: (token) => postVote(current, choice, token) });
+    const answer = await askHuman({ challenge, submit: (token) => {
+      if (!owns(current, version)) throw new DOMException('Vote cancelled', 'AbortError');
+      return postVote(current, choice, token);
+    } });
+    if (!owns(current, version)) return;
     humanSheet = null;
     state.held = null;
-    if (!alive || state.match !== current) return;
     if (answer?.value) { accept(answer.value, choice); return finishVote(); }
     if (answer?.error) {
       toast(answer.error.message);
       if (answer.error.status === 404) { state.busy = false; return next(); }
       return finishVote();
     }
-    if ((platform.user?.id ?? null) !== user) { state.busy = false; return showError(new Error('登录状态已变化，请重新抽取')); }
     state.needVerify = { choice, challenge };
     finishVote();
   }
 
-  async function vote(choice, retried = false) {
-    if (state.busy || state.result || !state.match || (choice === 'skip' ? !canSkip() : !canVote())) return;
-    const current = state.match;
+  async function vote(choice) {
+    if (!alive || state.busy || state.result || !state.match || (choice === 'skip' ? !canSkip() : !canVote())) return;
+    const current = state.match, version = accountVersion();
     state.busy = true;
     state.needVerify = null;
     drawBar();
     try {
-      accept(await postVote(current, choice), choice);
+      const result = await postVote(current, choice);
+      if (!owns(current, version)) return;
+      accept(result, choice);
     } catch (error) {
-      if (state.match !== current) return;
+      if (!owns(current, version)) return;
       if (error.code === 'turnstile_required') return verifyVote(choice, error.data?.challenge);
       if (error.code === 'match_not_ready') {
         // The server never saw this pair become ready: tell it again and count the five seconds anew.
@@ -870,17 +893,17 @@ function match(root, ctx, first, scope) {
         else update();
         return;
       }
-      if (error.code === 'vote_too_early' && !retried) {
+      if (error.code === 'vote_too_early') {
         const wait = Math.max(1, error.retryAfter || 1) * 1000;
         hold.mark('vote', performance.now() + wait);
         hold.mark('skip', performance.now() + wait);
-        hold.resume();
+        if (!document.hidden) hold.resume();
         state.busy = false;
         update();
-        later(() => vote(choice, true), wait + 50);
+        toast('请再多看一会儿再投票');
         return;
       }
-      toast(error.code === 'vote_too_early' ? '请再多看一会儿再投票' : error.message);
+      toast(error.message);
       if (error.status === 404) { state.busy = false; return next(); }
     }
     finishVote();
@@ -901,6 +924,7 @@ function match(root, ctx, first, scope) {
     if (!action) return;
     const kind = action.dataset.a;
     if (kind === 'next') next();
+    else if (kind === 'retry-policy' && state.error) { state.error = null; void start(); }
     else if (kind === 'retry-pair' && state.error) { state.error = null; next(); }
     else if (kind === 'verify' && state.needVerify && !state.busy) void verifyVote(state.needVerify.choice, state.needVerify.challenge);
     else if (kind === 'prompt') togglePrompt();
@@ -993,9 +1017,19 @@ function match(root, ctx, first, scope) {
   // pair is drawn; when the server wants a first check, it sits in the same sheet so it is asked only once.
   let notice = null;
   async function countNotice() {
-    const policy = await api('arena/policy').catch(() => null);
+    const version = accountVersion(), controller = new AbortController();
+    policyController?.abort();
+    policyController = controller;
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 15000);
+    let policy;
+    try { policy = await api('arena/policy', { signal: controller.signal }); }
+    catch (error) { if (timedOut) throw new Error('连接超时，请重试。'); throw error; }
+    finally { clearTimeout(timer); if (policyController === controller) policyController = null; }
+    if (!alive || version !== accountVersion() || controller.signal.aborted) return null;
+    // A missing policy must not turn a required human check into direct entry.
+    if (typeof policy?.challenge?.required !== 'boolean' || (policy.challenge.required && !policy.challenge.siteKey)) throw new Error('人机验证暂时失败，请稍候重试。');
     const check = policy?.challenge?.required && policy.challenge.siteKey ? policy.challenge : null;
-    if (!alive) return { answer: 'try' };
     return new Promise((resolve) => {
       let answer = 'try', widget = null, token = '';
       notice = openDialog({
@@ -1037,13 +1071,23 @@ function match(root, ctx, first, scope) {
 
   let alive = true;
   async function start() {
+    const version = accountVersion();
     let seen = false;
     try { seen = sessionStorage.getItem(NOTICE) === '1'; } catch { /* private mode */ }
     if (platform.available && !platform.user && !seen) {
+      let selection;
+      try { selection = await countNotice(); } catch (error) {
+        if (!alive || version !== accountVersion() || error.name === 'AbortError') return;
+        state.error = error;
+        for (const body of $$('[data-body]', el)) body.innerHTML = `<div class="arena-layer"><div class="board-empty arena-empty"><p class="board-empty-title">${esc(error.message)}</p><div class="board-empty-actions"><button class="btn primary" data-a="retry-policy">重试加载</button><a class="btn" href="#/arena">返回盲评大厅</a></div></div></div>`;
+        drawBar();
+        return;
+      }
+      if (!selection || !alive || version !== accountVersion()) return;
       try { sessionStorage.setItem(NOTICE, '1'); } catch { /* private mode */ }
-      const { answer } = await countNotice();
-      if (answer === 'count' && alive) await requireUser('登录后，这一轮的选择会同时计入精选榜。');
-      if (answer === 'register' && alive) await openAuth({ mode: 'register' });
+      const { answer } = selection;
+      if (answer === 'count') await requireUser('登录后，这一轮的选择会同时计入精选榜。');
+      if (answer === 'register') await openAuth({ mode: 'register' });
     }
     if (alive) next();
   }
@@ -1054,15 +1098,28 @@ function match(root, ctx, first, scope) {
   return {
     fullscreen: true,
     onPlatformChange() {
-      if (state.prefetch && state.prefetch.user !== (platform.user?.id ?? null)) dropPrefetch();
-      if (humanSheet && state.held && heldUser !== (platform.user?.id ?? null)) humanSheet.close();
-      if (activeDraw && activeDraw.user !== (platform.user?.id ?? null)) {
+      if (owner !== accountVersion()) {
+        owner = accountVersion();
         drawGeneration++;
-        activeDraw.cancel();
+        activeDraw?.cancel();
         activeDraw = null;
+        policyController?.abort();
+        placeController?.abort();
+        humanSheet?.close();
+        notice?.close();
+        dropPrefetch();
+        stopGate();
+        frameLoads.forEach((stop) => stop());
+        frameLoads.clear();
+        state.match = state.result = state.held = state.needVerify = null;
+        state.counted = 0;
+        state.tally = { win: 0, tie: 0, loss: 0 };
+        state.place = '';
+        humanSheet = null;
+        entryToken = '';
         state.busy = false;
         state.pin = pinned();
-        showError(new Error('登录状态已变化，请重新抽取'));
+        return showError(new Error('登录状态已变化，请重新抽取'));
       }
       if (!state.error) update();
     },
@@ -1071,6 +1128,8 @@ function match(root, ctx, first, scope) {
       removeEventListener('message', onFold);
       removeEventListener('resize', onResize);
       alive = false;
+      policyController?.abort();
+      placeController?.abort();
       stopGate();
       document.removeEventListener('visibilitychange', onVisibility);
       humanSheet?.close();
