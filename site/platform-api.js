@@ -79,17 +79,20 @@ const work = (item) => !item ? item : {
   ...(item.captures ? { captures: Object.fromEntries(Object.entries(item.captures).map(([name, url]) => [name, mediaUrl(url)])) } : {}),
 };
 const works = (items) => items?.map(work);
-const question = (item) => !item?.references ? item : {
+const question = (item) => !item ? item : {
   ...item,
-  references: item.references.map((ref) => ({ ...ref, src: mediaUrl(ref.src), ...(ref.thumb ? { thumb: mediaUrl(ref.thumb) } : {}) })),
+  ...(item.references ? { references: item.references.map((ref) => ({ ...ref, src: mediaUrl(ref.src), ...(ref.thumb ? { thumb: mediaUrl(ref.thumb) } : {}) })) } : {}),
+  ...(Array.isArray(item.samples) ? { samples: works(item.samples) } : {}),
 };
 
 // Only the API's known DTOs contain server media. Packaged assets remain on the frontend.
 export function resolveApiMedia(data, endpoint) {
   if (!data || typeof data !== 'object') return data;
   if (['bootstrap', 'catalog', 'me', 'review', 'questions'].includes(endpoint) && Array.isArray(data.questions)) data = { ...data, questions: data.questions.map(question) };
+  if (endpoint === 'review' && Array.isArray(data.autoWorks)) data = { ...data, autoWorks: works(data.autoWorks) };
   if (['bootstrap', 'catalog', 'me', 'review'].includes(endpoint)) return Array.isArray(data.works) ? { ...data, works: works(data.works) } : data;
-  if (endpoint === 'work') return { ...data, work: work(data.work) };
+  if (endpoint === 'work') return { ...data, work: work(data.work), ...(Object.hasOwn(data, 'question') ? { question: question(data.question) } : {}) };
+  if (endpoint === 'question') return { ...data, question: question(data.question), ...(Array.isArray(data.works) ? { works: works(data.works) } : {}) };
   if (endpoint === 'draft') return { ...data, preview: data.preview ? new URL(data.preview, new URL('../', apiBaseUrl())).href : data.preview };
   if (endpoint === 'match') return { ...data, a: mediaUrl(data.a), b: mediaUrl(data.b) };
   if (endpoint === 'reveal') return { ...data, a: work(data.a), b: work(data.b) };

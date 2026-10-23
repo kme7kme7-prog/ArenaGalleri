@@ -369,11 +369,13 @@ export async function api(path, { method = 'GET', body, signal } = {}) {
     platform.sessionConnecting = false;
     emit('identity');
   }
-  const endpoint = path === 'me' || path === 'review' ? path
+  const resource = path.split('?')[0];
+  const endpoint = resource === 'me' || resource === 'review' ? resource
+    : /^admin\/questions\/[^/]+$/.test(resource) ? 'question'
     : path === 'admin/questions' ? 'questions'
     : path === 'arena/matches' ? 'match'
       : /^arena\/matches\/[^/]+\/vote$/.test(path) ? 'reveal'
-      : path === 'works' || /^works\/[^/]+\/[^/]+\/(?:review|moderation(?:\/retry)?)$/.test(path)
+      : /^admin\/works\/[^/]+\/[^/]+$/.test(resource) || path === 'works' || /^works\/[^/]+\/[^/]+\/(?:review|moderation(?:\/retry)?)$/.test(path)
         || /^admin\/works\/[^/]+\/[^/]+\/(?:meta|face-settings)$/.test(path) ? 'work' : null;
   return resolveApiMedia(data, endpoint);
 }
@@ -383,22 +385,41 @@ export async function api(path, { method = 'GET', body, signal } = {}) {
 const remembered = new Map();
 const rememberedReads = new Map();
 const memoryKey = (path) => `${platform.user?.id ?? ''} ${path}`;
-export const recall = (path) => remembered.get(memoryKey(path));
+const remember = (key, data) => {
+  remembered.delete(key);
+  remembered.set(key, data);
+  while (remembered.size > 24) remembered.delete(remembered.keys().next().value);
+};
+export const recall = (path) => {
+  const key = memoryKey(path), data = remembered.get(key);
+  if (data !== undefined) remember(key, data);
+  return data;
+};
 export function updateRememberedReviewWork(work) {
+  // A decision can move a row between pages and change every tab's counts. Drop
+  // scoped snapshots, including their in-flight cache writes, instead of patching
+  // one page while leaving another page or its totals stale.
+  const prefix = memoryKey('review?');
+  for (const key of remembered.keys()) if (key.startsWith(prefix)) remembered.delete(key);
+  for (const key of rememberedReads.keys()) if (key.startsWith(prefix)) rememberedReads.delete(key);
   const key = memoryKey('review');
-  rememberedReads.set(key, (rememberedReads.get(key) ?? 0) + 1);
+  rememberedReads.set(key, Symbol());
   const data = remembered.get(key);
   if (!data) return;
-  remembered.set(key, { ...data, works: data.works.map((item) => item.task === work.task && item.id === work.id ? { ...item, ...work } : item) });
+  remember(key, { ...data, works: data.works.map((item) => item.task === work.task && item.id === work.id ? { ...item, ...work } : item) });
 }
 export async function apiRemembered(path, options) {
   const key = memoryKey(path);
   const generation = accountGeneration;
-  const read = (rememberedReads.get(key) ?? 0) + 1;
+  const read = Symbol();
   rememberedReads.set(key, read);
-  const data = await api(path, options);
-  if (generation === accountGeneration && read === rememberedReads.get(key)) remembered.set(key, data);
-  return data;
+  try {
+    const data = await api(path, options);
+    if (generation === accountGeneration && read === rememberedReads.get(key)) remember(key, data);
+    return data;
+  } finally {
+    if (read === rememberedReads.get(key)) rememberedReads.delete(key);
+  }
 }
 
 // Check the lightweight session endpoint on return; reload bootstrap only if the account changed.

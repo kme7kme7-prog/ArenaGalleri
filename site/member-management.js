@@ -27,7 +27,7 @@ const CHANGES = {
   '3>0': '保存后立即失去全部管理权限，不能进入审核页。已做出的审核决定和记录保留；待审投稿按成员规则计算。之后的选择只计入大众榜，不能再发起题目。',
 };
 
-export const membersState = () => ({ list: null, error: '', filter: 'all', query: '', email: '', active: '', sort: 'seen' });
+export const membersState = () => ({ list: null, error: '', filter: 'all', query: '', email: '', active: '', sort: 'seen', paged: false, total: 0, scopeTotal: 0, filterCounts: {} });
 
 const level = (m) => levelOf(m);
 const self = (m) => m.id === platform.user?.id;
@@ -50,6 +50,7 @@ const examLine = (m) => (m.exam?.passedAt ? '通过考试' : m.exam?.attempts ? 
 
 // The search and selects set the scope the chips count within.
 function members(state, { filtered = true } = {}) {
+  if (state.paged) return state.list ?? [];
   const { filter, query, email, active, sort } = state;
   const terms = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
   return (state.list ?? []).filter((m) => (!filtered || inFilter(m, filter)) && (!email || (email === 'bound') === m.emailVerified)
@@ -76,24 +77,24 @@ function row(m) {
 
 export function memberChips(state) {
   const scope = members(state, { filtered: false });
-  return FILTERS.map(([id, label]) => `<button class="chip" type="button" data-member-filter="${id}" aria-pressed="${state.filter === id}">${label}<span>${scope.filter((m) => inFilter(m, id)).length}</span></button>`).join('');
+  return FILTERS.map(([id, label]) => `<button class="chip" type="button" data-member-filter="${id}" aria-pressed="${state.filter === id}">${label}<span>${state.paged ? state.filterCounts[id] ?? 0 : scope.filter((m) => inFilter(m, id)).length}</span></button>`).join('');
 }
 
 export function memberResults(state) {
-  const list = members(state), total = (state.list ?? []).length;
-  return `<p class="work-manage-list-meta">显示 ${list.length} / ${total} 位成员 · 自己和服务器固定的账号不能在这里改等级</p>
+  const list = members(state), total = state.paged ? state.scopeTotal : (state.list ?? []).length;
+  return `<p class="work-manage-list-meta">显示 ${state.paged ? state.total : list.length} / ${total} 位成员 · 自己和服务器固定的账号不能在这里改等级</p>
     ${list.length ? `<div class="work-list">${list.map(row).join('')}</div>` : '<div class="board-empty"><p class="board-empty-title">没有匹配的成员</p><button class="btn sm" type="button" data-member-reset>清除筛选</button></div>'}`;
 }
 
-export function memberList(state) {
+export function memberList(state, pagination = '') {
   if (state.list === null) return state.error ? `<p class="form-error">${esc(state.error)}</p>` : '<p class="muted">正在载入成员…</p>';
   const options = (items, current) => items.map(([id, label]) => `<option value="${id}"${id === current ? ' selected' : ''}>${label}</option>`).join('');
-  return `<div class="work-management"><div class="work-manage-heading"><h3>全部成员<span>${state.list.length}</span></h3><p>等级与参与情况；等级调整即时生效并记入审核记录</p></div>
+  return `<div class="work-management"><div class="work-manage-heading"><h3>全部成员<span>${state.paged ? state.scopeTotal : state.list.length}</span></h3><p>等级与参与情况；等级调整即时生效并记入审核记录</p></div>
     <div class="work-manage-tools"><label class="collection-search">${icon('search')}<input type="search" data-member-search aria-label="搜索用户名或昵称" placeholder="搜索用户名或昵称" value="${esc(state.query)}"></label>
       <select name="email" data-member-select aria-label="按邮箱筛选">${options([['', '全部邮箱状态'], ['bound', '已绑定邮箱'], ['none', '未绑定邮箱']], state.email)}</select>
       <select name="active" data-member-select aria-label="按活跃时间筛选">${options([['', '全部活跃时间'], ['week', '7 天内活跃'], ['month', '30 天内活跃'], ['idle', '超过 30 天未活跃']], state.active)}</select>
       <select name="sort" data-member-select aria-label="成员排序">${options(Object.entries(SORTS), state.sort)}</select></div>
-    <div class="chips work-manage-filters" data-member-chips>${memberChips(state)}</div><div class="work-manage-results" data-member-results>${memberResults(state)}</div></div>`;
+    <div class="chips work-manage-filters" data-member-chips>${memberChips(state)}</div><div class="work-manage-results" data-member-results>${memberResults(state)}${pagination}</div></div>`;
 }
 
 // Level history comes from the shared audit log, whose 'role' entries read "name → 等级".

@@ -91,6 +91,42 @@ test('aborting a response body preserves the remembered review', async () => {
   });
 });
 
+test('paged and searched responses keep only the 24 most recently used answers without reviving old reads', async () => {
+  await environment('bounded-remembered', async ({ apiRemembered, recall }) => {
+    globalThis.fetch = () => Promise.resolve(dto({ works: [] }));
+    await apiRemembered('review?panel=works&page=1');
+    for (let page = 2; page <= 24; page++) await apiRemembered(`review?panel=works&page=${page}`);
+    assert.ok(recall('review?panel=works&page=1'));
+    await apiRemembered('review?panel=works&page=25');
+    assert.equal(recall('review?panel=works&page=2'), undefined);
+    assert.ok(recall('review?panel=works&page=1'), 'returning to a cached page makes it recently used');
+    const old = pending(), newer = pending(); let calls = 0;
+    globalThis.fetch = () => ++calls === 1 ? old.promise : newer.promise;
+    const first = apiRemembered('review?panel=works&q=test'), second = apiRemembered('review?panel=works&q=test');
+    newer.resolve(dto({ works: [{ id: 'new' }] })); await second;
+    globalThis.fetch = () => Promise.resolve(dto({ works: [] }));
+    for (let page = 26; page <= 50; page++) await apiRemembered(`review?panel=works&page=${page}`);
+    assert.equal(recall('review?panel=works&q=test'), undefined);
+    old.resolve(dto({ works: [{ id: 'old' }] })); await first;
+    assert.equal(recall('review?panel=works&q=test'), undefined, 'an evicted newer answer cannot be resurrected by its older in-flight read');
+  });
+});
+
+test('review decisions invalidate scoped pages and their older in-flight cache writes', async () => {
+  await environment('review-page-invalidation', async ({ apiRemembered, recall, updateRememberedReviewWork }) => {
+    globalThis.fetch = () => Promise.resolve(dto({ works: [{ task: 'q', id: 'w' }], total: 51 }));
+    const path = 'review?panel=unverified&page=2';
+    await apiRemembered(path);
+    const pendingRead = pending(); globalThis.fetch = () => pendingRead.promise;
+    const read = apiRemembered(path);
+    updateRememberedReviewWork({ task: 'q', id: 'w', status: 'verified' });
+    assert.equal(recall(path), undefined, 'a moved row invalidates page membership and counts');
+    pendingRead.resolve(dto({ works: [{ task: 'q', id: 'w', status: 'unverified' }], total: 51 }));
+    await read;
+    assert.equal(recall(path), undefined);
+  });
+});
+
 test('known work mutations resolve returned cover and capture media', async () => {
   await environment('mutation-media', async ({ api }) => {
     globalThis.fetch = () => Promise.resolve(dto({ work: { task: 'q', id: 'w', cover: 'uploads/cover.webp', captures: { front: 'uploads/front.webp' } } }));
@@ -99,6 +135,29 @@ test('known work mutations resolve returned cover and capture media', async () =
       assert.equal(work.cover, 'https://backend.test/uploads/cover.webp', path);
       assert.equal(work.captures.front, 'https://backend.test/uploads/front.webp', path);
     }
+  });
+});
+
+test('scoped account lists and on-demand admin work details resolve relative media', async () => {
+  await environment('scoped-media', async ({ api }) => {
+    const work = { task: 'q', id: 'w', cover: 'uploads/cover.webp', captures: { front: 'uploads/front.webp' } };
+    for (const path of ['me?view=works', 'review?panel=works&limit=40']) {
+      globalThis.fetch = () => Promise.resolve(dto({ works: [work] }));
+      const data = await api(path);
+      assert.equal(data.works[0].cover, 'https://backend.test/uploads/cover.webp');
+    }
+    const question = { references: [{ src: 'references/full.webp', thumb: 'references/thumb.webp' }], samples: [work] };
+    globalThis.fetch = () => Promise.resolve(dto({ work, question }));
+    const data = await api('admin/works/q/w');
+    assert.equal(data.work.captures.front, 'https://backend.test/uploads/front.webp');
+    assert.equal(data.question.references[0].src, 'https://backend.test/references/full.webp');
+    globalThis.fetch = () => Promise.resolve(dto({ question, works: [work] }));
+    const detail = await api('admin/questions/q');
+    assert.equal(detail.question.samples[0].cover, 'https://backend.test/uploads/cover.webp');
+    assert.equal(detail.question.references[0].thumb, 'https://backend.test/references/thumb.webp');
+    globalThis.fetch = () => Promise.resolve(dto({ autoWorks: [work] }));
+    const auto = await api('review?panel=content');
+    assert.equal(auto.autoWorks[0].cover, 'https://backend.test/uploads/cover.webp');
   });
 });
 

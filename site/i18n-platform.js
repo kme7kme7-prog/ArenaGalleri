@@ -16,6 +16,8 @@ const phrases = Object.fromEntries(`
 全选当前页可管理的作品|Select manageable works on this page
 重试加载|Retry loading
 审核列表加载超时，请重试。|The review list timed out. Please retry.
+详情加载超时，请重试。|The details timed out. Please retry.
+个人内容加载超时，请重试。|Your content took too long to load. Please retry.
 账户|Account
 账号|Account
 用户名|Username

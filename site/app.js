@@ -1397,9 +1397,9 @@ function createViewer(t) {
     if (split) controls.add(frame, { inject: hosted(r) });
     const loader = $('.loader', body);
     frameLoads.set(i, watchViewerFrame(frame, {
-      onLoaded: () => { loader.classList.add('gone'); frameLoads.delete(i); },
+      onLoaded: () => { loader.classList.add('gone'); frameLoads.delete(Number(pane.dataset.pane)); },
       onSlow: () => {
-        loader.innerHTML = `<b>作品尚未完成载入</b><span>可以重新载入这一侧，或继续等待。</span><button class="btn" type="button" data-pane-reload="${i}">${icon('reload')}重新载入当前栏</button>`;
+        loader.innerHTML = `<b>作品尚未完成载入</b><span>可以重新载入这一侧，或继续等待。</span><button class="btn" type="button" data-pane-reload="${pane.dataset.pane}">${icon('reload')}重新载入当前栏</button>`;
       },
     }));
   }
@@ -1458,7 +1458,27 @@ function createViewer(t) {
 
   function update(panes) {
     const before = state.panes;
-    if (panes.length !== before.length) {
+    if (panes.length === 1 && before.length === 2 && before.includes(panes[0])) {
+      // Closing either comparison pane keeps the surviving document and its WebGL state.
+      // Removing its sibling avoids detaching or moving the live iframe, which reloads it.
+      const kept = before.indexOf(panes[0]);
+      const section = $(`[data-pane="${kept}"]`, stage);
+      const stop = frameLoads.get(kept);
+      frameLoads.get(1 - kept)?.();
+      frameLoads.clear();
+      if (stop) frameLoads.set(0, stop);
+      controls.clear();
+      $(`[data-pane="${1 - kept}"]`, stage).remove();
+      section.dataset.pane = '0';
+      $('.pane-tag', section).textContent = 'A';
+      $('[data-pane-pick]', section).dataset.panePick = '0';
+      $('[data-pane-pick]', section).setAttribute('aria-label', '左栏的作品');
+      $('[data-close]', section).dataset.close = '0';
+      $$('[data-pane-variant]', section).forEach((button) => { button.dataset.paneVariant = '0'; });
+      $$('[data-pane-reload]', section).forEach((button) => { button.dataset.paneReload = '0'; });
+      state.queries = [state.queries[kept] ?? ''];
+      state.panes = panes;
+    } else if (panes.length !== before.length) {
       clearFrameLoads();
       controls.clear();
       if (panes.length > 1) controls.hide();
@@ -1881,7 +1901,9 @@ async function show(version, visit, scrollBack) {
   const inViewer = t && a && !inExhibition;
   // Home counts come from the public catalog. Authoring, legal and exam pages use their
   // own session/data reads; fetch shared reactions and pools only where they are shown.
-  void setActivityNeeded(Boolean(parts && (['questions', 'arena', 'leaderboard', 'me', 'review'].includes(taskId) || (t && !inExhibition))));
+  const accountActivity = taskId === 'me' ? a === 'works'
+    : taskId === 'review' && !['members', 'log'].includes(a);
+  void setActivityNeeded(Boolean(parts && (['questions', 'arena', 'leaderboard'].includes(taskId) || accountActivity || (t && !inExhibition))));
   const ids = inViewer ? [a, vs === 'vs' ? b : null].filter(Boolean) : [];
   const works = ids.filter((id, i) => t.results.some((r) => r.id === id) && ids.indexOf(id) === i);
 
