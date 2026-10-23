@@ -14,8 +14,11 @@ try { current = localStorage.getItem(KEY); } catch { /* storage unavailable */ }
 if (!['zh-CN', 'en'].includes(current)) current = /^zh\b/i.test(globalThis.navigator?.languages?.[0] ?? globalThis.navigator?.language ?? 'zh-CN') ? 'zh-CN' : 'en';
 export const locale = () => current;
 export const formatNumber = (value, options = {}) => new Intl.NumberFormat(current, options).format(value);
-export const formatDate = (value, options = {}) => value ? new Date(value).toLocaleDateString(current, { year: 'numeric', month: '2-digit', day: '2-digit', ...options }) : '';
-export const formatTime = (value, options = {}) => value ? new Date(value).toLocaleString(current, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', ...options }) : '';
+// DOM attributes stringify API millisecond timestamps. Leave years and ordinary
+// date strings to Date's existing parser; only long integer timestamps are numeric.
+const dateValue = value => typeof value === 'string' && /^[+-]?\d{11,16}$/.test(value) ? Number(value) : value;
+export const formatDate = (value, options = {}) => value ? new Date(dateValue(value)).toLocaleDateString(current, { year: 'numeric', month: '2-digit', day: '2-digit', ...options }) : '';
+export const formatTime = (value, options = {}) => value ? new Date(dateValue(value)).toLocaleString(current, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', ...options }) : '';
 const escapePattern = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // Templates are an explicit allowlist, anchored to the entire phrase; raw content is excluded below.
 const patterns = Object.entries(catalog).filter(([key]) => /\{[A-Za-z][A-Za-z0-9]*\}/.test(key) && /[\u3400-\u9fff]/.test(key)).map(([key, english]) => {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { locale, setLocale, t, translateText, formatNumber, formatDate } from '../site/i18n.js';
+import { locale, setLocale, t, translateText, formatNumber, formatDate, formatTime } from '../site/i18n.js';
 
 test('English interface phrases and explicit templates preserve dynamic values', () => {
   setLocale('en');
@@ -32,6 +32,30 @@ test('formatting follows the selected locale', () => {
   assert.equal(formatDate('2026-10-11T12:00:00'), new Date('2026-10-11T12:00:00').toLocaleDateString('en', { year: 'numeric', month: '2-digit', day: '2-digit' }));
   setLocale('zh-CN');
   assert.equal(formatDate('2026-10-11T12:00:00'), new Date('2026-10-11T12:00:00').toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }));
+});
+
+test('API millisecond timestamps retain their date and time after DOM attributes stringify them', () => {
+  const options = { timeZone: 'UTC' };
+  for (const selected of ['en', 'zh-CN']) {
+    setLocale(selected);
+    for (const stamp of [1792713600000, 999999999999, 10000000000, -1792713600000]) {
+      assert.equal(formatDate(String(stamp), options), formatDate(stamp, options));
+      assert.equal(formatTime(String(stamp), options), formatTime(stamp, options));
+      assert.doesNotMatch(formatDate(String(stamp), options), /invalid date/i);
+    }
+    assert.equal(formatTime('+1792713600000', options), formatTime(1792713600000, options));
+  }
+});
+
+test('ISO, ordinary date strings, short years and empty values keep their existing date semantics', () => {
+  for (const selected of ['en', 'zh-CN']) {
+    setLocale(selected);
+    for (const value of ['2026-10-23', '2026-10-23T14:30:00Z', 'October 23, 2026', '2026', '0', 'not a date']) {
+      assert.equal(formatDate(value), new Date(value).toLocaleDateString(selected, { year: 'numeric', month: '2-digit', day: '2-digit' }));
+      assert.equal(formatTime(value), new Date(value).toLocaleString(selected, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }));
+    }
+    for (const empty of [null, undefined, '', 0]) { assert.equal(formatDate(empty), ''); assert.equal(formatTime(empty), ''); }
+  }
 });
 
 test('curated staff-history messages and viewer recovery copy translate with dynamic counts', () => {

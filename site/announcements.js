@@ -1,5 +1,5 @@
 import { locale } from './i18n.js';
-import { api, isSenior, onPlatformChange, toast } from './platform.js';
+import { accountVersion, api, isSenior, onPlatformChange, toast } from './platform.js';
 import { esc, icon, store } from './ui.js';
 import { renderAnnouncementMarkdown } from './announcement-markdown.js';
 
@@ -14,6 +14,7 @@ const fullDate = entry => new Date(entry.publishedAt).toLocaleDateString(locale(
   { year: 'numeric', month: 'long', day: 'numeric' });
 
 let entries = [], started = false, pending = null, modal = null, timer = null;
+let readController = null, readVersion = 0, readError = '', modalOwner = null;
 const POLL_MS = 60000;
 let selectedId = 0, editing = false, dismissedThrough = 0, shownAdmin = false;
 const latest = () => entries[0] ?? null;
@@ -30,6 +31,7 @@ function render() {
   modal.innerHTML = `<div class="announcement-shell">
     <header class="announcement-head"><div><p class="announcement-eyebrow">${tr('站点消息', 'Site notices')}</p><h2 id="announcement-dialog-title">${editing ? tr('发布公告', 'Publish an announcement') : tr('公告', 'Announcements')}</h2></div>
       <div class="announcement-head-actions">${add}<button class="announcement-icon" type="button" data-ann-close aria-label="${tr('关闭', 'Close')}" title="${tr('关闭', 'Close')}">${icon('close')}</button></div></header>
+    ${readError && !editing ? `<div class="announcement-error" role="status"><span>${tr('公告加载失败：', 'Could not load announcements: ')}${esc(readError)}</span> <button type="button" class="link" data-ann-retry>${tr('重试', 'Retry')}</button></div>` : ''}
     ${editing ? `<form class="announcement-compose" data-ann-form>
       <div class="announcement-compose-fields"><label>${tr('标题', 'Title')}<input name="title" maxlength="100" required autocomplete="off" placeholder="${tr('简短描述这则公告', 'A short title for this announcement')}"></label>
         <label>${tr('Markdown 正文', 'Markdown body')}<textarea name="body" maxlength="20000" required placeholder="# ${tr('公告标题', 'Announcement heading')}\n\n${tr('在这里编写公告…', 'Write the announcement here…')}"></textarea></label></div>
@@ -59,12 +61,15 @@ export function openAnnouncements(id = latest()?.id) {
   selectedId = id ?? 0;
   editing = false;
   modal = document.createElement('dialog');
+  modalOwner = accountVersion();
+  const dialog = modal;
   modal.className = 'announcement-dialog';
   modal.setAttribute('aria-labelledby', 'announcement-dialog-title');
   document.body.append(modal);
   modal.addEventListener('close', () => {
     dismissedThrough = Math.max(dismissedThrough, latest()?.id ?? 0);
-    modal.remove(); modal = null; editing = false;
+    dialog.remove();
+    if (modal === dialog) { modal = null; editing = false; }
   });
   modal.addEventListener('click', event => {
     const button = event.target.closest('button');
@@ -73,6 +78,7 @@ export function openAnnouncements(id = latest()?.id) {
     else if (button?.hasAttribute('data-ann-add') && isSenior()) { editing = true; render(); }
     else if (button?.hasAttribute('data-ann-cancel')) { editing = false; render(); }
     else if (button?.hasAttribute('data-ann-select')) { selectedId = Number(button.dataset.annSelect); render(); }
+    else if (button?.hasAttribute('data-ann-retry')) void refresh();
   });
   modal.addEventListener('input', event => {
     if (editing && event.target.matches('[name="body"]')) {
@@ -84,11 +90,15 @@ export function openAnnouncements(id = latest()?.id) {
     event.preventDefault();
     if (!isSenior()) return;
     const form = event.target, button = form.querySelector('[type="submit"]'), error = form.querySelector('[data-ann-error]');
+    const owner = accountVersion();
+    const current = () => modal === dialog && owner === accountVersion() && isSenior() && dialog.querySelector('[data-ann-form]') === form;
     button.disabled = true;
     error.hidden = true;
     try {
       const { entry } = await api('admin/announcements', { method: 'POST', body: {
         title: form.elements.title.value, body: form.elements.body.value } });
+      if (!current()) return;
+      cancelRead(); // An earlier poll must not remove the announcement just published.
       entries = [entry, ...entries.filter(item => item.id !== entry.id)];
       selectedId = entry.id;
       editing = false;
@@ -96,6 +106,7 @@ export function openAnnouncements(id = latest()?.id) {
       render();
       toast(tr('公告已发布', 'Announcement published'));
     } catch (failure) {
+      if (!current()) return;
       error.textContent = failure.message ?? tr('发布失败，请稍后再试', 'Publishing failed. Please try again.');
       error.hidden = false;
       button.disabled = false;
@@ -108,7 +119,7 @@ export function openAnnouncements(id = latest()?.id) {
 
 function maybeOpen() {
   const entry = latest();
-  if (!entry || modal || entry.id <= Math.max(readThrough(), dismissedThrough)) return;
+  if (document.hidden || !entry || modal || entry.id <= Math.max(readThrough(), dismissedThrough)) return;
   openAnnouncements(entry.id);
 }
 
@@ -119,22 +130,42 @@ function schedule() {
   timer = document.hidden ? null : setInterval(() => void refresh(), POLL_MS);
 }
 
-async function refresh() {
+function cancelRead() {
+  readVersion++;
+  readController?.abort();
+  readController = pending = null;
+}
+
+function refresh() {
+  if (document.hidden) return Promise.resolve();
   if (pending) return pending;
-  pending = api('announcements').then(({ entries: next }) => {
+  const version = ++readVersion, controller = new AbortController();
+  readController = controller;
+  let timedOut = false;
+  const deadline = setTimeout(() => { timedOut = true; controller.abort(); }, 15000);
+  pending = api('announcements', { signal: controller.signal }).then(({ entries: next }) => {
+    if (version !== readVersion || controller.signal.aborted) return;
     if (!Array.isArray(next)) throw new Error('公告列表格式无效');
+    const recovered = Boolean(readError);
+    readError = '';
     const previous = latest()?.id ?? 0;
     const changed = next.length !== entries.length || next.some((entry, index) => entry.id !== entries[index]?.id);
     entries = next;
-    if (modal && !editing && changed) {
+    if (modal && !editing && (changed || recovered)) {
       if ((latest()?.id ?? 0) > previous) selectedId = latest().id;
       render();
     }
     if (changed) notify();
     maybeOpen();
   }).catch(error => {
+    if (version !== readVersion || error.name === 'AbortError' && !timedOut) return;
+    readError = timedOut ? tr('连接超时，请重试。', 'Connection timed out. Try again.') : error.message;
+    if (modal && !editing) render();
     if (error.status !== 404) console.warn('公告加载失败', error);
-  }).finally(() => { pending = null; });
+  }).finally(() => {
+    clearTimeout(deadline);
+    if (version === readVersion) { pending = null; readController = null; }
+  });
   return pending;
 }
 
@@ -145,14 +176,15 @@ export async function startAnnouncements() {
     if (event.target.closest('[data-open-announcements]')) openAnnouncements();
   });
   onPlatformChange(() => {
-    if (modal && shownAdmin !== isSenior()) { editing = false; render(); }
+    if (modal && (shownAdmin !== isSenior() || modalOwner !== accountVersion())) { modalOwner = accountVersion(); editing = false; render(); }
   });
   window.addEventListener('localechange', () => { if (modal && !editing) render(); });
   window.addEventListener('storage', event => { if (event.key === READ_KEY) dismissedThrough = Math.max(dismissedThrough, readThrough()); });
-  await refresh();
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) void refresh();
+    if (document.hidden) cancelRead();
+    else void refresh();
     schedule();
   });
   schedule();
+  await refresh();
 }

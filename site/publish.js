@@ -6,7 +6,8 @@
 // #/new/<id> reopens the author's rejected question in the same form to resubmit it.
 import { $, $$, esc, formatDate, icon, pad } from './ui.js';
 import { setPageTitle } from './i18n.js';
-import { api, can, confirmDialog, moderationBadge, openDialog, platform, refreshPlatform, requireUser, reviewVerdict, toast } from './platform.js';
+import { accountVersion, api, can, confirmDialog, moderationBadge, openDialog, platform, refreshPlatform, requireUser, reviewVerdict, toast } from './platform.js';
+import { resolveApiMedia } from './platform-api.js';
 import { levelGate } from './level-gate.js';
 import { contentStage, moderated, stageTrack, uploadFlow } from './submit.js';
 import { TEMPLATE_LABELS, categoryLabel, categoryOf } from './categories.js';
@@ -31,6 +32,7 @@ export function mount(root, ctx) {
   // Resubmitting: the rejected question as last submitted, its sample results and whether to drop them.
   const resubmitId = ctx.param;
   let original = null, samples = [], removeSamples = false;
+  let readController = null, readRun = 0, readPending = null, loadedOwner = null;
   // A member below Lv1 reads the way to the qualification test where the form would be.
   let stopGate = null;
   const gated = () => !original && Boolean(platform.user) && !can('canSubmitQuestion');
@@ -80,31 +82,64 @@ export function mount(root, ctx) {
       crumbs: [{ text: '个人中心', href: '#/me' }, { text: '我的题目', href: '#/me/questions' }, { text: '修改后重新提交' }],
       meta: original ? `<ol class="side-steps"><li><span>${pad(round)}</span><span data-i18n-date="${esc(original.moderation.at)}">${esc(formatDate(original.moderation.at))}</span> <span>未通过</span></li><li aria-current="step"><span>${pad(round + 1)}</span>本次修改</li></ol>` : '' };
   }
-  function showResubmitNote(title, text, login = false) {
+  function showResubmitNote(title, text, login = false, retry = false) {
     root.innerHTML = `${ctx.pageStart(resubmitPage())}<section class="account-empty">${icon('text')}<h2>${esc(title)}</h2><p>${esc(text)}</p>
-      <div class="actions">${login ? '<button class="btn primary" data-auth="login">登录 / 注册</button>' : ''}<a class="btn${login ? '' : ' primary'}" href="#/me/questions">回到我的题目</a></div></section>${ctx.pageEnd()}`;
+      <div class="actions">${login ? '<button class="btn primary" data-auth="login">登录 / 注册</button>' : retry ? '<button class="btn primary" type="button" data-resubmit-retry>重试加载</button>' : ''}<a class="btn${login || retry ? '' : ' primary'}" href="#/me/questions">回到我的题目</a></div></section>${ctx.pageEnd()}`;
+    root.oninput = root.onchange = root.onsubmit = null;
+    root.onclick = event => { if (event.target.closest('[data-resubmit-retry]')) void loadResubmit(); };
   }
-  async function loadResubmit() {
-    if (!platform.user) return showResubmitNote('登录后修改你的题目', '只有题目的发起人可以修改后重新提交。', true);
+  function loadResubmit() {
+    const owner = accountVersion();
+    if (loadedOwner !== null && loadedOwner !== owner) {
+      original = null; samples = []; question = blank();
+      refs?.destroy(); refs = null;
+      loadedOwner = null;
+    }
+    if (loadedOwner === owner && (original || flow || showing === 'done')) return Promise.resolve();
+    if (readPending && readPending.owner === owner) return readPending.promise;
+    readController?.abort();
+    const run = ++readRun;
+    if (!platform.user) {
+      original = null;
+      refs?.destroy(); refs = null;
+      showResubmitNote('登录后修改你的题目', '只有题目的发起人可以修改后重新提交。', true);
+      return Promise.resolve();
+    }
+    const controller = new AbortController();
+    readController = controller;
+    const reading = { owner, promise: null };
+    readPending = reading;
+    const current = () => active && run === readRun && owner === accountVersion();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 15000);
     showResubmitNote('正在载入题目…', '');
-    try {
-      const data = await api('me');
-      if (!active || flow) return;
-      const found = data.questions?.find((item) => item.id === resubmitId);
-      if (!found) return showResubmitNote('没有找到这道题', '它可能已经被删除。');
+    reading.promise = (async () => { try {
+      const params = new URLSearchParams({ view: 'resubmit', question: resubmitId });
+      const data = resolveApiMedia(await api(`me?${params}`, { signal: controller.signal }), 'question');
+      if (!current() || controller.signal.aborted) return;
+      const found = data.question;
+      if (!found || found.id !== resubmitId || !Array.isArray(data.works)) throw new Error('服务暂时不可用，请稍后重试。');
       if (found.moderation?.status !== 'rejected' || !found.resubmittable) {
         return showResubmitNote('这道题不能修改后重新提交', found.moderation?.status === 'pending' ? '它已经在等待审核。' : '只有未通过审核、且从未公开的题目可以修改后重新提交。');
       }
       original = found;
-      samples = (data.works ?? []).filter((work) => work.task === resubmitId);
+      loadedOwner = owner;
+      samples = data.works ?? [];
       removeSamples = false;
       question = { title: found.title, summary: found.summary ?? '', category: found.category ?? '', domains: found.domains ?? [], prompt: found.prompt ?? '', templates: found.templates ?? [] };
       refs?.destroy();
       refs = referencesEnabled() ? referenceEditor({ refs: found.references ?? [], credit: found.referenceCredit ?? '', prompt: () => promptArea()?.value ?? question.prompt, insert: insertNote }) : null;
       showForm();
     } catch (err) {
-      if (active) showResubmitNote('题目暂时未能载入', err.message);
-    }
+      if (!current() || err.name === 'AbortError' && !timedOut) return;
+      original = null; loadedOwner = null;
+      if (err.status === 404) showResubmitNote('没有找到这道题', '它可能已经被删除。');
+      else showResubmitNote('题目暂时未能载入', timedOut ? '连接超时，请重试。' : err.message, false, true);
+    } finally {
+      clearTimeout(timer);
+      if (readPending === reading) { readPending = null; readController = null; }
+    } })();
+    return reading.promise;
   }
   // The sample results kept with a resubmitted question, or dropped with it.
   function sampleField() {
@@ -176,6 +211,8 @@ export function mount(root, ctx) {
         if (!(await requireUser('登录后即可附带示例发起题目')) || !active) return false;
       } catch (err) { error.textContent = err.message; return false; }
       finally { checking = false; }
+      const owner = accountVersion();
+      const current = () => active && owner === accountVersion() && $('.publish-form', root) === form;
       const data = new FormData(form);
       for (const [name, label] of [['title', '题目标题'], ['summary', '测试简述'], ['prompt', '完整提示词']]) {
         if (!String(data.get(name)).trim()) { error.textContent = `请填写${label}`; $(`[name="${name}"]`, form).focus(); return false; }
@@ -190,7 +227,7 @@ export function mount(root, ctx) {
       if (mode === 'sample') { enterSample({ fromHistory, changed: before !== JSON.stringify(question) }); return true; }
       const kept = flow?.kept();
       if (kept && !(await confirmDialog({ title: '单独提交题目？', message: `已附上的示例结果「${kept.file}」会被丢弃，题目单独进入审核。`, confirm: '丢弃示例并提交' }))) return false;
-      if (!active) return false;
+      if (!current()) return false;
       const buttons = $$('button[type="submit"]', form);
       buttons.forEach((button) => { button.disabled = true; });
       if (original) {
@@ -199,10 +236,12 @@ export function mount(root, ctx) {
         try {
           const { question: saved } = await api(`questions/${encodeURIComponent(original.id)}/resubmit`, { method: 'POST',
             body: { title, summary, category, domains, prompt, templates, ...(refs?.changed() ? { references: refs.value(), referenceCredit: refs.credit() } : {}), removeSamples } });
+          if (!current()) return false;
           toast('已重新提交，等待人工审核');
           await refreshPlatform('question');
-          if (active) showResubmitted(saved);
+          if (current()) showResubmitted(saved);
         } catch (err) {
+          if (!current()) return false;
           error.textContent = err.message;
           buttons.forEach((button) => { button.disabled = false; });
         }
@@ -210,13 +249,15 @@ export function mount(root, ctx) {
       }
       try {
         const result = await api('questions', { method: 'POST', body: question });
+        if (!current()) return false;
         toast('题目已提交，等待人工审核');
         flow?.drop();
         flow = null;
         await refreshPlatform('question');
-        if (active) showDone(result);
+        if (current()) showDone(result);
         return true;
       } catch (err) {
+        if (!current()) return false;
         error.textContent = err.message;
         if (err.code === 'level_required') {
           // Demoted while writing: the block replaces the form's top, what was typed stays.
@@ -391,7 +432,9 @@ export function mount(root, ctx) {
       stages: [['题目审核', '管理员人工审核，通过前仅你可见'], ['示例结果', moderated() ? contentStage()[1] : '随题目一起公开'], ['进入题库', '示例结果作为第一份作品展示']],
       waiting: ({ question: saved, work }) => ['pending', 'review'].includes(saved.moderation?.status ?? 'pending') || ['pending', 'review'].includes(work?.moderation?.status),
       async submit({ draftId, confirmed, ...work }) {
+        const owner = accountVersion();
         const result = await api('questions', { method: 'POST', body: { ...question, draftId, confirmed, work } });
+        if (!active || owner !== accountVersion()) return result;
         toast('题目已提交，等待人工审核');
         await refreshPlatform('question');
         return result;
@@ -404,12 +447,12 @@ export function mount(root, ctx) {
     });
   }
 
-  if (resubmitId) void loadResubmit();
-  else showForm();
+  const ready = resubmitId ? loadResubmit() : showForm();
   return {
+    ready,
     onPlatformChange(reason) {
       if (resubmitId) {
-        if (reason === 'session') void loadResubmit();
+        if (reason === 'session' || reason === 'identity') void loadResubmit();
         return;
       }
       if (showing === 'upload') flow.onPlatformChange?.(reason);
@@ -428,11 +471,15 @@ export function mount(root, ctx) {
     },
     destroy() {
       active = false;
+      readRun++;
+      readController?.abort();
       removeEventListener('popstate', onPopState);
       stopGate?.();
       flow?.destroy();
       refs?.destroy();
       root.oninput = null;
+      root.onclick = null;
+      root.onchange = null;
       root.onsubmit = null;
       root.onkeydown = null;
     },
