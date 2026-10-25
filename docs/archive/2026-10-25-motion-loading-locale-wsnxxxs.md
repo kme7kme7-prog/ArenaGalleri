@@ -75,3 +75,7 @@
 
 - 部署前用正式数据包跑一次标准 build 与 intake，并在真机上目视开场、语言切换和查看器载入。
 - 后端可考虑缩小或拆分 `/api/catalog` 的首屏负载，这是现在首访最慢的一段。
+
+## 补记（2026-10-25，部署）
+
+本轮提交 39258aa 推送后 CI 通过，用户随后授权部署。以现场完整目录为底增量替换 13 个文件（11 个 JS/CSS 与重新生成的 index.html、version.json），资产 e85b5989cfa828766dafe333 → 5a2f98e234fa356f23594ec6，回滚目录 /www/wwwroot/gallery.before-motion-20261025。替换前核对现场对应文件与 01120c5 字节一致；data.json、runtime-config.js、媒体、vendor、sandtable-bridge.js 等现场文件不动。公网逐文件字节核对一致，1440/390 × 中英 4 场冒烟通过（32 个 modulepreload，首批三个请求各 1 次，无横溢、无页面异常）。正文中“未部署”以本补记为准。
