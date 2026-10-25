@@ -1046,18 +1046,35 @@ dialog.sheet { border-radius: 10px; background: var(--surface); }
   .task-act { padding-right: 10px; gap: 8px; }
   .task-act-mark { width: 30px; height: 30px; }
 }
-/* Language changes update only UI copy; the current page and its controls remain mounted. */
+/* Language changes update only UI copy; the current page and its controls remain mounted. The switch
+   is a two-part control: the current language sits on a pill, and either side can be picked (i18n.js). */
 .locale-toggle {
-  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-  min-height: 34px; padding: 0 8px; flex: none;
+  display: inline-flex; align-items: stretch; justify-content: center; gap: 0;
+  width: auto; min-height: 34px; padding: 3px; flex: none;
   border: 1px solid var(--line); border-radius: var(--radius-sm);
   background: transparent; color: var(--muted); font-size: 11px; line-height: 1;
   white-space: nowrap; cursor: pointer;
 }
-.locale-toggle:hover { color: var(--ink); border-color: var(--ink-2); background: var(--surface-2); }
-.locale-toggle [aria-current="true"] { color: var(--ink); font-weight: 650; }
-.locale-divider { color: var(--line-2); }
+.locale-toggle > [data-locale-zh], .locale-toggle > [data-locale-en] {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 26px; padding: 0 6px;
+  border-radius: calc(var(--radius-sm) - 3px); transition: color .2s ease, background-color .2s ease;
+}
+.locale-toggle:hover { border-color: var(--line-2); background: transparent; }
+.locale-toggle > :hover { color: var(--ink); }
+.locale-toggle [aria-current="true"] { color: var(--ink); font-weight: 650; background: var(--surface-2); }
+.locale-divider { display: none; }
 html[lang="en"] .wordmark { letter-spacing: 0; }
+/* Chinese runs a link straight on from the words before it; English needs the space between them. */
+html[lang="en"] .en-gap { margin-left: .3em; }
+html[lang="en"] .back-place { margin-left: .3em; }
+html[lang="en"] .back-place::before { content: "to "; }
+/* English labels run longer: a segment never breaks inside or between its labels, and the leaderboard
+   gives the model column the room its longer names need. */
+html[lang="en"] .seg button, html[lang="en"] .seg a { white-space: nowrap; }
+html[lang="en"] .board .c-model { width: 30%; }
+html[lang="en"] .board .c-range { width: 14%; min-width: 120px; }
+html[lang="en"] .collection-toolbar .seg { flex-wrap: nowrap; }
+html[lang="en"] .board th { letter-spacing: .02em; }
 html[lang="en"] .home-verse { font-family: var(--sans); }
 html[lang="en"] .home-verse h1 { font-family: var(--sans); font-size: clamp(28px, 3.8vw, 58px); line-height: 1.15; }
 html[lang="en"] .home-verse-b { white-space: normal; }
@@ -1065,7 +1082,8 @@ html[lang="en"] .home-cite { font-family: var(--sans); letter-spacing: .04em; }
 html[lang="en"] .collection-caption { letter-spacing: 0; }
 html[lang="en"] .question-meta { flex-wrap: wrap; }
 @media (max-width: 760px) {
-  .locale-toggle { min-height: 32px; padding-inline: 6px; gap: 4px; }
+  .locale-toggle { min-height: 32px; padding: 2px; }
+  .locale-toggle > [data-locale-zh], .locale-toggle > [data-locale-en] { min-width: 24px; padding: 0 5px; }
   html[lang="en"] .result-sort { max-width: 100%; }
   html[lang="en"] .result-sort select { max-width: 190px; }
   html[lang="en"] .task-act small { white-space: normal; }
@@ -1074,7 +1092,8 @@ html[lang="en"] .question-meta { flex-wrap: wrap; }
 @media (max-width: 460px) {
   html[lang="en"] .topbar .wordmark { font-size: 12px; }
   .topbar-tools .locale-toggle { margin-left: auto; }
-  .vtools .locale-toggle { font-size: 10px; padding-inline: 4px; }
+  .vtools .locale-toggle { font-size: 10px; }
+  .vtools .locale-toggle > [data-locale-zh], .vtools .locale-toggle > [data-locale-en] { min-width: 22px; padding: 0 4px; }
 }
 .result-grid:not(.is-filtering) .is-lead .lead-seal > span { writing-mode: vertical-rl; }
 html[lang="en"] .result-grid:not(.is-filtering) .is-lead .lead-seal > span { writing-mode: horizontal-tb; font-family: var(--sans); font-size: 11px; }

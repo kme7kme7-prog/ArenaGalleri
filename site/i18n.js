@@ -140,12 +140,19 @@ function refresh() {
   syncButtons();
   if (observer) observe();
 }
+// The page may wrap the swap in a transition (motion.js); the language itself changes at once.
+let switching = (apply) => apply();
+export const setLocaleTransition = (wrap) => { switching = wrap; };
 export function setLocale(next) {
   if (!['zh-CN', 'en'].includes(next) || next === current) return;
   current = next;
   try { localStorage.setItem(KEY, next); } catch { /* storage unavailable */ }
-  if (typeof document !== 'undefined') refresh();
-  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('localechange', { detail: { locale: current } }));
+  const apply = () => {
+    if (typeof document !== 'undefined') refresh();
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('localechange', { detail: { locale: current } }));
+  };
+  if (typeof document === 'undefined') apply();
+  else switching(apply);
 }
 export const languageButton = (cls = '') => `<button type="button" class="locale-toggle ${cls}" data-locale-toggle data-i18n-ignore aria-label="${current === 'en' ? '切换到中文' : 'Switch to English'}"><span data-locale-zh aria-current="${current === 'zh-CN'}">中文</span><span class="locale-divider" aria-hidden="true">/</span><span data-locale-en aria-current="${current === 'en'}">EN</span></button>`;
 export function initI18n() {
@@ -161,6 +168,11 @@ export function initI18n() {
     observe();
   });
   refresh();
-  document.addEventListener('click', (event) => { if (event.target.closest('[data-locale-toggle]')) setLocale(current === 'en' ? 'zh-CN' : 'en'); });
+  // A click on one language picks it; anywhere else on the switch (or the keyboard) toggles.
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('[data-locale-toggle]')) return;
+    const picked = event.target.closest('[data-locale-zh], [data-locale-en]');
+    setLocale(picked ? (picked.hasAttribute('data-locale-en') ? 'en' : 'zh-CN') : current === 'en' ? 'zh-CN' : 'en');
+  });
   window.addEventListener('storage', (event) => { if (event.key === KEY && ['zh-CN', 'en'].includes(event.newValue)) setLocale(event.newValue); });
 }

@@ -1,0 +1,258 @@
+/* ---- motion ---------------------------------------------------------------------------------
+   One motion language for the exhibition: things arrive by rising a little out of a soft fade and
+   settle on a long ease-out; things leave quickly and quietly. Only opacity, transform and filter
+   move, nothing bounces, and ink and grey stay the only colours in motion. motion.js drives the
+   entrances, the route hairline, the work frame and list reflows. Loaded last; reduced motion turns
+   all of it off at the end of this file. */
+:root { --ease-out: cubic-bezier(.16, 1, .3, 1); --ease-in-out: cubic-bezier(.65, 0, .35, 1); }
+
+/* ---- navigation ---- */
+/* The old screen dims away under a breath of blur; the new one fades up while its items rise. */
+::view-transition-old(root) { animation: motion-vt-out .24s cubic-bezier(.4, 0, 1, 1) both; }
+::view-transition-new(root) { animation: motion-vt-in .4s var(--ease-out) both; }
+@keyframes motion-vt-out { to { opacity: 0; filter: blur(3px); transform: scale(.996); } }
+@keyframes motion-vt-in { from { opacity: 0; } }
+::view-transition-group(topbar), ::view-transition-group(sidebar) { animation-duration: .34s; animation-timing-function: var(--ease-out); }
+/* The work frame: a card's picture grows into the viewer's stage and shrinks back on return. */
+::view-transition-group(work-hero) { z-index: 1; animation-duration: .6s; animation-timing-function: var(--ease-out); }
+::view-transition-old(work-hero), ::view-transition-new(work-hero) { width: 100%; height: 100%; object-fit: cover; animation-duration: .6s; animation-timing-function: var(--ease-out); }
+/* The card's picture stays whole as it grows or shrinks; the stage fills the frame. */
+:root[data-work-hero="open"]::view-transition-old(work-hero), :root[data-work-hero="close"]::view-transition-new(work-hero) { object-fit: contain; }
+/* The opening card gives way to the first page, and a loading screen to its page, as one quiet
+   cross-fade (app.js): what both screens show holds still, and the card lifts away. */
+:root[data-scene]::view-transition-old(root) { animation: motion-fade-out .45s ease both; }
+:root[data-scene]::view-transition-new(root) { animation: motion-fade .45s ease both; }
+:root[data-scene="open"]::view-transition-old(root) { animation: motion-lift .5s var(--ease-out) both; }
+:root[data-scene="open"]::view-transition-new(root) { animation-duration: .7s; }
+@keyframes motion-fade-out { to { opacity: 0; } }
+@keyframes motion-lift { to { opacity: 0; transform: translateY(-10px); filter: blur(4px); } }
+/* A language switch cross-fades only the words that change, while the pressed language glides across
+   the switch (motion.js). */
+:root.is-relocating::view-transition-old(*) { animation: motion-fade-out .34s ease both; }
+:root.is-relocating::view-transition-new(*) { animation: motion-fade .34s ease both; }
+::view-transition-group(locale-pill) { animation-duration: .46s; animation-timing-function: var(--ease-out); }
+/* The theme spreads from the switch as a circle (ui.js); the whole page changes as one layer. */
+:root.is-theming::view-transition-old(root), :root.is-theming::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+:root.is-theming #app > .topbar, :root.is-theming .app-sidebar { view-transition-name: none; }
+
+/* A hairline under the top edge while a navigation is still busy (motion.js). */
+.route-progress {
+  position: fixed; top: 0; left: 0; z-index: 90; width: 100%; height: 2px; pointer-events: none;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ink) 15%, transparent), var(--ink));
+  transform: scaleX(0); transform-origin: 0 50%; opacity: 0; transition: opacity .45s ease .1s;
+}
+.route-progress.is-on { opacity: 1; transition-duration: .2s; transition-delay: 0s; }
+
+/* ---- entrances ---- */
+[data-reveal="wait"] { opacity: 0; }
+[data-reveal="in"] { animation: motion-rise .72s var(--ease-out) backwards; animation-delay: calc(var(--reveal-i, 0) * 45ms); }
+@keyframes motion-rise { from { opacity: 0; transform: translateY(14px); } }
+.app-sidebar > [data-reveal="in"] { animation-name: motion-rise-soft; }
+@keyframes motion-rise-soft { from { opacity: 0; transform: translateY(8px); filter: blur(4px); } }
+/* A portal arrival keeps them waiting under its cover, so the cascade plays as the cover slides away. */
+html[data-entry] [data-reveal] { animation-play-state: paused; }
+/* Leaderboard rows draw their interval as they arrive. */
+table.board tr[data-reveal="in"] .range i { transform-origin: 0 50%; animation: motion-grow .55s var(--ease-out) backwards; animation-delay: calc(var(--reveal-i, 0) * 45ms + .1s); }
+table.board tr[data-reveal="in"] .range em { animation: motion-pop .35s var(--ease-out) backwards; animation-delay: calc(var(--reveal-i, 0) * 45ms + .3s); }
+@keyframes motion-grow { from { transform: scaleX(0); } }
+@keyframes motion-pop { from { opacity: 0; transform: scale(.4); } }
+@keyframes motion-fade { from { opacity: 0; } }
+
+/* ---- loading ---- */
+/* Pictures develop: a soft blur and a hair of scale resolve as each one decodes. */
+.result-media img, .question-visual img, .home-window-shot img, .shot-img img, .ref-tile img, .work-thumb img { transition: opacity .6s ease, filter .7s var(--ease-out), transform .6s var(--ease-out); }
+.result-media img:not(.is-loaded), .question-visual img:not(.is-loaded), .home-window-shot img:not(.is-loaded), .shot-img img:not(.is-loaded), .ref-tile img:not(.is-loaded), .work-thumb img:not(.is-loaded) { filter: blur(10px); transform: scale(1.025); }
+/* Until then a faint light sweeps the empty frame. */
+.shot-img, .work-thumb { position: relative; }
+.result-media::after, .question-visual::after, .home-window-shot::after, .shot-img::after, .work-thumb::after,
+.catalog-skeleton .task-card::after, .home-placeholder .home-window-shot::after {
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none; opacity: 0;
+  background: linear-gradient(100deg, transparent 25%, color-mix(in srgb, var(--ink) 7%, transparent) 50%, transparent 75%);
+  transform: translateX(-100%);
+}
+body[data-preview-mode="model"] .result:not(.has-model-preview) .result-media:has(.result-model-poster:not(.is-loaded))::after,
+body[data-preview-mode="model"] .result:not(.has-model-preview) .result-media:not(:has(.result-model-poster)):has(> a > img:not(.is-loaded))::after,
+body:not([data-preview-mode="model"]) .result-media:has(> a > img:not(.result-model-poster):not(.is-loaded))::after,
+.task-card:not(.has-model-preview) .question-visual:has(> img:not(.is-loaded))::after,
+.home-window[data-front] .home-window-shot:has(> img:not(.is-loaded))::after,
+.home-stream-item .home-window-shot:has(> img:not(.is-loaded))::after,
+.shot-img:has(img:not(.is-loaded))::after, .work-thumb:has(img:not(.is-loaded))::after,
+.catalog-skeleton .task-card::after, .home-placeholder .home-window-shot::after { opacity: 1; animation: motion-sweep 1.6s var(--ease-in-out) infinite; }
+.catalog-skeleton .task-card:nth-child(2)::after { animation-delay: .12s; }
+.catalog-skeleton .task-card:nth-child(3)::after { animation-delay: .24s; }
+.catalog-skeleton .task-card:nth-child(4)::after { animation-delay: .36s; }
+.catalog-skeleton .task-card:nth-child(5)::after { animation-delay: .48s; }
+.catalog-skeleton .task-card:nth-child(6)::after { animation-delay: .6s; }
+@keyframes motion-sweep { to { transform: translateX(100%); } }
+.catalog-skeleton .task-body i, .home-pending-slip > span:not(.home-slip-kicker) {
+  background: linear-gradient(90deg, var(--line) 0 38%, color-mix(in srgb, var(--ink) 14%, var(--line)) 50%, var(--line) 62% 100%) 0 0 / 260% 100%;
+  animation: motion-shine 1.9s linear infinite;
+}
+/* Words that say something is on its way carry a slow light across them. */
+.home-pending-status strong, .catalog-status[aria-busy="true"] > h3, .catalog-status[aria-busy="true"] > [role="status"],
+.empty-page > p.muted:only-child, #board-body > p.muted:only-child {
+  background: linear-gradient(90deg, var(--muted) 0 36%, var(--ink) 50%, var(--muted) 64% 100%) 0 0 / 260% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent; animation: motion-shine 2.4s linear infinite;
+}
+@keyframes motion-shine { from { background-position: 100% 0; } to { background-position: 0 0; } }
+/* Before the app draws anything: the opening card. The static intro (also the page for readers
+   without scripts) settles into the mark, the name and one line, where the home page's headline will
+   stand, over a running line. It appears only if loading lingers, and the first page cross-fades out
+   of it (motion.js). */
+@media (scripting: enabled) {
+  #app > .static-intro {
+    display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
+    box-sizing: border-box; width: 100%; max-width: 1800px; min-height: 100svh; margin: 0 auto;
+    padding: var(--topbar) var(--gutter) 8vh; color: var(--ink); font: 15px/1.85 var(--sans);
+  }
+  #app > .static-intro .logo { width: 30px; height: 30px; margin-bottom: 26px; }
+  #app > .static-intro h1 { margin: 0; font: 400 clamp(30px, 3.2vw, 46px)/1.2 var(--serif); letter-spacing: .03em; }
+  #app > .static-intro h1 span { color: var(--muted); }
+  #app > .static-intro p { max-width: 30em; margin: 16px 0 0; color: var(--ink-2); opacity: 1; }
+  /* One line in the reader's language; the rest of the intro stays for screen readers. */
+  #app > .static-intro p:not(.static-intro-zh, .static-intro-en) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  html[lang="en"] #app > .static-intro .static-intro-zh { display: none; }
+  html[lang="en"] #app > .static-intro .static-intro-en { display: block; }
+  #app > .static-intro > * { animation: motion-rise .8s var(--ease-out) backwards; }
+  #app > .static-intro > .logo { animation-delay: .28s; }
+  #app > .static-intro > h1 { animation-delay: .34s; }
+  #app > .static-intro > p { animation-delay: .42s; }
+  #app > .static-intro::after {
+    content: ""; width: 132px; height: 1px; margin-top: 34px;
+    background: linear-gradient(90deg, transparent 0 35%, var(--ink) 50%, transparent 65% 100%) 0 0 / 300% 100% no-repeat, var(--line);
+    animation: motion-rise .8s var(--ease-out) .5s backwards, motion-shine 1.6s var(--ease-in-out) .5s infinite;
+  }
+}
+
+/* ---- surfaces ---- */
+/* Question cards: a light follows the pointer and catches the card's edge. */
+.task-card { position: relative; }
+@media (hover: hover) and (pointer: fine) {
+  .task-card::before {
+    content: ""; position: absolute; inset: 0; z-index: 3; padding: 1px; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .4s ease;
+    background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, var(--ink) 50%, transparent), transparent 70%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  }
+  :root[data-theme="dark"] .task-list:not(.catalog-skeleton) .task-card::after {
+    content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0; transition: opacity .4s ease;
+    background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), rgb(255 255 255 / 4.5%), transparent 65%);
+  }
+  .task-card:hover::before, :root[data-theme="dark"] .task-list:not(.catalog-skeleton) .task-card:hover::after { opacity: 1; }
+}
+.home-stream-item .home-window-shot img { transition: opacity .6s ease, filter .7s var(--ease-out), transform .7s var(--ease-out); }
+.home-stream-item .home-window:hover .home-window-shot img.is-loaded:not(.is-poster) { transform: scale(1.03); }
+.home-stream-item .home-window { transition: border-color .25s ease; }
+
+/* Controls answer the hand: a small press, arrows that lean, links that draw their line. */
+.btn:active { transform: translateY(1px) scale(.985); }
+.icon-btn, .task-act, .side-link, .topbar-link, .locale-toggle, .top-back { transition: background-color .2s ease, border-color .2s ease, color .2s ease, filter .2s ease, transform .2s var(--ease-out); }
+.icon-btn:active, .top-back:active { transform: scale(.94); }
+.locale-toggle:active { transform: scale(.97); }
+.side-link:active { transform: scale(.985); }
+.top-back .i { transition: transform .3s var(--ease-out); }
+.top-back:hover .i { transform: translateX(-2px); }
+.btn.home-enter { position: relative; overflow: hidden; isolation: isolate; }
+.btn.home-enter::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; transform: translateX(-110%);
+  background: linear-gradient(105deg, transparent 30%, rgb(255 255 255 / 75%) 50%, transparent 70%);
+}
+:root[data-theme="light"] .btn.home-enter::after { background: linear-gradient(105deg, transparent 30%, rgb(255 255 255 / 16%) 50%, transparent 70%); }
+.btn.home-enter:hover::after { transform: translateX(110%); transition: transform .9s var(--ease-out); }
+.footer-links a, .home-link, .text-link { background: linear-gradient(currentColor, currentColor) 0 100% / 0 1px no-repeat; transition: color .2s ease, background-size .45s var(--ease-out); }
+.footer-links a:hover, .home-link:hover, .text-link:hover { background-size: 100% 1px; }
+.collection-toolbar > .collection-search, .input, .collection-search input { transition: border-color .2s ease, background-color .2s ease; }
+.dir-model-toggle .i, .group-toggle .i { transition: transform .35s var(--ease-out); }
+/* A pressed check pops in. */
+.pick[aria-pressed="true"] .pick-box .i:last-child { animation: motion-pop .4s var(--ease-out); }
+
+/* The pill that glides between the items of a segmented control (motion.js). */
+.motion-glide { position: absolute; z-index: 0; pointer-events: none; }
+.is-gliding { position: relative; }
+.is-gliding > :not(.motion-glide) { position: relative; z-index: 1; transition: none !important; }
+.is-hiding > [aria-pressed="true"], .is-hiding > [aria-current]:not([aria-current="false"]) { background-color: transparent !important; box-shadow: none !important; }
+
+/* Folding sections open and close by height where the browser can interpolate it. */
+@supports selector(::details-content) {
+  details::details-content { opacity: 0; transition: opacity .35s ease, content-visibility .4s allow-discrete; }
+  details[open]::details-content { opacity: 1; }
+}
+@supports (interpolate-size: allow-keywords) and selector(::details-content) {
+  details { interpolate-size: allow-keywords; }
+  details::details-content { block-size: 0; overflow-y: clip; transition: block-size .45s var(--ease-out), opacity .35s ease, content-visibility .45s allow-discrete; }
+  details[open]::details-content { block-size: auto; }
+}
+
+/* ---- overlays ---- */
+dialog.sheet[open], .auth-overlay .sheet { animation: motion-sheet .44s var(--ease-out) both; }
+@keyframes motion-sheet { from { opacity: 0; transform: translateY(14px) scale(.975); filter: blur(3px); } }
+dialog.sheet[open]::backdrop, .auth-overlay { animation: motion-fade .32s ease both; }
+/* Where a dialog can stay in the top layer while it closes, it settles away instead of vanishing. */
+@supports (overlay: auto) {
+  dialog.sheet { transition: opacity .2s ease, transform .22s ease, overlay .22s allow-discrete, display .22s allow-discrete; }
+  dialog.sheet:not([open]) { opacity: 0; transform: translateY(8px) scale(.985); }
+  dialog.sheet::backdrop { transition: opacity .22s ease, overlay .22s allow-discrete, display .22s allow-discrete; }
+  dialog.sheet:not([open])::backdrop { opacity: 0; }
+}
+.menu { transform-origin: top right; animation: motion-menu .26s var(--ease-out) both; }
+@keyframes motion-menu { from { opacity: 0; transform: translateY(-6px) scale(.97); } }
+.toast { transform: translate(-50%, 14px) scale(.96); transition: opacity .3s ease, transform .5s var(--ease-out); }
+.toast.show { transform: translate(-50%, 0) scale(1); }
+.tray { animation: motion-tray .6s var(--ease-out) both; }
+@keyframes motion-tray { from { opacity: 0; transform: translate(-50%, 24px) scale(.97); } }
+
+/* The lightbox: the picture grows out of its thumbnail (app.js); captions and the strip follow. */
+.lightbox { animation: motion-fade .3s ease both; }
+.lb-img { transition: opacity .35s ease; }
+.lb-img:not(.is-loaded) { transition-duration: .12s; }
+.lb-caption { animation: motion-rise .6s var(--ease-out) .12s backwards; }
+.lb-strip button { transition: opacity .25s ease, transform .35s var(--ease-out); }
+.lb-strip button[aria-current="true"] { transform: translateY(-2px); }
+.lb-btn { transition: background-color .2s ease, transform .2s var(--ease-out); }
+.lb-btn:active { transform: scale(.92); }
+
+/* ---- viewer ---- */
+.viewer .vbar { animation: motion-drop .5s var(--ease-out) backwards; }
+@keyframes motion-drop { from { opacity: 0; transform: translateY(-8px); } }
+/* Loading a work: the blurred cover breathes, the title rises over a thin running line; when the work
+   is ready the veil lifts and the work settles into place. */
+.loader { transition: opacity .7s var(--ease-out), visibility .7s; }
+.loader::before { animation: motion-breathe 8s ease-in-out infinite alternate; transition: filter .9s ease; }
+@keyframes motion-breathe { from { transform: scale(1.15); } to { transform: scale(1.26); } }
+.loader > * { animation: motion-rise .7s var(--ease-out) backwards; transition: opacity .3s ease, transform .5s var(--ease-out); }
+.loader > :nth-child(2) { animation-delay: .07s; }
+.loader > :nth-child(3) { animation-delay: .14s; }
+.loader > :nth-child(4) { animation-delay: .21s; }
+.loader.gone > * { opacity: 0; transform: translateY(-10px); }
+.loader.gone::before { filter: blur(40px) brightness(.25); }
+.loader .spinner {
+  order: 9; position: relative; width: 132px; height: 1px; margin-top: 18px; overflow: hidden;
+  border: 0; border-radius: 0; background: rgb(255 255 255 / 14%); animation: motion-rise .7s var(--ease-out) .2s backwards;
+}
+.loader .spinner::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, #f1f0ec, transparent); transform: translateX(-100%); animation: motion-sweep 1.5s var(--ease-in-out) infinite; }
+.loader .loader-letter { animation: motion-letter 2.8s ease-in-out infinite; }
+@keyframes motion-letter { 0%, 100% { opacity: .6; } 50% { opacity: 1; } }
+.pane-body:has(> .loader.gone) > iframe { animation: motion-frame .9s var(--ease-out) backwards; }
+@keyframes motion-frame { from { transform: scale(.985); } }
+.viewer.split .pane { animation: motion-pane .6s var(--ease-out) backwards; }
+.viewer.split .pane + .pane { animation-delay: .07s; }
+@keyframes motion-pane { from { opacity: 0; transform: translateY(12px) scale(.985); } }
+.guide-open .guide { animation: motion-drawer .5s var(--ease-out) backwards; }
+@keyframes motion-drawer { from { opacity: 0; transform: translateX(28px); } }
+@media (max-width: 640px) {
+  .guide-open .guide { animation-name: motion-sheet-up; }
+  @keyframes motion-sheet-up { from { opacity: 0; transform: translateY(32px); } }
+}
+
+@media print { [data-reveal] { opacity: 1 !important; animation: none !important; } }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+  [data-reveal] { opacity: 1 !important; animation: none !important; }
+  .result-media img, .question-visual img, .home-window-shot img, .shot-img img, .ref-tile img, .work-thumb img { filter: none !important; transform: none !important; }
+  .loader .spinner { animation: none !important; }
+  .loader .spinner::after, .loader::before, .loader .loader-letter, .route-progress { animation: none !important; }
+  .result-media::after, .question-visual::after, .home-window-shot::after, .shot-img::after, .work-thumb::after, .catalog-skeleton .task-card::after, .home-placeholder .home-window-shot::after { animation: none !important; opacity: 0 !important; }
+  .catalog-skeleton .task-body i, .home-pending-slip > span:not(.home-slip-kicker), .home-pending-status strong, .catalog-status[aria-busy="true"] > h3,
+  .catalog-status[aria-busy="true"] > [role="status"], .empty-page > p.muted:only-child, #board-body > p.muted:only-child { animation: none !important; }
+  #app > .static-intro > *, #app > .static-intro::after { animation: none !important; }
+}

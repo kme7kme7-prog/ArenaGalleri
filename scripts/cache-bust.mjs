@@ -36,12 +36,26 @@ export function cacheBustSite(dist, site) {
   const importmaps = [...html.matchAll(/<script\s+type="importmap">([^<]*)<\/script>/g)];
   if (importmaps.length !== 1) throw new Error('Expected one main-site import map');
   const imports = JSON.parse(importmaps[0][1]).imports;
+  const bare = { ...imports };
   for (const [name, target] of Object.entries(imports)) {
     const path = target.replace(/^\.\//, '');
     if (versioned.has(path)) imports[name] = versioned.get(path);
   }
   for (const [path, target] of versioned) imports[`./${path}`] = target;
-  html = html.replace(importmaps[0][0], `<script type="importmap">${JSON.stringify({ imports })}</script>`);
+  // The entry's static import graph is listed right after the map, so the browser fetches every
+  // module at once instead of one level of imports per round trip. import() stays lazy.
+  const graph = new Set();
+  const walk = (path) => {
+    if (graph.has(path) || !versioned.has(path)) return;
+    graph.add(path);
+    const code = readFileSync(join(dist, path), 'utf8');
+    for (const [, specifier] of code.matchAll(/(?:^|[\n;])\s*(?:import|export)\s*(?:[\w$*{}\s,]+\sfrom\s*)?['"]([^'"]+)['"]/g)) {
+      walk(new URL(bare[specifier] ?? specifier, `https://site/${path}`).pathname.slice(1));
+    }
+  };
+  walk(html.match(/<script\b[^>]*\btype="module"[^>]*\bsrc="(?:\.\/)?([^"?]+)"/)?.[1] ?? '');
+  const preloads = [...graph].map((path) => `\n  <link rel="modulepreload" href="${versioned.get(path)}">`).join('');
+  html = html.replace(importmaps[0][0], `<script type="importmap">${JSON.stringify({ imports })}</script>${preloads}`);
   const appendVersion = (url) => {
     const path = url.replace(/^\.\//, '');
     if (!paths.some(([asset]) => asset === path)) return url;

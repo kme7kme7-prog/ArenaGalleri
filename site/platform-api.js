@@ -26,6 +26,13 @@ export function setDatapackVersion(version) {
   datapackVersion = typeof version === 'string' && /^[a-f0-9]{40}$/.test(version) ? version : null;
 }
 
+// index.html starts the first reads before the modules arrive; each is taken once, by its first caller.
+export function bootRead(name) {
+  const boot = globalThis.GALLERY_BOOT, read = boot?.[name];
+  if (read) delete boot[name];
+  return read ?? null;
+}
+
 // Only writes are version-checked by the server; keeping reads free of the custom header
 // spares cross-origin GETs a CORS preflight.
 export function fetchApi(path, options = {}) {

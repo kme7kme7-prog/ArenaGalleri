@@ -78,15 +78,26 @@ export function syncThemeUi() {
     b.title = dark ? '切换到浅色模式' : '切换到深色模式';
   });
 }
-function setTheme(next) {
+// The new theme spreads as a circle from the switch over the whole page (motion.css).
+function setTheme(next, from) {
   store.set('theme', next);
-  const apply = () => { document.documentElement.dataset.theme = next; syncThemeUi(); };
-  if (document.startViewTransition && !reducedMotion()) document.startViewTransition(apply);
-  else apply();
+  const html = document.documentElement;
+  const apply = () => { html.dataset.theme = next; syncThemeUi(); };
+  if (!document.startViewTransition || reducedMotion()) return apply();
+  const box = from?.getBoundingClientRect(), x = box ? box.left + box.width / 2 : innerWidth / 2, y = box ? box.top + box.height / 2 : 0;
+  const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+  html.classList.add('is-theming');
+  const transition = document.startViewTransition(apply);
+  transition.ready.then(() => html.animate({ clipPath: [`circle(0 at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+    { duration: 650, easing: 'cubic-bezier(.65, 0, .35, 1)', pseudoElement: '::view-transition-new(root)' }), () => {});
+  transition.finished.then(() => html.classList.remove('is-theming'), () => html.classList.remove('is-theming'));
 }
 export const themeButton = (cls = 'icon-btn') => `<button class="${cls} theme-toggle" data-theme-toggle aria-label="深色模式" aria-pressed="${currentTheme() === 'dark'}">${icon('moon')}${icon('sun')}</button>`;
 // Theme changes are explicit, so the default ink exhibition stays consistent.
-document.addEventListener('click', (e) => { if (e.target.closest('[data-theme-toggle]')) setTheme(currentTheme() === 'dark' ? 'light' : 'dark'); });
+document.addEventListener('click', (e) => {
+  const toggle = e.target.closest('[data-theme-toggle]');
+  if (toggle) setTheme(currentTheme() === 'dark' ? 'light' : 'dark', toggle);
+});
 
 // 截图/封面在同一个数据包内内容不变：URL 拼数据包版本号，配 nginx 长缓存后
 // 平时直接吃本地缓存，换包时版本变化自动失效。

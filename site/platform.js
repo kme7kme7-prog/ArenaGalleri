@@ -2,7 +2,7 @@ import { languageButton, translateText } from './i18n.js';
 // Platform layer: session, uploads, reactions and the dialogs they share. The gallery runs
 // without it as a static archive; `platform.available` is false when no API answers.
 import { $, $$, esc, formatDate, icon } from './ui.js';
-import { compatibleBuild, fetchApi, resolveApiMedia, retryRead, setDatapackVersion, staleBuild } from './platform-api.js';
+import { bootRead, compatibleBuild, fetchApi, resolveApiMedia, retryRead, setDatapackVersion, staleBuild } from './platform-api.js';
 import { loadTurnstile, mountTurnstile } from './turnstile.js';
 import { CONTACT } from './legal.js';
 import { openAuthDialog } from './auth-dialog.js';
@@ -55,8 +55,9 @@ export const requestBootstrap = (timeout = 15000) => fetchApi('bootstrap', { cac
 const requestCatalog = (timeout = 15000) => fetchApi('catalog', { credentials: 'omit', cache: 'no-cache', signal: AbortSignal.timeout(timeout) });
 const requestSession = (timeout = 15000) => fetchApi('session', { cache: 'no-store', signal: AbortSignal.timeout(timeout) });
 export function requestPlatform() {
-  const catalog = requestCatalog();
-  const session = sessionConnection ? null : requestSession();
+  const early = { catalog: bootRead('catalog'), session: bootRead('session') };
+  const catalog = early.catalog ?? requestCatalog();
+  const session = sessionConnection ? null : early.session ?? requestSession();
   catalog.catch(() => {});
   session?.catch(() => {});
   return { catalog, session };

@@ -14,8 +14,9 @@ import { initI18n, languageButton, setPageTitle } from './i18n.js';
 //   #/submit/<task>           upload to this task         (platform)
 //   #/me · #/review           personal center · review queue (platform)
 //   #/terms · #/privacy       terms of use and disclaimer · privacy policy
-import { $, $$, LOGO, brandMark, byName, esc, ext, formatBytes, formatDate, icon, img, pad, store, syncThemeUi, themeButton, versionedMedia } from './ui.js';
+import { $, $$, LOGO, brandMark, byName, esc, ext, formatBytes, formatDate, icon, img, pad, reducedMotion, store, syncThemeUi, themeButton, versionedMedia } from './ui.js';
 import { STATUS, accountControl, api, arenaScope, arenaText, avatarFace, bySite, catalogState, connectPlatform, can, isStaff, onPlatformChange, platform, reactionBar, refreshAccountControls, refreshPlatform, requestPlatform, setFaces, setActivityNeeded, startPlatformRecovery, statusBadge, toast } from './platform.js';
+import { bootRead } from './platform-api.js';
 import { mount as renderLanding } from './home.js';
 import { startAnnouncements } from './announcements.js';
 import { CONTACT, aigcLabel, beianLink, mount as renderLegal } from './legal.js';
@@ -31,6 +32,7 @@ import { hasModelPreview, screenshotOf } from './work-preview-media.js';
 import { watchViewerFrame } from './viewer-loading.js';
 import { routeParts } from './route-path.js';
 import { createDeferredMedia } from './deferred-media.js';
+import { cascade, flip, scene, settleIn, slideIn, zoomFrom } from './motion.js';
 
 initI18n();
 const deferredMedia = createDeferredMedia();
@@ -516,11 +518,13 @@ function renderLibrary(scopes = [], fresh = true) {
     previews?.setPaused(homeState.view !== 'tasks');
     deferredMedia.refresh(root);
   };
+  // Cards that stay move to their new places and new matches fade in (motion.js).
+  const reflow = () => flip(root, filter, '.task-card, .dir-row');
   root.oninput = (event) => {
     if (event.target.matches('[data-home-search]')) homeState.query = event.target.value;
     else if (event.target.matches('[data-model-search]')) homeState.modelQuery = event.target.value;
     else return;
-    filter();
+    reflow();
   };
   root.onchange = (event) => {
     const el = event.target;
@@ -530,7 +534,7 @@ function renderLibrary(scopes = [], fresh = true) {
       homeState.sort = el.value;
       store.set('question-sort', el.value);
     } else return;
-    filter();
+    reflow();
   };
   root.onclick = (event) => {
     if (event.target.closest('[data-home-blind] a')) arenaScope.set(blindScope.map((t) => t.id));
@@ -543,7 +547,7 @@ function renderLibrary(scopes = [], fresh = true) {
     if (event.target.closest('[data-model-reset]')) { homeState.vendor = ''; homeState.modelQuery = ''; $('[data-model-search]').value = ''; }
     if (event.target.closest('[data-recommend-refresh]')) homeState.recommendationBatch++;
     if (event.target.closest('[data-home-unanswered]')) homeState.unanswered = !homeState.unanswered;
-    if (category || domain || view || event.target.closest('[data-home-reset], [data-model-reset], [data-recommend-refresh], [data-home-unanswered]')) filter();
+    if (category || domain || view || event.target.closest('[data-home-reset], [data-model-reset], [data-recommend-refresh], [data-home-unanswered]')) reflow();
   };
   root.addEventListener('toggle', (event) => {
     const detail = event.target;
@@ -684,7 +688,9 @@ async function updateResultPreviews(t, preferredId = null) {
 const panels = ['results', 'shots', 'board'];
 function activatePanel(name, updateHash = true) {
   const target = panels.includes(name) && $(`[data-panel="${name}"]`) ? name : 'results';
+  const shown = $(`[data-panel="${target}"]`), switched = shown.hidden && $$('[data-panel]').some((el) => !el.hidden);
   $$('[data-panel]').forEach((el) => { el.hidden = el.dataset.panel !== target; });
+  if (switched) settleIn(shown);
   $$('[data-go]').forEach((el) => el.setAttribute('aria-pressed', String(el.dataset.go === target)));
   resultPreviews?.setPaused(target !== 'results');
   if (target === 'board') mountTaskBoard();
@@ -976,17 +982,17 @@ function renderTask(t) {
   root.oninput = (e) => {
     if (!e.target.matches('[data-work-search]')) return;
     taskState.query = e.target.value;
-    filterResults(t);
+    flip(root, () => filterResults(t));
     updateResultPreviews(t);
   };
 
   root.onchange = (e) => {
-    if (e.target.matches('[data-vendor-filter]')) { taskState.vendor = e.target.value; filterResults(t); updateResultPreviews(t); }
-    if (e.target.matches('[data-harness-filter]')) { taskState.harness = e.target.value; filterResults(t); updateResultPreviews(t); }
-    if (e.target.matches('[data-provider-filter]')) { taskState.provider = e.target.value; filterResults(t); updateResultPreviews(t); }
+    if (e.target.matches('[data-vendor-filter]')) { taskState.vendor = e.target.value; flip(root, () => filterResults(t)); updateResultPreviews(t); }
+    if (e.target.matches('[data-harness-filter]')) { taskState.harness = e.target.value; flip(root, () => filterResults(t)); updateResultPreviews(t); }
+    if (e.target.matches('[data-provider-filter]')) { taskState.provider = e.target.value; flip(root, () => filterResults(t)); updateResultPreviews(t); }
     if (!e.target.matches('[data-result-sort]')) return;
     setResultSort(e.target.value);
-    applySort(t);
+    flip(root, () => applySort(t));
     if (resultSort === 'score') void loadTaskScores(t);
     else cancelTaskScores();
   };
@@ -1011,6 +1017,7 @@ function renderTask(t) {
       store.set('task-view', taskState.view);
       $('[data-results]').innerHTML = familyShown(t) ? familyView(t) : resultGroups(t);
       syncTaskView(t); filterResults(t); syncPicks(t); settleImages(); updateResultPreviews(t);
+      cascade($('[data-results]'));
     }
     const resultVariant = e.target.closest('[data-result-variant]');
     if (resultVariant && resultVariant.dataset.variantResult) {
@@ -1041,7 +1048,7 @@ function renderTask(t) {
     if (fold) {
       if (taskState.open.has(fold.dataset.fold)) taskState.open.delete(fold.dataset.fold);
       else taskState.open.add(fold.dataset.fold);
-      filterResults(t);
+      flip(root, () => filterResults(t));
     }
     const pick = e.target.closest('[data-pick], [data-unpick]');
     if (pick) togglePick(t, pick.dataset.pick ?? pick.dataset.unpick);
@@ -1051,7 +1058,7 @@ function renderTask(t) {
       taskState.cond = cond.dataset.cond;
       $$('[data-cond]').forEach((el) => el.setAttribute('aria-pressed', String(el === cond)));
       $('#cond-note').textContent = t.conditions.find((c) => c.id === taskState.cond)?.note ?? '';
-      if (hasCaptures) { $('#shot-grid').innerHTML = shotGrid(t); settleImages(); }
+      if (hasCaptures) { $('#shot-grid').innerHTML = shotGrid(t); settleImages(); cascade($('#shot-grid'), '.shot'); }
     }
     const shot = e.target.closest('[data-shot]');
     if (shot) openCompareLightbox(t, shot.dataset.shot);
@@ -1237,12 +1244,15 @@ const lightbox = (() => {
   let vertical = null;
   let lastFocus = null;
   let label = '';
-  const show = () => {
+  let closing = null;
+  // Stepping slides the next picture in from the side it came from.
+  const show = (direction = 0) => {
     const it = items[index];
     image.classList.remove('is-loaded');
     image.src = it.src;
     image.alt = it.title;
     if (image.complete) image.classList.add('is-loaded');
+    if (direction) slideIn(image, direction);
     caption.innerHTML = `<b><span data-i18n-ignore>${esc(it.title)}</span></b>${it.credit !== undefined ? it.credit ? `<span>图片来源：<span data-i18n-ignore>${esc(it.credit)}</span></span>` : '' : `<span data-i18n-ignore>${esc(it.sub ?? '')}</span>`}`;
     count.textContent = items.length > 1 ? `${label ? `${label} ` : ''}${index + 1} / ${items.length}` : label;
     el.classList.toggle('single', items.length < 2);
@@ -1252,13 +1262,24 @@ const lightbox = (() => {
     $('.lb-file', el).textContent = it.download?.name ?? '';
     $$('button', strip).forEach((b, i) => b.setAttribute('aria-current', String(i === index)));
   };
-  const step = (d) => { index = (index + d + items.length) % items.length; show(); };
-  const close = () => {
+  const step = (d) => { index = (index + d + items.length) % items.length; show(d); };
+  const finish = () => {
     if (el.hidden) return;
+    closing = null;
     el.hidden = true;
+    el.getAnimations({ subtree: true }).forEach((animation) => animation.cancel());
     document.body.classList.remove('lb-open');
     resultPreviews?.setPaused(Boolean($('#results')?.hidden));
     lastFocus?.focus();
+  };
+  // Closing on request fades the picture away; a page change closes at once.
+  const close = (fade = false) => {
+    if (el.hidden) return;
+    if (!fade || reducedMotion()) return finish();
+    if (closing) return;
+    closing = el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, easing: 'ease', fill: 'forwards' });
+    image.animate([{ transform: 'none' }, { transform: 'scale(.97)' }], { duration: 220, easing: 'ease-in', fill: 'forwards' });
+    closing.finished.then(finish, () => {});
   };
   el.addEventListener('click', (e) => {
     if (e.target.closest('.lb-download')) {
@@ -1268,14 +1289,14 @@ const lightbox = (() => {
     }
     const act = e.target.closest('[data-lb]')?.dataset.lb;
     const go = e.target.closest('[data-lb-go]');
-    if (go) { index = Number(go.dataset.lbGo); show(); }
+    if (go) { const to = Number(go.dataset.lbGo); const d = Math.sign(to - index); index = to; show(d); }
     else if (act === 'prev') step(-1);
     else if (act === 'next') step(1);
-    else if (act === 'close' || e.target === el || e.target.matches('.lb-figure')) close();
+    else if (act === 'close' || e.target === el || e.target.matches('.lb-figure')) close(true);
   });
   document.addEventListener('keydown', (e) => {
-    if (el.hidden) return;
-    if (e.key === 'Escape') close();
+    if (el.hidden || closing) return;
+    if (e.key === 'Escape') close(true);
     else if (e.key === 'ArrowLeft') step(-1);
     else if (e.key === 'ArrowRight') step(1);
     else if (vertical && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
@@ -1302,6 +1323,7 @@ const lightbox = (() => {
     // strip: show every item as a thumbnail under the picture; label: what the count counts.
     open(list, i = 0, onVertical = null, { strip: withStrip = false, label: name = '' } = {}) {
       if (!list.length) return;
+      if (closing) finish();
       items = list;
       index = i;
       vertical = onVertical;
@@ -1315,6 +1337,7 @@ const lightbox = (() => {
       document.body.classList.add('lb-open');
       resultPreviews?.setPaused(true);
       $('.lb-close', el).focus();
+      zoomFrom(image, lastFocus);
     },
     close,
     get isOpen() { return !el.hidden; },
@@ -1688,6 +1711,17 @@ function notFound(msg) {
 const PLATFORM_PAGES = { arena: './arena.js', leaderboard: './leaderboard.js', changelog: './changelog.js', new: './publish.js', exam: './exam.js', submit: './submit.js', me: './account.js', review: './account.js' };
 const PAGE_TITLES = { arena: '盲评', leaderboard: '榜单', changelog: '更新日志', new: '发起题目', exam: '资格考试', submit: '上传作品', me: '个人中心', review: '审核' };
 const PAGE_SECTIONS = { arena: 'arena', leaderboard: 'leaderboard', changelog: '', new: 'new', exam: 'new', submit: 'questions', me: 'me', review: 'me' };
+// A pointer resting on a link to one of these pages (or a finger landing on it) starts fetching the
+// page's code, so the click usually finds it ready.
+const warmed = new Set();
+function warmPage(event) {
+  const href = event.target.closest?.('a[href^="#/"]')?.getAttribute('href');
+  const name = href ? routeParts(href)?.[0] : null;
+  if (!name || !Object.hasOwn(PLATFORM_PAGES, name) || warmed.has(name)) return;
+  warmed.add(name);
+  import(PLATFORM_PAGES[name]).catch(() => warmed.delete(name));
+}
+for (const type of ['pointerover', 'touchstart', 'focusin']) document.addEventListener(type, warmPage, { passive: true });
 function platformOffline(name) {
   const missing = catalogState() === 'static';
   const needsActivity = name === 'arena';
@@ -1894,7 +1928,8 @@ let routeVersion = 0;
 // Following a link is one view transition: the old screen stays up while the new page draws and
 // gathers its first data, for at most HOLD, then the two cross-fade. The top bar and the sidebar
 // keep their own layers (studio.css), so an unchanged shell stays still. Past HOLD the page shows
-// its own loading state and fills in when the data arrives.
+// its own loading state and fills in when the data arrives. The opening card giving way to the first
+// page, and a loading screen to its page, cross-fade the same way (motion.js).
 const HOLD = 300;
 const delay = (ms) => new Promise((done) => setTimeout(done, ms));
 // `from` is the address being left; a redraw in place (sign-in, a review) passes none, and the
@@ -1903,24 +1938,41 @@ async function route({ keepScroll = false, from = null } = {}) {
   const version = ++routeVersion;
   const visit = keepScroll || from === null ? null : retrace(from);
   const scrollBack = keepScroll ? scrollY : visit?.scroll ?? 0;
-  let shown;
-  if (from && document.startViewTransition && document.visibilityState === 'visible') {
-    // A newer route or a theme switch skips this transition; the page is drawn all the same.
+  // The page's items rise in on arrival and a card's picture can carry over into the viewer (motion.js).
+  const motion = scene(root, { navigation: from !== null, from });
+  const viaTransition = Boolean(motion.transition && document.startViewTransition && document.visibilityState === 'visible');
+  let drawing;
+  if (viaTransition) {
+    motion.leave();
+    // A newer route or a theme switch skips this transition; the page is drawn all the same. HOLD
+    // bounds the whole wait, so a page still fetching its code cross-fades in with its own loading
+    // state rather than leaving the old screen frozen.
     const transition = document.startViewTransition(async () => {
-      shown = await show(version, visit, scrollBack);
-      await Promise.race([shown?.ready, delay(HOLD)]);
+      drawing = show(version, visit, scrollBack);
+      const started = performance.now();
+      const drawn = await Promise.race([drawing, delay(HOLD)]);
+      if (drawn) await Promise.race([drawn.ready, delay(Math.max(0, HOLD - (performance.now() - started)))]);
+      if (version === routeVersion) motion.arrive();
     });
-    transition.ready.catch(() => {});
+    transition.ready.then(motion.play, motion.play);
+    transition.finished.then(motion.settle, motion.settle);
     await transition.updateCallbackDone.catch(() => {});
-  } else shown = await show(version, visit, scrollBack);
-  if (version !== routeVersion || !shown?.ready) return;
+  } else drawing = show(version, visit, scrollBack);
+  const shown = viaTransition ? await drawing?.catch(() => {}) : await drawing;
+  if (version === routeVersion) {
+    motion.arrive();
+    if (!viaTransition) motion.play();
+  }
+  if (version !== routeVersion || !shown?.ready) return motion.done();
   // A page that loads its data is only as tall as its loading state at first, so the way back
   // lands its scroll again once the data is drawn, unless the reader has scrolled meanwhile.
   const landed = scrollY;
   await shown.ready.catch(() => {});
+  motion.done();
   if (version !== routeVersion) return;
   settleImages();
   if (shown.scrolls && scrollBack && scrollY === landed) scrollTo(0, scrollBack);
+  motion.arrive();
 }
 
 // Every address shows one page. A page is whatever its renderer returns, all fields optional:
@@ -2039,7 +2091,7 @@ onPlatformChange((reason) => {
 
 try {
   const requests = requestPlatform();
-  const res = await fetch('data.json', { cache: 'no-cache' });
+  const res = await (bootRead('data') ?? fetch('data.json', { cache: 'no-cache' }));
   if (res.status === 429) {
     const error = new Error('请稍后刷新页面。');
     error.status = 429;

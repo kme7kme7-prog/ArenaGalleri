@@ -9,6 +9,8 @@ export const CONTACT = 'arenagallari@outlook.com';
 export const OPERATOR = 'ArenaGalleri 运营团队';
 const UPDATED = '2026-10-01';
 const mail = `<a href="mailto:${CONTACT}">${CONTACT}</a>`;
+// After a full-width colon the Chinese needs no space; the English gets one (studio.css .en-gap).
+const mailAfterColon = `<a class="en-gap" href="mailto:${CONTACT}">${CONTACT}</a>`;
 
 // An ICP filing covers one registered domain; the footer shows it only on that domain.
 // Add the new domain's filing here when the site moves (e.g. arenagalleri.com).
@@ -62,7 +64,7 @@ const TERMS = [
   ['changes', '条款更新', () => `
     <p>我们可能根据运营需要或法律要求更新本条款。更新后的条款发布在本页即生效，页首日期为最近一次更新时间。</p>`],
   ['contact', '联系我们', () => `
-    <p>运营者：${OPERATOR}<br>合作、授权、反馈与投诉：${mail}</p>`],
+    <p>运营者：${OPERATOR}<br>合作、授权、反馈与投诉：${mailAfterColon}</p>`],
 ];
 
 const PRIVACY = [
@@ -106,7 +108,7 @@ const PRIVACY = [
   ['changes', '政策更新', () => `
     <p>我们可能根据业务调整或法律要求更新本政策。更新后的政策发布在本页即生效，页首日期为最近一次更新时间。</p>`],
   ['contact', '联系我们', () => `
-    <p>个人信息保护相关问题请联系${OPERATOR}：${mail}</p>`],
+    <p>个人信息保护相关问题请联系${OPERATOR}：${mailAfterColon}</p>`],
 ];
 
 const PAGES = {
@@ -131,7 +133,7 @@ export function mount(root, ctx, kind) {
     nav,
   })}<article class="terms">${doc.sections.map(([id, title, body], i) => `<section id="${kind}-${id}" aria-labelledby="${kind}-${id}-title">
       <h3 id="${kind}-${id}-title"><span class="terms-num">${num(i)}</span>${esc(title)}</h3>${body()}
-    </section>`).join('')}<p class="terms-related">另请参阅：<a href="#/${other[0]}">${other[1]}</a></p></article>${ctx.pageEnd()}`;
+    </section>`).join('')}<p class="terms-related">另请参阅：<a class="en-gap" href="#/${other[0]}">${other[1]}</a></p></article>${ctx.pageEnd()}`;
   setPageTitle([doc.title, ctx.DATA.title]);
 
   const jump = (id, smooth) => {

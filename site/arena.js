@@ -134,7 +134,7 @@ function lobby(root, ctx) {
             <div><dt>有效比较</dt><dd>${pad(platform.totals.votes)}</dd></div>
             ${platform.user ? `<div><dt>你已评</dt><dd>${pad(platform.me?.votes ?? 0)}</dd></div>` : ''}
           </dl>${open.length ? `<button class="btn primary side-cta" data-random>${icon('blind')}随机一组</button><p class="side-cta-note">${view.track || view.query.trim() ? `在当前范围的 ${scope().open.length} 道题里` : `在全部 ${open.length} 道题里`}随机抽组，每一组都可能换题。想专心评一道，点右侧的题目。</p>` : ''}
-          ${platform.user ? '' : '<p class="side-note">未登录也可以计票，选择计入大众榜。登录并通过资格考试后，选择同时计入精选榜。<button class="link" data-auth="login">登录</button></p>'}
+          ${platform.user ? '' : '<p class="side-note">未登录也可以计票，选择计入大众榜。登录并通过资格考试后，选择同时计入精选榜。<button class="link en-gap" data-auth="login">登录</button></p>'}
           ${isSenior() && platform.arenaModels.length ? pinField() : ''}`,
       nav: `<nav class="side-nav section-nav" aria-label="盲评题型">${link('', 'grid', '全部', open.length)}${tracks.map((x) => link(x.name, x.glyph, x.label, x.tasks.filter(ready).length)).join('')}</nav>` })}
       <section class="block wrap">

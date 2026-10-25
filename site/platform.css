@@ -177,7 +177,7 @@ dialog.sheet.auth-sheet, .auth-overlay .sheet.auth-sheet { width: min(380px, cal
 .auth-entry .sheet-head-tools { gap: 6px; }
 .auth-entry .sheet-head-tools .icon-btn, .auth-entry .locale-toggle { background: transparent; }
 .auth-entry .sheet-head-tools .icon-btn { width: 32px; height: 32px; }
-.auth-entry .locale-toggle { min-height: 32px; padding-inline: 7px; font-size: 11px; }
+.auth-entry .locale-toggle { min-height: 32px; padding: 2px; font-size: 11px; }
 .auth-entry .field { gap: 8px; margin-bottom: 20px; }
 .auth-entry .field-label { color: var(--ink-2); font-size: 12.5px; }
 .auth-entry .input {

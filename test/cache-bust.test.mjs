@@ -47,6 +47,9 @@ test('versions the complete local module graph and direct HTML assets under eith
     assert.match(html, new RegExp(`href="style\\.css\\?v=${version}"`));
     assert.match(html, new RegExp(`src="runtime-config\\.js\\?v=${version}"`));
     assert.match(html, new RegExp(`src="app\\.js\\?v=${version}"`));
+    const preloads = [...html.matchAll(/<link rel="modulepreload" href="([^"]+)">/g)].map((match) => match[1]);
+    assert.deepEqual(preloads, ['app.js', 'helper.js', 'vendor/three.module.js', 'vendor/three.core.js'].map((name) => `./${name}?v=${version}`));
+    assert.ok(html.indexOf('modulepreload') > html.indexOf('type="importmap"'));
     assert.deepEqual(JSON.parse(readFileSync(join(dist, 'version.json'), 'utf8')), { assets: version });
     assert.match(version, /^[a-f0-9]{24}$/);
     const policy = html.match(/id="gallery-script-csp"[^>]*content="([^"]+)"/)[1];

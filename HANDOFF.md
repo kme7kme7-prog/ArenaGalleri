@@ -1,3 +1,13 @@
+## 2026-10-25 · Gallery 动效、载入衔接与中英界面（已授权提交推送，未部署）
+
+- 用户要求为 Gallery 设计高级克制的过渡与加载动效、完善交互；看过线上后补充：重点是更完善的衔接加载，并优化设置里的各语言界面。范围只在本仓前端与构建工具，未改后端、数据仓或线上服务器（ssh arena 仅只读查看 nginx 与现场目录）。
+- 动效层：新增 `site/motion.css`、`site/motion.js`（index.html 最后一个样式表）。路由视图过渡（旧画面最多 300ms，含拉取页面代码；内容逐项上浮、屏外滚到再浮）、题库卡片与查看器舞台的共享元素、筛选/排序/搜索 FLIP、分段控件滑块、题目卡指针光、图片显影与扫光、查看器载入层、对话框/菜单/灯箱/提示条进出场、主题圆形铺开（ui.js）、导航细进度线；平台页链接悬停预取代码。`prefers-reduced-motion` 全部关闭。DESIGN.md「动效」已改写。
+- 载入衔接：静态介绍在有脚本时成为开场卡片（中英各一句），首个页面与载入占位换真实页面都走一次交叉淡入，两屏位置不变的元素不重播。`index.html` 把 import map 移入 head（样式之后），`entry-boot.js`、`runtime-config.js` 移到 body 末尾并在其后提前发出 data.json / catalog / session（`platform-api.js` 的 `bootRead` 各取一次，请求参数与原先一致）；`scripts/cache-bust.mjs` 在 import map 后为入口静态依赖生成 modulepreload（本次 32 个，动态 import 不在内），测试已补。
+- 语言界面：语言开关改为两段式（当前语言在底块上，点哪侧切哪侧，切换时底块滑动、只淡化变化的文字，`i18n.js` 提供 `setLocaleTransition` 钩子）；修英文缺空格（返回链接改「Back to …」、盲评登录、条款/隐私的邮箱与「See also」用 `.en-gap`）、英文分段按钮不折行、英文榜单模型列加宽；静态介绍不再被 i18n 反向改成「亿模亿样 亿模亿样」。
+- 验证：check 113/0、test 142/142。本地以「本地前端 + 只读代理线上 data/API（拒绝非 GET）」实测：HTTP/2、每请求 275ms 延迟冷启动各 3 次中位（两轮一致），首页内容出现原版约 4.3s → 约 3.4s，首张作品图约 4.7s → 约 3.7s，首次绘制 884 → 608ms（开场卡片文字有意延迟 0.28s 浮现，FCP 指标因此约 1.76s）；对比页→榜单冻结原版约 2.1s → 约 0.9s。无头 Chromium 检查 9 个路由英文桌面/390px 无横溢、无粘连（A|B 为盲评图标装饰字母）、无页面异常；开场/占位过渡、减弱动效、浅色、总入口 `?entry=portal` 与原版一致、主题/语言/灯箱/导航冒烟通过。
+- 未执行：`npm run build`、`CI=1 npm run check:intake`（本机无 datapack.json，壳层以真实 `cacheBustSite` 在临时目录构建验证）；未登录，个人中心/审核/上传等需账号的页面只看到访客态；未在真机 iOS Safari 验证（View Transitions 需较新版本，不支持时直接切换）。观察到线上 `/api/catalog` brotli 后约 310KB、首访 3–4s，属后端范畴，未改。
+- 用户授权按规范归档后提交并推送：本仓一条英文提交推送 main，wsnxxxs / 269096463+wsnxxxs@users.noreply.github.com，无联合署名；提交号以 git log 为准。未授权部署，线上仍为上一版。[本轮归档](docs/archive/2026-10-25-motion-loading-locale-wsnxxxs.md)。
+
 ## 2026-10-24 · Kimi 正式数据包上线与结果下线（已完成）
 
 - 用户授权本轮提交推送、生成正式包上线，随后要求下线15题对应17件结果但保留收录。已通过现场library.review单事务关闭Gallery/Arena开关，娱乐开关保持0；status=verified、deleted_at=null、Kimi K3.1 Pro / Max / Kimi Code与原文件/digest保持。没有删除作品、模型或历史票。下节原公开状态为下线前时点，由本节覆盖。

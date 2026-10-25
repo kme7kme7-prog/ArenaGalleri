@@ -11,7 +11,6 @@
     })();
   </script>
   <style>html[data-entry]::after { content:''; position:fixed; inset:0; z-index:2147483646; background:#121211; }</style>
-  <script src="entry-boot.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>亿模亿样 ArenaGalleri · 模型效果对比</title>
   <meta name="description" content="亿模亿样（ArenaGalleri）：把同一份提示词交给不同 AI 模型，收录它们生成的可运行前端作品。在线运行、并排对比、查看截图与提示词，参与匿名盲评与排行榜。" />
@@ -53,18 +52,24 @@
     .static-intro h1 { margin: 0 0 16px; font: 500 34px/1.25 "Songti SC", "Noto Serif SC", serif; }
     .static-intro p { margin: 0 0 12px; opacity: .78; }
     .static-intro a { color: inherit; }
+    .static-intro-en { display: none; }
   </style>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="sandtable.css" />
   <link rel="stylesheet" href="exhibition.css" />
   <link rel="stylesheet" href="platform.css" />
   <link rel="stylesheet" href="studio.css" />
+  <link rel="stylesheet" href="motion.css" />
+  <!-- Styles first, then the import map; the build lists the app's modules right after it so they download at once. -->
+  <script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/controls/OrbitControls.js":"./vendor/OrbitControls.js","three/addons/utils/BufferGeometryUtils.js":"./vendor/BufferGeometryUtils.js"}}</script>
 </head>
 <body>
   <div id="app" aria-live="polite">
-    <main class="static-intro">
+    <main class="static-intro" data-i18n-ignore>
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect class="logo-bg" width="32" height="32" rx="7"/><rect class="logo-fg" x="7" y="10" width="18" height="4"/><rect class="logo-fg" x="7" y="18" width="7.6" height="4"/><rect class="logo-ac" x="17.4" y="18" width="7.6" height="4"/></svg>
       <h1>亿模亿样 <span lang="en">ArenaGalleri</span></h1>
-      <p>把同一份提示词交给不同 AI 模型，收录它们生成的可运行前端作品：在线运行、并排对比、查看截图与提示词。</p>
+      <p class="static-intro-zh">把同一份提示词交给不同 AI 模型，收录它们生成的可运行前端作品：在线运行、并排对比、查看截图与提示词。</p>
+      <p class="static-intro-en" lang="en">Give the same prompt to different AI models and open the frontend works they build side by side.</p>
       <p>先别看名字，只看作品：同一道题的两份解答匿名并排，投票后揭晓模型，汇入排行榜。</p>
       <p>姊妹站：<a href="https://game.arenaofbias.icu/">偏见试验场 ARENA OF BIAS</a> ｜ <a href="https://arenaofbias.icu/">总入口</a></p>
     </main>
@@ -83,8 +88,26 @@
     <button class="lb-btn lb-nav lb-next" data-lb="next" aria-label="下一张（→）"></button>
   </div>
   <noscript><p class="static-intro">亿模亿样需要启用 JavaScript 才能浏览和运行作品。Please enable JavaScript to browse ArenaGalleri.</p></noscript>
-  <script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/controls/OrbitControls.js":"./vendor/OrbitControls.js","three/addons/utils/BufferGeometryUtils.js":"./vendor/BufferGeometryUtils.js"}}</script>
+  <script src="entry-boot.js"></script>
   <script src="runtime-config.js"></script>
+  <script>
+    // The first reads leave now, while the modules download; app.js and platform.js each take theirs once.
+    (() => {
+      const api = new URL(globalThis.SAME_PROMPT_CONFIG?.apiBaseUrl || 'api/', document.baseURI);
+      if (api.pathname === '/') api.pathname = '/api/';
+      if (!api.pathname.endsWith('/')) api.pathname += '/';
+      const read = (url, options) => {
+        const request = fetch(url, options);
+        request.catch(() => {});
+        return request;
+      };
+      globalThis.GALLERY_BOOT = {
+        data: read('data.json', { cache: 'no-cache' }),
+        catalog: read(new URL('catalog', api), { credentials: 'omit', cache: 'no-cache', signal: AbortSignal.timeout(15000) }),
+        session: read(new URL('session', api), { credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(15000) }),
+      };
+    })();
+  </script>
   <script type="module" src="app.js"></script>
 </body>
 </html>
