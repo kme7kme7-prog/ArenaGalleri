@@ -1,13 +1,26 @@
 // Read switch for objects already stored on the media CDN.
-// Off: gallery /assets/scenes/ stays same-origin, and API /media/ stays on the API host or mediaBaseUrl.
-// On: those relative keys are read from the CDN. The path after the host does not change.
-export const MEDIA_CDN_ORIGIN = 'https://media.arenaofbias.icu';
+// The source of truth is mediaCdnBaseUrl (build env MEDIA_CDN_BASE_URL).
+// Empty, unset, or invalid means off: gallery /assets/scenes/ stays same-origin,
+// and API /media/ stays on the API host or mediaBaseUrl.
+// A non-empty HTTP(S) base rewrites only those relative keys. An old mediaCdnEnabled
+// boolean is not read; an empty base stays off even if that boolean is true.
+const CDN_ROOTS = ['/media/', '/assets/scenes/'];
 
-export function mediaCdnEnabled() {
-  return globalThis.SAME_PROMPT_CONFIG?.mediaCdnEnabled === true;
+export function normalizeMediaCdnBase(value, strict = false) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  let url;
+  try { url = new URL(value.trim()); }
+  catch { if (strict) throw new Error('MEDIA_CDN_BASE_URL must be an HTTP(S) URL'); return ''; }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+    if (strict) throw new Error('MEDIA_CDN_BASE_URL must be an HTTP(S) URL without credentials, a query, or a hash');
+    return '';
+  }
+  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
 }
 
-const CDN_ROOTS = ['/media/', '/assets/scenes/'];
+export function mediaCdnBaseUrl() {
+  return normalizeMediaCdnBase(globalThis.SAME_PROMPT_CONFIG?.mediaCdnBaseUrl);
+}
 
 // Relative and root-relative keys only. Absolute URLs (token scenes, data, blob) stay as given.
 function cdnKey(value) {
@@ -22,7 +35,8 @@ function cdnKey(value) {
 }
 
 export function cdnMediaUrl(value) {
-  if (!mediaCdnEnabled()) return value;
+  const base = mediaCdnBaseUrl();
+  if (!base) return value;
   const key = cdnKey(value);
-  return key ? `${MEDIA_CDN_ORIGIN}${key}` : value;
+  return key ? `${base}${key}` : value;
 }

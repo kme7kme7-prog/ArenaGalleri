@@ -1,4 +1,4 @@
-## 媒体 CDN 读开关（2026-10-25，kme7kme7-prog，待合并）
+## 媒体 CDN 读开关（2026-10-25，kme7kme7-prog，合入 wsnxxxs/ArenaGalleri）
 
 - 读路径默认不变：图库 `/assets/scenes/` 仍同源，API `/media/` 仍由 `mediaBaseUrl` 或 API 主机解析。仅当构建注入非空 `MEDIA_CDN_BASE_URL`（别名 `VITE_MEDIA_CDN_BASE_URL`，运行时 `mediaCdnBaseUrl`）时，这两类相对路径改读该主机（正式值为 `https://media.arenaofbias.icu`，无尾斜杠），对象键前缀不变。作品 iframe、头像、品牌标和已写绝对地址不改。
 - 空/缺省 = 关；回滚是重新构建且不设该变量。CORS 由运维配置。server 双写已上线（`b4acb04`），本仓只做读切换。

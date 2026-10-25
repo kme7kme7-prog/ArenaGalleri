@@ -6,6 +6,7 @@ import { checkDatapack } from './datapack.mjs';
 import { readSource } from './datapack-client.mjs';
 import { readPosterManifest, createPosterFingerprint, posterIsCurrent } from './poster-fingerprint.mjs';
 import { cacheBustSite } from './cache-bust.mjs';
+import { normalizeMediaCdnBase } from '../site/media-cdn.js';
 import { publicCatalog, publishablePackageFile } from './public-catalog.mjs';
 
 // Assembles dist/ = data package (.datapack/) + site overlay (site/).
@@ -80,21 +81,18 @@ for (const task of data.tasks) {
   }
 }
 writeFileSync(join(DIST, 'data.json'), JSON.stringify(publicCatalog(data, buildInfo)));
-function readSwitch(name) {
-  const raw = process.env[name];
-  if (raw == null || raw.trim() === '') return null;
-  const value = raw.trim().toLowerCase();
-  if (['1', 'true', 'yes', 'on'].includes(value)) return true;
-  if (['0', 'false', 'no', 'off'].includes(value)) return false;
-  throw new Error(`${name} must be 1/true/yes/on or 0/false/no/off`);
+function readCdnBase(name) {
+  if (!Object.hasOwn(process.env, name)) return undefined;
+  return normalizeMediaCdnBase(process.env[name], true);
 }
-const mediaSwitch = readSwitch('MEDIA_CDN_ENABLED');
-const viteSwitch = readSwitch('VITE_MEDIA_CDN_ENABLED');
-if (mediaSwitch != null && viteSwitch != null && mediaSwitch !== viteSwitch) {
-  throw new Error('MEDIA_CDN_ENABLED and VITE_MEDIA_CDN_ENABLED disagree');
+const mediaBase = readCdnBase('MEDIA_CDN_BASE_URL');
+const viteBase = readCdnBase('VITE_MEDIA_CDN_BASE_URL');
+if (mediaBase !== undefined && viteBase !== undefined && mediaBase !== viteBase) {
+  throw new Error('MEDIA_CDN_BASE_URL and VITE_MEDIA_CDN_BASE_URL disagree');
 }
-const mediaCdnEnabled = mediaSwitch === true || viteSwitch === true;
-if (process.env.API_BASE_URL || process.env.MEDIA_BASE_URL || mediaCdnEnabled) {
+// Empty or unset stays off. An explicit empty MEDIA_CDN_BASE_URL wins over a missing alias.
+const mediaCdnBaseUrl = mediaBase !== undefined ? mediaBase : (viteBase ?? '');
+if (process.env.API_BASE_URL || process.env.MEDIA_BASE_URL || mediaCdnBaseUrl || mediaBase !== undefined || viteBase !== undefined) {
   const runtime = {};
   for (const [variable, field] of [['API_BASE_URL', 'apiBaseUrl'], ['MEDIA_BASE_URL', 'mediaBaseUrl']]) {
     if (!process.env[variable]) continue;
@@ -102,11 +100,8 @@ if (process.env.API_BASE_URL || process.env.MEDIA_BASE_URL || mediaCdnEnabled) {
     if (!['http:', 'https:'].includes(base.protocol)) throw new Error(`${variable} must be an HTTP(S) URL`);
     runtime[field] = base.href;
   }
-  // Missing mediaCdnEnabled stays off. Only an explicit true changes media hosts.
-  if (mediaCdnEnabled) {
-    if (!runtime.apiBaseUrl) runtime.apiBaseUrl = 'api/';
-    runtime.mediaCdnEnabled = true;
-  }
+  if (!runtime.apiBaseUrl) runtime.apiBaseUrl = 'api/';
+  runtime.mediaCdnBaseUrl = mediaCdnBaseUrl;
   writeFileSync(join(DIST, 'runtime-config.js'), `globalThis.SAME_PROMPT_CONFIG = ${JSON.stringify(runtime)};\n`);
 }
 

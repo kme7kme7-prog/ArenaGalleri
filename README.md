@@ -42,7 +42,7 @@ npm start
 
 构建时通过 `API_BASE_URL` 配置后台 API，通过可选 `MEDIA_BASE_URL` 配置投稿资源根地址；地址是公开运行配置，不含服务端密钥。
 
-场景模型 `assets/scenes/...` 与后台 `/media/...`（封面、`preview.sbox`、`first.jpg` 等）默认仍从现有图库源站和 API 主机读取。读开关默认关闭。构建时设置 `MEDIA_CDN_ENABLED=1`（或 `VITE_MEDIA_CDN_ENABLED=1`）会在 `runtime-config.js` 写入 `mediaCdnEnabled: true`；也可以直接把已发布配置里的 `mediaCdnEnabled` 设为布尔值 `true`。打开后，仅这两类相对路径改到 `https://media.arenaofbias.icu`，路径键保持 `/assets/scenes/...` 与 `/media/...`。其它资源、作品 iframe 和已经写好的绝对地址不变。预发与正式是各自的构建或各自的 `runtime-config.js`：预发先打开开关，正式在确认前保持关闭。回滚就是让开关保持关闭或重新发布为 `false`，不改对象键。
+场景模型 `assets/scenes/...` 与后台 `/media/...`（封面、`preview.sbox`、`first.jpg` 等）默认仍从现有图库源站和 API 主机读取。读开关是 `MEDIA_CDN_BASE_URL`（运行时字段 `mediaCdnBaseUrl`，不要末尾斜杠）。空字符串、未设置或缺失都表示关闭。设为非空地址（例如 `https://media.arenaofbias.icu`）后，仅这两类相对路径改到该主机，路径键保持 `/assets/scenes/...` 与 `/media/...`。可选别名是 `VITE_MEDIA_CDN_BASE_URL`；两个变量都写了且规范化后不一致时构建失败。`mediaCdnEnabled` 不再作为开关，空的 base 优先，保持关闭。其它资源、作品 iframe 和已经写好的绝对地址不变。预发与正式是各自的构建或各自的 `runtime-config.js`：预发写入该 base，正式在确认前保持空字符串。回滚是把 `mediaCdnBaseUrl` 发布为空，不改对象键。
 
 CDN 与存储桶的 CORS 由运维并行配置。卡片 `.sbox` 使用跨源 `fetch`，首页海报使用 `crossorigin="anonymous"` 后再读像素，因此媒体主机需要对画廊来源允许匿名 GET。参考图打包下载仍对 `/media/` 携带会话凭据，这类请求不能用 `*`，需要回显画廊来源并允许凭据。本仓页面的脚本 CSP 不限制图片和连接；若边缘另有更严的 `img-src` / `connect-src`，需同时放行该媒体主机。
 

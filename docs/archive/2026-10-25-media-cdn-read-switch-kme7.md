@@ -43,3 +43,7 @@
 ## 下一步建议
 
 预发构建加上 `MEDIA_CDN_ENABLED=1`，确认 CORS 放行画廊来源后，再抽样 `.sbox`、海报和 `/media/` 封面。正式在此之前保持开关关闭。新烘焙的 `assets/scenes/...` 要先进入桶，再考虑打开正式读开关。
+
+## 勘误（2026-10-25）
+
+运维锁定开关名为 base URL，不再用布尔值。`MEDIA_CDN_BASE_URL`（别名 `VITE_MEDIA_CDN_BASE_URL`，运行时 `mediaCdnBaseUrl`）为空或缺失表示关闭；非空 HTTP(S) 地址表示打开，且去掉末尾斜杠。`MEDIA_CDN_ENABLED` / `mediaCdnEnabled` 不再读取，空 base 优先于旧布尔值。上文仍写布尔开关的句子以本勘误为准。
