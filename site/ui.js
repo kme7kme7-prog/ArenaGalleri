@@ -1,4 +1,5 @@
 import { formatDate, formatTime, formatNumber } from './i18n.js';
+import { cdnMediaUrl } from './media-cdn.js';
 export { formatDate, formatTime, formatNumber };
 // Shared page helpers: DOM shortcuts, escaping, storage, icons and marks.
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -102,8 +103,9 @@ document.addEventListener('click', (e) => {
 // 截图/封面在同一个数据包内内容不变：URL 拼数据包版本号，配 nginx 长缓存后
 // 平时直接吃本地缓存，换包时版本变化自动失效。
 export const versionedMedia = (src) => {
+  const resolved = cdnMediaUrl(src);
   const version = globalThis.SAME_PROMPT_CONFIG?.assetVersion;
-  return src && version ? `${src}${src.includes('?') ? '&' : '?'}v=${version}` : src;
+  return resolved && version ? `${resolved}${resolved.includes('?') ? '&' : '?'}v=${version}` : resolved;
 };
 
 export function img(src, alt, cls = '', eager = false) {

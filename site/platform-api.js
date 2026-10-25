@@ -1,3 +1,5 @@
+import { cdnMediaUrl } from './media-cdn.js';
+
 // Runtime configuration keeps the static gallery and the API independently deployable.
 export function apiBaseUrl() {
   const base = new URL(globalThis.SAME_PROMPT_CONFIG?.apiBaseUrl || 'api/', document.baseURI);
@@ -71,6 +73,8 @@ export function createUploadRequest(path) {
 
 export function mediaUrl(value) {
   if (!value || typeof value !== 'string') return value;
+  const cdn = cdnMediaUrl(value);
+  if (cdn !== value) return cdn;
   const configured = globalThis.SAME_PROMPT_CONFIG?.mediaBaseUrl;
   const base = configured ? new URL(configured, document.baseURI) : new URL('../', apiBaseUrl());
   if (!base.pathname.endsWith('/')) base.pathname += '/';

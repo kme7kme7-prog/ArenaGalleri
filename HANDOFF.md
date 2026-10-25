@@ -1,3 +1,10 @@
+## 媒体 CDN 读开关（2026-10-25，kme7kme7-prog，待合并）
+
+- 读路径默认不变：图库 `/assets/scenes/` 仍同源，API `/media/` 仍由 `mediaBaseUrl` 或 API 主机解析。仅当构建注入非空 `MEDIA_CDN_BASE_URL`（别名 `VITE_MEDIA_CDN_BASE_URL`，运行时 `mediaCdnBaseUrl`）时，这两类相对路径改读该主机（正式值为 `https://media.arenaofbias.icu`，无尾斜杠），对象键前缀不变。作品 iframe、头像、品牌标和已写绝对地址不改。
+- 空/缺省 = 关；回滚是重新构建且不设该变量。CORS 由运维配置。server 双写已上线（`b4acb04`），本仓只做读切换。
+- 新烘焙的场景 `.sbox` 仍须按相同 `assets/scenes/...` 键上传到 COS。本仓不加入运维脚本。
+- [本轮归档](docs/archive/2026-10-25-media-cdn-read-switch-kme7.md)。
+
 ## 2026-10-25 · Gallery 动效、载入衔接与中英界面（已提交推送，已上线）
 
 - 用户要求为 Gallery 设计高级克制的过渡与加载动效、完善交互；看过线上后补充：重点是更完善的衔接加载，并优化设置里的各语言界面。范围只在本仓前端与构建工具，未改后端、数据仓或线上服务器（ssh arena 仅只读查看 nginx 与现场目录）。

@@ -2,7 +2,7 @@
 
 卡片直接消费私有包中的 `.sbox` 模型、WebP 海报和真实截图，不在前端仓库提交这些资源。可见卡片优先加载，正常模型读取不重新构建原作。
 
-`preview-model.js` 读取压缩模型；`result-previews.js` 管理卡片渲染；`scene-resources.js` 回收场景资源。沙盘与回退加载按需导入对应模块。
+`preview-model.js` 读取压缩模型；`result-previews.js` 管理卡片渲染；`scene-resources.js` 回收场景资源。沙盘与回退加载按需导入对应模块。`assets/scenes/` 下的 `.sbox` 与海报默认仍从画廊源站读取。`mediaCdnEnabled` 打开后，这些相对路径和 API `/media/` 改从 `https://media.arenaofbias.icu` 读取。新发布的场景模型要先按同一 `assets/scenes/...` 键进入该桶。
 
 海报指纹覆盖模型、场景配置和渲染实现。缺失或过期时本地构建提示并回退截图；发布环境设置 `CI=1` 后构建和收录检查失败。仅确认文件存在不能证明海报与当前模型匹配。
 
