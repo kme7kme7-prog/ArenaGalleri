@@ -50,7 +50,7 @@
 
 `catalog` 不带凭据，使用 HTTP `public, no-cache` 与 ETag，每次使用须向服务端确认；`session` / `activity` 携带凭据并禁止缓存。不持久化私有聚合响应。请求合并在途工作。`catalog`、兼容 `bootstrap`、`session` 与 `activity` 都是 GET，经 `platform-api.js` 的 `retryRead` 读取：无响应、超时、响应不是 JSON 或 429 时按 1/3/6 秒退避，最多再试 3 次（429 至少等到 Retry-After），其他 HTTP 状态不重试；单次读取最长 15 秒，整次读取连同等待不超过 45 秒，用尽后才显示原有错误和倒计时。退避期间页面保持加载状态。之后启动恢复仍自动再试一次并遵守 Retry-After；手动、恢复网络及回到页面可以恢复连接。刷新失败保留已经验证的内容。账号或角色变化清理私有记忆与权限覆盖，旧身份响应不得回写；写操作使在途旧统计失效，随后重新读取。单纯状态或统计变化不重建正在编辑的表单，确认身份改变才清理身份相关页面。数据版本仍用于写请求兼容。后台地址由 `runtime-config.js` 或构建环境变量配置，服务端密钥不得进入前端。
 
-`MEDIA_CDN_BASE_URL`（别名 `VITE_MEDIA_CDN_BASE_URL`，运行时 `mediaCdnBaseUrl`）只影响静态 `/assets/scenes/`，空或缺省保持画廊同源。动态 `/media/` 以 API 根解析并逐次验权，附稳定 `access=20261026` 避开旧 301 缓存；参考图也保持 API 路径。私密模型仅向精确 API origin 及其 `media/` 目录、无内嵌账号密码的 URL 使用 `credentials: 'include'`，其余保持 `same-origin`。公开媒体与参考图为浏览器私有强制重验证，私密读取为 `no-store`，不能由共享 CDN 缓存替代当前权限检查。云端存量动态媒体匿名直链和缓存需用户另行关闭。
+`MEDIA_CDN_BASE_URL`（别名 `VITE_MEDIA_CDN_BASE_URL`，运行时 `mediaCdnBaseUrl`）为空或缺省时，`/assets/scenes/` 保持画廊同源，动态 `/media/` 以 API 根解析并附稳定 `access=20261026` 避开旧 301 缓存。非空时，`/assets/scenes/` 与公开 `/media/**` 直接读取该 CDN 源站，路径和查询保持不变；`/media/references/` 与 `/media/pack-references/` 不改写，仍走 API 做访问检查。绝对地址仅当主机是配置的 API 主机或 `api.arenaofbias.icu`、且路径属于公开 `/media/` 时换成 CDN 源站。`blob:`、`data:` 和其它主机不变。仍落在精确 API origin 及其 `media/` 目录、且无内嵌账号密码的 URL 才使用 `credentials: 'include'`，CDN 与第三方保持 `same-origin`。这次改写只避开 API 对已经公开的作品媒体的 301，不把参考图或审核门禁放进匿名 CDN。
 
 Gallery 独立主机的生产构建必须设置 `API_BASE_URL=https://api.arenaofbias.icu/api/` 再运行 `npm run build`，不能发布默认相对 `api/` 的本地配置。上线后运行 `npm run check:deployment -- https://gallery.arenaofbias.icu/ https://api.arenaofbias.icu/api/`，校验网站实际配置的 API、CORS、数据包兼容性及公开题目总数；浏览器另核对全部社区题目 ID 均出现在题库中。静态数据包只有20题，显示20题不能作为完整生产题库验收。
 

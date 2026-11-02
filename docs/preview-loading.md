@@ -2,9 +2,9 @@
 
 卡片直接消费私有包中的 `.sbox` 模型、WebP 海报和真实截图，不在前端仓库提交这些资源。可见卡片优先加载，正常模型读取不重新构建原作。
 
-`preview-model.js` 读取压缩模型；`result-previews.js` 管理卡片渲染；`scene-resources.js` 回收场景资源。沙盘与回退加载按需导入对应模块。`assets/scenes/` 下的 `.sbox` 与海报默认从画廊源站读取，只有这些静态相对路径可由非空 `mediaCdnBaseUrl` 切换到 CDN，例如 `https://media.arenaofbias.icu`。新发布的场景模型要先按同一 `assets/scenes/...` 键进入该桶。
+`preview-model.js` 读取压缩模型；`result-previews.js` 管理卡片渲染；`scene-resources.js` 回收场景资源。沙盘与回退加载按需导入对应模块。`assets/scenes/` 下的 `.sbox` 与海报，以及公开 `/media/` 作品预览，在 `mediaCdnBaseUrl` 非空时从该 CDN 读取，例如 `https://media.arenaofbias.icu`。`/media/references/` 与 `/media/pack-references/` 仍请求 API。新发布的场景模型要先按同一 `assets/scenes/...` 键进入该桶。
 
-动态 `/media/` 预览与截图始终走 API 当前权限检查，稳定 `access=20261026` 参数用于避开旧 301 缓存，不授予读取权限。私密模型 fetch 只向精确配置的 API origin 及其 `media/` 目录携带会话，并拒绝对含内嵌账号密码的 URL 扩大凭据；静态 CDN 和第三方地址保持 `same-origin`。公开媒体可在每次 API 验权后使用 ETag 重验证，私密媒体使用 `no-store`。
+公开 `/media/` 在开关打开时直接读 CDN，不再经过 API 主机的 301。参考图，以及开关关闭时的全部 `/media/`，仍走 API；稳定 `access=20261026` 只用于避开旧 301 缓存，不授予读取权限。仍落在 API 媒体目录上的读取才携带会话，并拒绝对含内嵌账号密码的 URL 扩大凭据；CDN 和第三方地址保持 `same-origin`。
 
 海报指纹覆盖模型、场景配置和渲染实现。缺失或过期时本地构建提示并回退截图；发布环境设置 `CI=1` 后构建和收录检查失败。仅确认文件存在不能证明海报与当前模型匹配。
 

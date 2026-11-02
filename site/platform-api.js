@@ -73,17 +73,19 @@ export function createUploadRequest(path) {
 
 export function mediaUrl(value) {
   if (!value || typeof value !== 'string') return value;
+  const cdn = cdnMediaUrl(value);
+  if (cdn !== value) return cdn;
+  // Reference trees, and every relative /media/ path while the CDN switch is off,
+  // stay on the API. The stable query bypasses permanent CDN redirects cached from
+  // the former /media/ rule; it does not grant access.
   if (!/^[a-z][a-z0-9+.-]*:/i.test(value) && !value.startsWith('//')) {
     const path = new URL(value, 'https://media.invalid/');
     if (path.pathname.startsWith('/media/')) {
       const protectedUrl = new URL(value.replace(/^\/+/, ''), new URL('../', apiBaseUrl()));
-      // Bypass the permanent CDN redirects cached by the former /media/ rule.
       protectedUrl.searchParams.set('access', '20261026');
       return protectedUrl.href;
     }
   }
-  const cdn = cdnMediaUrl(value);
-  if (cdn !== value) return cdn;
   const configured = globalThis.SAME_PROMPT_CONFIG?.mediaBaseUrl;
   const base = configured ? new URL(configured, document.baseURI) : new URL('../', apiBaseUrl());
   if (!base.pathname.endsWith('/')) base.pathname += '/';

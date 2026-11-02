@@ -93,19 +93,24 @@ test('uploaded API media stays behind authorization even with a separate media s
   assert.equal(mediaUrl('blob:https://gallery.example/abc'), 'blob:https://gallery.example/abc');
 });
 
-test('the media CDN base rewrites static scenes without bypassing uploaded media access', () => {
+test('the media CDN base rewrites public media and leaves reference trees on the API', () => {
   const cdn = 'https://media.arenaofbias.icu';
   globalThis.SAME_PROMPT_CONFIG = { apiBaseUrl: 'https://server.example/api/', mediaBaseUrl: 'https://cdn.example/gallery', mediaCdnBaseUrl: '', mediaCdnEnabled: true };
   assert.equal(normalizeMediaCdnBase('https://media.arenaofbias.icu/'), cdn);
   assert.equal(mediaUrl('media/work/first.jpg'), 'https://server.example/media/work/first.jpg?access=20261026');
+  assert.equal(mediaUrl('media/references/full.webp'), 'https://server.example/media/references/full.webp?access=20261026');
   assert.equal(cdnMediaUrl('assets/scenes/task/model.sbox'), 'assets/scenes/task/model.sbox');
   assert.equal(cdnMediaUrl('assets/work.sbox'), 'assets/work.sbox');
   assert.equal(cdnMediaUrl('results/work/first.jpg'), 'results/work/first.jpg');
 
   globalThis.SAME_PROMPT_CONFIG.mediaCdnBaseUrl = `${cdn}/`;
-  assert.equal(mediaUrl('/media/work/first.jpg'), `https://server.example/media/work/first.jpg?access=20261026`);
-  assert.equal(mediaUrl('media/work/cover.webp'), `https://server.example/media/work/cover.webp?access=20261026`);
-  assert.equal(mediaUrl('media/work/preview.sbox?v=123'), `https://server.example/media/work/preview.sbox?v=123&access=20261026`);
+  assert.equal(mediaUrl('/media/work/first.jpg'), `${cdn}/media/work/first.jpg`);
+  assert.equal(mediaUrl('media/work/cover.webp'), `${cdn}/media/work/cover.webp`);
+  assert.equal(mediaUrl('media/work/preview.sbox?v=123'), `${cdn}/media/work/preview.sbox?v=123`);
+  assert.equal(mediaUrl('media/references/full.webp'), 'https://server.example/media/references/full.webp?access=20261026');
+  assert.equal(mediaUrl('/media/pack-references/thumb.webp?x=1'), 'https://server.example/media/pack-references/thumb.webp?x=1&access=20261026');
+  assert.equal(mediaUrl('media/work/../references/full.webp'), 'https://server.example/media/references/full.webp?access=20261026');
+  assert.equal(mediaUrl('media/pack-references-extra/file.webp'), `${cdn}/media/pack-references-extra/file.webp`);
   assert.equal(mediaUrl('/assets/scenes/task/model.sbox'), `${cdn}/assets/scenes/task/model.sbox`);
   assert.equal(cdnMediaUrl('assets/scenes/task/poster.webp'), `${cdn}/assets/scenes/task/poster.webp`);
   assert.equal(cdnMediaUrl('./assets/scenes/task/model.sbox'), `${cdn}/assets/scenes/task/model.sbox`);
@@ -115,11 +120,23 @@ test('the media CDN base rewrites static scenes without bypassing uploaded media
   assert.equal(cdnMediaUrl('results/work/first.jpg'), 'results/work/first.jpg');
   assert.equal(mediaUrl('https://sand.example/media/b/'), 'https://sand.example/media/b/');
   assert.equal(mediaUrl('https://api.example/media/work/first.jpg'), 'https://api.example/media/work/first.jpg');
+  assert.equal(mediaUrl('https://server.example/media/up-abcd/cover.webp?x=1'), `${cdn}/media/up-abcd/cover.webp?x=1`);
+  assert.equal(mediaUrl('https://server.example:8443/media/up-abcd/cover.webp'), 'https://server.example:8443/media/up-abcd/cover.webp');
+  assert.equal(mediaUrl('https://api.arenaofbias.icu/media/up-abcd/cover.webp?x=1#still'), `${cdn}/media/up-abcd/cover.webp?x=1#still`);
+  assert.equal(mediaUrl('https://api.arenaofbias.icu/media/references/full.webp'), 'https://api.arenaofbias.icu/media/references/full.webp');
+  assert.equal(mediaUrl('https://api.arenaofbias.icu/media/pack-references/thumb.webp?x=1'), 'https://api.arenaofbias.icu/media/pack-references/thumb.webp?x=1');
+  assert.equal(mediaUrl('https://user@server.example/media/up-abcd/cover.webp'), 'https://user@server.example/media/up-abcd/cover.webp');
   assert.equal(mediaUrl('data:image/png;base64,AAAA'), 'data:image/png;base64,AAAA');
+  assert.equal(mediaUrl('blob:https://gallery.example/abc'), 'blob:https://gallery.example/abc');
   assert.equal(resolveApiMedia({ preview: '/draft-preview/' }, 'draft').preview, 'https://server.example/draft-preview/');
+  const referenced = resolveApiMedia({ questions: [{ references: [{ src: '/media/references/full.webp', thumb: 'media/pack-references/thumb.webp' }], samples: [{ cover: 'media/up-abcd/cover.webp' }] }] }, 'catalog');
+  assert.equal(referenced.questions[0].references[0].src, 'https://server.example/media/references/full.webp?access=20261026');
+  assert.equal(referenced.questions[0].references[0].thumb, 'https://server.example/media/pack-references/thumb.webp?access=20261026');
+  assert.equal(referenced.questions[0].samples[0].cover, `${cdn}/media/up-abcd/cover.webp`);
   const match = resolveApiMedia({ a: '/media/a/', b: 'https://sand.example/b/' }, 'match');
-  assert.equal(match.a, `https://server.example/media/a/?access=20261026`);
+  assert.equal(match.a, `${cdn}/media/a/`);
   assert.equal(match.b, 'https://sand.example/b/');
-  globalThis.SAME_PROMPT_CONFIG.mediaCdnBaseUrl = 'https://staging.media.example';
-  assert.equal(mediaUrl('media/work/first.jpg'), 'https://server.example/media/work/first.jpg?access=20261026');
+  globalThis.SAME_PROMPT_CONFIG.mediaCdnBaseUrl = 'https://staging.media.example/bucket';
+  assert.equal(mediaUrl('media/work/first.jpg'), 'https://staging.media.example/bucket/media/work/first.jpg');
+  assert.equal(mediaUrl('https://server.example/media/work/first.jpg?x=1'), 'https://staging.media.example/media/work/first.jpg?x=1');
 });
