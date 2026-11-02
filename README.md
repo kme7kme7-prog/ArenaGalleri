@@ -40,9 +40,9 @@ npm start
 
 ## 后台与发布
 
-构建时通过 `API_BASE_URL` 配置后台 API；可选 `MEDIA_BASE_URL` 只作为其它媒体相对地址的回退根，动态 `/media/` 始终以 API 根解析。地址是公开运行配置，不含服务端密钥。
+构建时通过 `API_BASE_URL` 配置后台 API；可选 `MEDIA_BASE_URL` 只作为其它媒体相对地址的回退根。地址是公开运行配置，不含服务端密钥。
 
-`MEDIA_CDN_BASE_URL`（运行时字段 `mediaCdnBaseUrl`，不要末尾斜杠）只切换静态 `assets/scenes/...` 模型与海报。空字符串、未设置或缺失都表示关闭，保持画廊同源；设为非空地址（例如 `https://media.arenaofbias.icu`）时沿用 `/assets/scenes/...` 键。可选别名是 `VITE_MEDIA_CDN_BASE_URL`；两个变量都写了且规范化后不一致时构建失败。`mediaCdnEnabled` 不再作为开关，空的 base 优先，保持关闭。动态 `/media/...`（封面、模型预览、截图、上传及数据包参考图）不使用该 CDN 开关，始终请求 API 实时验权，并附稳定 `access=20261026` 查询参数避开旧 301 浏览器缓存；参数本身不授予权限。其它资源、作品 iframe 和已经写好的绝对地址不变。回滚静态 CDN 读取只需把 `mediaCdnBaseUrl` 发布为空，不改对象键。
+`MEDIA_CDN_BASE_URL`（运行时字段 `mediaCdnBaseUrl`，不要末尾斜杠）切换静态 `assets/scenes/...` 与公开 `/media/**`（作品封面、预览、截图）。空字符串、未设置或缺失都表示关闭：场景保持画廊同源，`/media/` 仍请求 API，并附稳定 `access=20261026` 查询参数避开旧 301 浏览器缓存；参数本身不授予权限。设为非空地址（例如 `https://media.arenaofbias.icu`）时，公开 `/media/**` 与 `/assets/scenes/...` 直接读该源站，路径与查询不变，从而不再经过 API 主机上的 301。`/media/references/` 与 `/media/pack-references/` 不改写，仍由 API 做访问检查。已经写成绝对地址的 URL，仅当主机是配置的 API 主机或 `api.arenaofbias.icu`、且路径属于公开 `/media/` 时换成 CDN 源站。`blob:`、`data:` 和其它主机不变。可选别名是 `VITE_MEDIA_CDN_BASE_URL`；两个变量都写了且规范化后不一致时构建失败。`mediaCdnEnabled` 不再作为开关，空的 base 优先，保持关闭。回滚只需把 `mediaCdnBaseUrl` 发布为空，不改对象键。
 
 静态 CDN 与存储桶的 CORS 由运维配置，`assets/scenes/` 跨源模型与海报按匿名读取。私密投稿模型仅在目标 URL 无内嵌账号密码、origin 精确等于配置的 API、且路径在其 `media/` 目录时使用 `credentials: 'include'`；第三方和静态 CDN 保持 `same-origin`，不向它们扩大跨源凭据。参考图打包下载同样从 API 携带会话，后台必须回显精确画廊来源并允许凭据，不能使用 `*`。若边缘另有更严的 `img-src` / `connect-src`，需同时放行实际使用的 API 与静态媒体主机。
 

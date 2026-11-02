@@ -1,3 +1,10 @@
+## 2026-11-02 · 公开作品媒体直连 CDN（待 kme7 确认，未合并）
+
+- 非空 `mediaCdnBaseUrl` 时，公开 `/media/**` 与 `/assets/scenes/` 直接读 CDN 源站，避开 API 主机 `/media/` 的 301。`/media/references/` 与 `/media/pack-references/` 仍由 `mediaUrl` 落到 API，并带 `access=20261026`。绝对地址只在主机为配置的 API 或 `api.arenaofbias.icu`、且路径是公开 `/media/` 时改写，保留路径与查询。
+- 入口是 `media-cdn.js`、`mediaUrl` 和 `versionedMedia`。`arena.js` 与原作展厅 `exhibition.js` 未改：对局地址仍走 `mediaUrl`，展厅 iframe 仍用作品 `scene`。未改 Nginx 或后台。
+- `npm run check` 118/0，`npm test` 155/155。未跑 `npm run build` 与 `CI=1 npm run check:intake`：无私有数据包，且不改收录。未做浏览器目视。未合并、未部署。
+- [本轮归档](docs/archive/2026-11-02-cdn-direct-public-media-kme7.md)。
+
 ## 2026-10-27 · 桌面项目整理与提交
 
 - 用户授权提交推送并直接清理，不备份。同步 origin/main，去掉已提交的随机/热度排序和 dots 邮箱豁免重复差异；保留普通管理员自审及界面、产品说明和回归。合并交接记录，保留远端新增条目。

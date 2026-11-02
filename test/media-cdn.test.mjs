@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeMediaCdnBase } from '../site/media-cdn.js';
+import { cdnMediaUrl, normalizeMediaCdnBase } from '../site/media-cdn.js';
 
 test('image URLs keep the datapack cache key and move only synced paths', async () => {
   globalThis.document = { documentElement: { dataset: {} }, addEventListener() {} };
@@ -11,11 +11,21 @@ test('image URLs keep the datapack cache key and move only synced paths', async 
   globalThis.SAME_PROMPT_CONFIG = { assetVersion: 'abc', mediaCdnBaseUrl: '' };
   assert.equal(versionedMedia('assets/scenes/task/poster.webp'), 'assets/scenes/task/poster.webp?v=abc');
   assert.equal(versionedMedia('results/work/first.jpg'), 'results/work/first.jpg?v=abc');
-  globalThis.SAME_PROMPT_CONFIG = { assetVersion: 'abc', mediaCdnBaseUrl: `${cdn}/` };
+  assert.equal(versionedMedia('/media/work/first.jpg'), '/media/work/first.jpg?v=abc');
+  globalThis.SAME_PROMPT_CONFIG = { assetVersion: 'abc', apiBaseUrl: 'https://api.arenaofbias.icu/api/', mediaCdnBaseUrl: `${cdn}/` };
   assert.equal(versionedMedia('assets/scenes/task/poster.webp'), `${cdn}/assets/scenes/task/poster.webp?v=abc`);
   assert.equal(versionedMedia('assets/scenes/task/model.sbox?x=1'), `${cdn}/assets/scenes/task/model.sbox?x=1&v=abc`);
-  assert.equal(versionedMedia('/media/work/first.jpg'), '/media/work/first.jpg?v=abc');
+  assert.equal(versionedMedia('/media/work/first.jpg'), `${cdn}/media/work/first.jpg?v=abc`);
+  assert.equal(versionedMedia('media/up-abcd/cover.webp?x=1'), `${cdn}/media/up-abcd/cover.webp?x=1&v=abc`);
+  assert.equal(versionedMedia('/media/references/full.webp'), '/media/references/full.webp?v=abc');
+  assert.equal(versionedMedia('/media/pack-references/thumb.webp'), '/media/pack-references/thumb.webp?v=abc');
   assert.equal(versionedMedia('results/work/first.jpg'), 'results/work/first.jpg?v=abc');
   assert.equal(versionedMedia('assets/brands/claude.svg'), 'assets/brands/claude.svg?v=abc');
   assert.equal(versionedMedia(''), '');
+  assert.equal(cdnMediaUrl('https://api.arenaofbias.icu/media/up-abcd/cover.webp?x=1#still'), `${cdn}/media/up-abcd/cover.webp?x=1#still`);
+  assert.equal(cdnMediaUrl('https://api.arenaofbias.icu/media/references/full.webp?x=1'), 'https://api.arenaofbias.icu/media/references/full.webp?x=1');
+  assert.equal(cdnMediaUrl('https://api.arenaofbias.icu/media/pack-references/thumb.webp'), 'https://api.arenaofbias.icu/media/pack-references/thumb.webp');
+  assert.equal(cdnMediaUrl('https://other.example/media/up-abcd/cover.webp'), 'https://other.example/media/up-abcd/cover.webp');
+  assert.equal(cdnMediaUrl('data:image/png;base64,AAAA'), 'data:image/png;base64,AAAA');
+  assert.equal(cdnMediaUrl('blob:https://gallery.example/abc'), 'blob:https://gallery.example/abc');
 });
